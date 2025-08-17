@@ -24,11 +24,7 @@ build/
 *~
 
 # documentation files
-docs/
-doc/
-documentation/
-docs-src/
-docs-build/
+docs/   
 
 # OS generated files
 .DS_Store
