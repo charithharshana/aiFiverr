@@ -1,67 +1,63 @@
 {
-    "manifest_version": 3,
-    "name": "AI Text Rewriter",
-    "version": "2.1.1",
-    "description": "AI-powered Chrome extension for text rewriting using Google Gemini AI. Professional writing assistant with 17+ modes, custom prompts, grammar checking, and instant text transformation.",
-    "permissions": [
-      "storage",      
-      "contextMenus", 
-      "scripting",    
-      "activeTab",
-      "notifications"
-    ],
-    "host_permissions": [
-      "<all_urls>"    
-    ],
-    "background": {
-      "service_worker": "background.js"
-    },
-    "content_scripts": [
-      {
-        "matches": ["<all_urls>"],
-        "js": ["content.js"],
-        "run_at": "document_start"
-      }
-    ],
-    "options_page": "options.html",
-    "action": {
-      "default_title": "AI Text Rewriter Settings",
-      "default_popup": "options.html" 
-    },
-    "icons": {
+  "manifest_version": 3,
+  "name": "aiFiverr - AI-Powered Fiverr Assistant",
+  "description": "Enhance your Fiverr experience with AI-powered chat sessions, proposal generation, and conversation analysis",
+  "version": "1.0.0",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs",
+    "background"
+  ],
+  "host_permissions": [
+    "https://www.fiverr.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    },
-    "commands": {
-      "rewrite-humanize": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+H"
-        },
-        "description": "Rewrite selected text to be more human-like (Ctrl+Shift+H)"
-      },
-      "rewrite-professional": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+P"
-        },
-        "description": "Rewrite selected text in professional tone (Ctrl+Shift+P)"
-      },
-      "rewrite-grammar": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+G"
-        },
-        "description": "Fix grammar and spelling in selected text (Ctrl+Shift+G)"
-      },
-      "undo-rewrite": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+Z"
-        },
-        "description": "Undo last rewrite (Ctrl+Shift+Z)"
-      }
-    },
-    "content_security_policy": {
-      "extension_pages": "script-src 'self'; object-src 'self'"
     }
-  }
-  
-  
+  },
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.fiverr.com/*"],
+      "js": [
+        "content/utils/helpers.js",
+        "content/utils/storage.js",
+        "content/utils/export-import.js",
+        "content/fiverr/detector.js",
+        "content/fiverr/extractor.js",
+        "content/fiverr/injector.js",
+        "content/ai/session.js",
+        "content/ai/api-manager.js",
+        "content/ai/gemini-client.js",
+        "content/ai/knowledge-base.js",
+        "content/main.js"
+      ],
+      "css": ["content/styles/main.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/styles/*",
+        "icons/*",
+        "popup/*"
+      ],
+      "matches": ["https://www.fiverr.com/*"]
+    }
+  ]
+}
