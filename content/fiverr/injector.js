@@ -505,14 +505,29 @@ class FiverrInjector {
    */
   async generateAIReply(context, session) {
     try {
-      // Create prompt for reply generation
-      let prompt = 'Generate a professional reply for this Fiverr conversation';
+      // Extract conversation data and username
+      const conversationData = await fiverrExtractor.extractConversation();
+      const username = fiverrExtractor.extractUsernameFromUrl();
 
-      if (context) {
-        prompt += `\n\nConversation context:\n${context}`;
+      // Prepare context variables for prompt processing
+      const contextVars = {
+        conversation: context || (conversationData ? fiverrExtractor.conversationToContext(conversationData) : ''),
+        username: username || 'Client'
+      };
+
+      // Use knowledge base manager to process the professional reply prompt
+      let prompt;
+      try {
+        prompt = await knowledgeBaseManager.processPrompt('professional_initial_reply', contextVars);
+      } catch (error) {
+        console.warn('Professional reply prompt not found, using fallback:', error);
+        // Fallback to basic prompt if the structured prompt is not available
+        prompt = 'Generate a professional reply for this Fiverr conversation';
+        if (context) {
+          prompt += `\n\nConversation context:\n${context}`;
+        }
+        prompt += '\n\nPlease generate an appropriate, professional response that addresses the conversation context.';
       }
-
-      prompt += '\n\nPlease generate an appropriate, professional response that addresses the conversation context.';
 
       const response = await geminiClient.generateChatReply(session, prompt);
       return response.response;
@@ -534,15 +549,53 @@ class FiverrInjector {
 
   async generateAIProposal(briefData) {
     try {
-      // Get knowledge base for personalization
-      const knowledgeBase = await storageManager.getKnowledgeBase();
+      // Extract username and conversation context
+      const username = fiverrExtractor.extractUsernameFromUrl();
+      const conversationData = await fiverrExtractor.extractConversation();
 
-      const proposal = await geminiClient.generateProposal(briefData, knowledgeBase);
-      return proposal;
+      // Prepare context variables for prompt processing
+      const contextVars = {
+        username: username || 'Client',
+        conversation: conversationData ? fiverrExtractor.conversationToContext(conversationData) : '',
+        proposal: briefData ? this.formatBriefData(briefData) : 'No brief data available'
+      };
+
+      // Use knowledge base manager to process the project proposal prompt
+      let prompt;
+      try {
+        prompt = await knowledgeBaseManager.processPrompt('project_proposal', contextVars);
+      } catch (error) {
+        console.warn('Project proposal prompt not found, using fallback:', error);
+        // Fallback to gemini client's proposal generation
+        const knowledgeBase = await storageManager.getKnowledgeBase();
+        return await geminiClient.generateProposal(briefData, knowledgeBase);
+      }
+
+      // Generate proposal using the processed prompt
+      const response = await geminiClient.generateContent(prompt);
+      return response.text;
     } catch (error) {
       console.error('AI proposal generation failed:', error);
       throw new Error('Failed to generate AI proposal');
     }
+  }
+
+  /**
+   * Format brief data for prompt context
+   */
+  formatBriefData(briefData) {
+    if (!briefData) return 'No brief data available';
+
+    let formatted = '';
+    if (briefData.title) formatted += `Title: ${briefData.title}\n`;
+    if (briefData.description) formatted += `Description: ${briefData.description}\n`;
+    if (briefData.overview) formatted += `Brief Overview: ${briefData.overview}\n`;
+    if (briefData.requirements?.length) formatted += `Requirements: ${briefData.requirements.join(', ')}\n`;
+    if (briefData.budget) formatted += `Budget: ${briefData.budget}\n`;
+    if (briefData.deadline) formatted += `Deadline: ${briefData.deadline}\n`;
+    if (briefData.skills?.length) formatted += `Skills needed: ${briefData.skills.join(', ')}\n`;
+
+    return formatted || 'No specific brief details available';
   }
 
   async getAIResponse(message) {

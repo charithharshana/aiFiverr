@@ -82,67 +82,134 @@ class KnowledgeBaseManager {
    */
   addDefaultPrompts() {
     const defaultPrompts = {
-      'professional_reply': {
-        name: 'Professional Reply',
-        description: 'Generate a professional response to client messages',
-        prompt: `Generate a professional and friendly reply to the following message. Use my bio: {{bio}} and mention relevant services: {{services}} if appropriate. Maintain a helpful and solution-oriented tone.
+      'professional_initial_reply': {
+        name: 'Professional Initial Reply',
+        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message',
+        prompt: `You are an expert freelance assistant. Your goal is to generate a professional, friendly, and concise reply to a potential client's initial message.
 
-Message: {message}
+**Analyze this context:**
+*   **Client's Message:** {conversation}
+*   **Client's Username:** {username}
+*   **My Professional Bio:** {{bio}}
+*   **My Services:** {{services}}
+*   **My Portfolio:** {{portfolio}}
+*   **Custom Information:** {{custom1}}
 
-Please provide a response that:
-1. Acknowledges the client's message
-2. Addresses their specific needs or questions
-3. Offers clear next steps or solutions
-4. Maintains professionalism while being personable`
+**Based on the context, generate a reply that:**
+1. Greets the client by their {username}.
+2. Acknowledges and shows understanding of their core request from the {conversation}.
+3. Intelligently incorporates a relevant point from my {{bio}} or mentions a specific service from {{services}} that fits their need. Do not just list them.
+4. Suggests a clear next step (e.g., asking a key question, suggesting a call).
+5. Maintains a helpful, confident, and professional tone.
+6. Provides the reply directly, without any extra explanations.`
       },
-      'proposal_generator': {
-        name: 'Proposal Generator',
-        description: 'Create compelling proposals for project briefs',
-        prompt: `Create a compelling Fiverr proposal based on the project brief below. Use my background: {{bio}} and highlight relevant experience: {{experience}}.
+      'project_summary': {
+        name: 'Project Summary',
+        description: 'Analyze conversation and extract key details into a structured, concise summary',
+        prompt: `You are a project management assistant. Analyze the following conversation and extract the key details into a structured, concise summary.
 
-Project Brief: {brief}
+**Conversation to Analyze:**
+{conversation}
 
-Structure the proposal with:
-1. A personalized greeting that shows I understand their needs
-2. Brief explanation of my relevant experience and skills
-3. Clear approach to solving their problem
-4. Timeline and deliverables
-5. Professional closing with next steps
-
-Make it engaging and show genuine interest in their project.`
+**Generate the summary using this exact format:**
+*   **Project Overview:** A one-sentence summary of the client's primary goal.
+*   **Key Deliverables:** A bulleted list of the specific items the client expects.
+*   **Client Preferences:** A bulleted list of specific instructions or requirements mentioned.
+*   **Key Decisions Made:** A bulleted list of important agreements or changes confirmed.
+*   **Budget & Pricing:** Any mention of financial agreements. State "Not discussed" if absent.
+*   **Deadlines & Timeline:** Any specific dates or time frames mentioned. State "Not discussed" if absent.
+*   **Next Action Items:** What needs to be done next, and by whom.`
       },
-      'message_analyzer': {
-        name: 'Message Analyzer',
-        description: 'Analyze client messages for tone, intent, and key points',
-        prompt: `Analyze the following client message and provide insights:
+      'follow_up_message': {
+        name: 'Follow-up Message',
+        description: 'Draft a concise and effective follow-up message to a client based on conversation history',
+        prompt: `You are a professional freelance communicator. Your goal is to draft a concise and effective follow-up message to a client based on our conversation history.
 
-Message: {message}
+**Use this project context:**
+*   **Conversation History:** {conversation}
+*   **Purpose of this follow-up:** {{custom1}}
+*   **My availability or updates:** {{custom2}}
 
-Please analyze:
-1. **Tone**: (professional, casual, urgent, frustrated, excited, etc.)
-2. **Intent**: (inquiry, complaint, request, feedback, etc.)
-3. **Key Points**: Main requirements or concerns mentioned
-4. **Urgency Level**: How quickly they need a response
-5. **Suggested Response Approach**: How to best respond to this message
-
-Provide actionable insights for crafting an appropriate response.`
+**Draft a follow-up message that:**
+1. Is friendly and professional.
+2. Directly addresses the purpose described in {{custom1}}.
+3. Briefly references a specific part of the project from the {conversation} to show context.
+4. Includes a clear, simple call to action.
+5. If provided, briefly mentions my availability or updates from {{custom2}}.
+6. Provides the reply directly, without any extra explanations.`
       },
-      'conversation_summarizer': {
-        name: 'Conversation Summarizer',
-        description: 'Summarize long conversations into key points',
-        prompt: `Summarize the following Fiverr conversation, highlighting the most important information:
+      'project_proposal': {
+        name: 'Project Proposal',
+        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message',
+        prompt: `You are a skilled proposal writer. Your task is to transform my raw notes into a clear, professional, and persuasive project proposal message for a client.
 
-Conversation: {conversation}
+**Analyze this information:**
+*   **Client's Username:** {username}
+*   **Conversation History:** {conversation}
+*   **My Proposal Notes (Scope, Timeline, Price):** {proposal}
+*   **My Professional Bio:** {{bio}}
+*   **Relevant Portfolio Links:** {{portfolio}}
 
-Please provide:
-1. **Project Overview**: What the client needs
-2. **Key Decisions**: Important agreements or changes
-3. **Action Items**: What needs to be done next
-4. **Deadlines**: Any time-sensitive items
-5. **Budget/Pricing**: Financial discussions
-6. **Client Preferences**: Specific requirements or preferences mentioned
+**Generate a proposal message that follows this structure:**
+1.  **Personalized Greeting:** Start with a friendly greeting to {username}.
+2.  **Summary of Understanding:** Briefly state your understanding of their project goal, based on the {conversation}.
+3.  **The Proposal:** Clearly present the information from the {proposal} notes, using clear headings like "Scope," "Timeline," and "Investment."
+4.  **Why Me:** Subtly weave in a relevant point from your {{bio}} to build confidence.
+5.  **Proof of Work:** Naturally include a link to a relevant project from your {{portfolio}}.
+6.  **Clear Call to Action:** End with a clear next step, such as inviting them to ask questions or accept the offer.`
+      },
+      'translate_and_explain': {
+        name: 'Translate and Explain Message',
+        description: 'Translate text and provide a simple explanation of its content',
+        prompt: `You are an expert multilingual assistant. Your task is to translate the given text and provide a simple explanation of its content.
 
-Keep the summary concise but comprehensive.`
+**Analyze this information:**
+*   **Text to Analyze:** {conversation}
+*   **Translate to Language:** {language}
+
+**Provide your response in the following structured format:**
+
+**Simple Explanation (in English):**
+*   **Main Goal:** What is the sender trying to achieve?
+*   **Key Points:** What are the most important pieces of information or questions?
+*   **Tone:** Is the sender formal, informal, happy, urgent?
+
+---
+
+**Full Translation (in {language}):**
+[Provide the accurate and natural-sounding translation of the entire text here]`
+      },
+      'refine_and_translate': {
+        name: 'Refine and Translate My Message',
+        description: 'Refine draft message for clarity and professionalism, then translate to requested language',
+        prompt: `You are an expert multilingual editor and translator. Your task is to first refine the provided draft message for clarity, professionalism, and grammar, and then translate the improved version into the requested language.
+
+**Analyze this information:**
+*   **My Draft Message:** {conversation}
+*   **Translate to Language:** {language}
+
+**Perform the following steps:**
+1.  Silently review and refine the "My Draft Message" to make it more professional and effective. Correct all spelling and grammar mistakes.
+2.  Provide a perfect translation of that REFINED message into the target {language}.
+
+**Your output should ONLY be the final, translated text. Do not include the English version or any explanations.**`
+      },
+      'refine_message': {
+        name: 'Refine My Message (No Translation)',
+        description: 'Refine draft message to improve quality, clarity, and impact without translation',
+        prompt: `You are an expert copy editor and communication coach. Your task is to refine the following draft message to improve its quality, clarity, and impact.
+
+**Analyze this information:**
+*   **My Draft Message:** {conversation}
+*   **Desired Tone/Goal:** {{custom1}} (e.g., "more professional," "more friendly," "more persuasive," "more concise")
+
+**Based on the instructions, refine the draft by:**
+1. Correcting all spelling, grammar, and punctuation errors.
+2. Improving clarity, flow, and conciseness.
+3. Adjusting the tone to be more {{custom1}}.
+4. Retaining the original core meaning of the message.
+
+**Your output should ONLY be the final, refined message. Do not provide explanations or comments about the changes made.**`
       }
     };
 
@@ -485,6 +552,75 @@ Best regards,
     });
 
     return results;
+  }
+
+  /**
+   * Process prompt with automatic context extraction from Fiverr page
+   */
+  async processPromptWithFiverrContext(promptKey, additionalContext = {}) {
+    try {
+      // Extract context from current Fiverr page
+      const context = await this.extractFiverrContext();
+
+      // Merge with additional context
+      const fullContext = { ...context, ...additionalContext };
+
+      // Process the prompt
+      return this.processPrompt(promptKey, fullContext);
+    } catch (error) {
+      console.error('Failed to process prompt with Fiverr context:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Extract context variables from current Fiverr page
+   */
+  async extractFiverrContext() {
+    const context = {};
+
+    try {
+      // Extract username from URL
+      if (window.fiverrExtractor) {
+        context.username = window.fiverrExtractor.extractUsernameFromUrl() || 'Client';
+
+        // Extract conversation if available
+        const conversationData = await window.fiverrExtractor.extractConversation();
+        if (conversationData) {
+          context.conversation = window.fiverrExtractor.conversationToContext(conversationData);
+        }
+
+        // Extract brief details if on brief page
+        const briefData = window.fiverrExtractor.extractBriefDetails();
+        if (briefData) {
+          // Format brief data for proposal context
+          let proposalText = '';
+          if (briefData.title) proposalText += `Title: ${briefData.title}\n`;
+          if (briefData.description) proposalText += `Description: ${briefData.description}\n`;
+          if (briefData.overview) proposalText += `Brief Overview: ${briefData.overview}\n`;
+          if (briefData.requirements?.length) proposalText += `Requirements: ${briefData.requirements.join(', ')}\n`;
+          if (briefData.budget) proposalText += `Budget: ${briefData.budget}\n`;
+          if (briefData.deadline) proposalText += `Deadline: ${briefData.deadline}\n`;
+          if (briefData.skills?.length) proposalText += `Skills needed: ${briefData.skills.join(', ')}\n`;
+
+          context.proposal = proposalText || 'No specific brief details available';
+        }
+      }
+
+      // Set default values for missing context
+      if (!context.conversation) context.conversation = 'No conversation data available';
+      if (!context.username) context.username = 'Client';
+      if (!context.proposal) context.proposal = 'No proposal data available';
+
+    } catch (error) {
+      console.error('Failed to extract Fiverr context:', error);
+      // Set fallback values
+      context.conversation = 'No conversation data available';
+      context.username = 'Client';
+      context.proposal = 'No proposal data available';
+    }
+
+    return context;
   }
 
   /**

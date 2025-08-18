@@ -269,6 +269,7 @@ class FiverrExtractor {
       const briefData = {
         title: this.extractBriefTitle(),
         description: this.extractBriefDescription(),
+        overview: this.extractBriefOverview(),
         requirements: this.extractBriefRequirements(),
         budget: this.extractBriefBudget(),
         deadline: this.extractBriefDeadline(),
@@ -407,7 +408,7 @@ class FiverrExtractor {
     ];
 
     const skills = [];
-    
+
     selectors.forEach(selector => {
       const elements = document.querySelectorAll(selector);
       elements.forEach(element => {
@@ -419,6 +420,56 @@ class FiverrExtractor {
     });
 
     return skills;
+  }
+
+  /**
+   * Extract brief overview from "Create an offer" section
+   */
+  extractBriefOverview() {
+    const overviewSelectors = [
+      '[data-testid*="overview"]',
+      '.brief-overview',
+      '.project-overview',
+      '.offer-overview',
+      '.brief-summary'
+    ];
+
+    // First try direct selectors
+    for (const selector of overviewSelectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        // If it's a heading, look for the next content element
+        if (element.tagName.match(/^H[1-6]$/)) {
+          const nextElement = element.nextElementSibling;
+          if (nextElement && nextElement.textContent.trim()) {
+            return nextElement.textContent.trim();
+          }
+        } else if (element.textContent.trim()) {
+          return element.textContent.trim();
+        }
+      }
+    }
+
+    // Try to find overview by looking for headings containing "overview"
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (const heading of headings) {
+      if (heading.textContent.toLowerCase().includes('overview')) {
+        const nextElement = heading.nextElementSibling;
+        if (nextElement && nextElement.textContent.trim()) {
+          return nextElement.textContent.trim();
+        }
+      }
+    }
+
+    // Fallback: look for any element with "overview" class or data attribute
+    const fallbackElements = document.querySelectorAll('[class*="overview"], [data-*="overview"]');
+    for (const element of fallbackElements) {
+      if (element.textContent.trim()) {
+        return element.textContent.trim();
+      }
+    }
+
+    return null;
   }
 
   /**

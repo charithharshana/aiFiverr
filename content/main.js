@@ -81,6 +81,7 @@ class AiFiverrMain {
       'sessionManager',
       'apiKeyManager',
       'geminiClient',
+      'knowledgeBaseManager',
       'fiverrDetector',
       'fiverrExtractor',
       'fiverrInjector',
@@ -115,6 +116,12 @@ class AiFiverrMain {
     // Initialize storage manager
     if (window.storageManager && !window.storageManager.initialized) {
       await window.storageManager.init?.();
+    }
+
+    // Initialize knowledge base manager
+    if (window.knowledgeBaseManager && !window.knowledgeBaseManager.initialized) {
+      await window.knowledgeBaseManager.init();
+      window.knowledgeBaseManager.initialized = true;
     }
 
     // Initialize session manager
@@ -260,6 +267,11 @@ class AiFiverrMain {
           sendResponse({ success: true, data: analysis });
           break;
 
+        case 'PROCESS_PROMPT':
+          const processedPrompt = await this.handleProcessPrompt(request.data);
+          sendResponse({ success: true, data: processedPrompt });
+          break;
+
         case 'EXPORT_DATA':
           const exportData = await window.exportImportManager?.exportAllData(request.format);
           sendResponse({ success: true, data: exportData });
@@ -313,6 +325,15 @@ class AiFiverrMain {
         case 'GET_STORED_CONTACTS':
           const storedContacts = await this.handleGetStoredContacts();
           sendResponse({ success: true, data: storedContacts });
+          break;
+
+        case 'CLEAR_STORAGE_CACHE':
+          // Clear storage manager cache to prevent conflicts
+          if (window.storageManager && window.storageManager.cache) {
+            window.storageManager.cache.clear();
+            console.log('Storage cache cleared');
+          }
+          sendResponse({ success: true });
           break;
 
         default:
@@ -464,6 +485,28 @@ class AiFiverrMain {
   async handleAnalyzeMessage(data) {
     const { content } = data;
     return await window.geminiClient?.analyzeMessage(content);
+  }
+
+  /**
+   * Handle process prompt request
+   */
+  async handleProcessPrompt(data) {
+    const { promptKey, additionalContext = {}, language } = data;
+
+    try {
+      // Add language to additional context if provided
+      if (language) {
+        additionalContext.language = language;
+      }
+
+      // Process prompt with Fiverr context
+      const processedPrompt = await window.knowledgeBaseManager?.processPromptWithFiverrContext(promptKey, additionalContext);
+
+      return { processedPrompt };
+    } catch (error) {
+      console.error('Failed to process prompt:', error);
+      throw error;
+    }
   }
 
   /**

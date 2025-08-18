@@ -195,12 +195,38 @@
             </div>
 
             <div class="prompt-add-form" id="promptAddForm">
-              <div class="prompt-form-row">
-                <input type="text" id="newPromptKey" placeholder="Prompt name (e.g., professional_reply)" class="prompt-key-input">
+              <div class="prompt-form-field">
+                <label for="newPromptKey" class="field-label">
+                  Prompt Key <span class="field-help" title="Unique identifier for this prompt. Use lowercase letters, numbers, and underscores only.">ℹ️</span>
+                </label>
+                <input type="text" id="newPromptKey" placeholder="e.g., professional_reply" class="prompt-key-input">
+                <small class="field-description">Unique identifier (letters, numbers, underscores only)</small>
               </div>
-              <input type="text" id="newPromptName" placeholder="Display name (e.g., Professional Reply)" class="prompt-name-input">
-              <textarea id="newPromptDescription" placeholder="Brief description of what this prompt does..." class="prompt-description-input" rows="2"></textarea>
-              <textarea id="newPromptContent" placeholder="Enter your prompt content here. Use {{variable_name}} to reference knowledge base variables..." class="prompt-content-input" rows="6"></textarea>
+
+              <div class="prompt-form-field">
+                <label for="newPromptName" class="field-label">
+                  Display Name <span class="field-help" title="Human-readable name shown in the interface">ℹ️</span>
+                </label>
+                <input type="text" id="newPromptName" placeholder="e.g., Professional Reply" class="prompt-name-input">
+                <small class="field-description">Friendly name displayed in the prompt list</small>
+              </div>
+
+              <div class="prompt-form-field">
+                <label for="newPromptDescription" class="field-label">
+                  Description <span class="field-help" title="Brief explanation of what this prompt does and when to use it">ℹ️</span>
+                </label>
+                <textarea id="newPromptDescription" placeholder="Brief description of what this prompt does..." class="prompt-description-input" rows="2"></textarea>
+                <small class="field-description">Explain what this prompt does and when to use it</small>
+              </div>
+
+              <div class="prompt-form-field">
+                <label for="newPromptContent" class="field-label">
+                  Prompt Content <span class="field-help" title="The actual prompt text. Use {{variable_name}} to reference knowledge base variables and {conversation} for Fiverr conversation data">ℹ️</span>
+                </label>
+                <textarea id="newPromptContent" placeholder="Enter your prompt content here. Use {{variable_name}} to reference knowledge base variables..." class="prompt-content-input" rows="6"></textarea>
+                <small class="field-description">Use {{variable_name}} for knowledge base variables, {conversation} for Fiverr data</small>
+              </div>
+
               <div class="prompt-form-actions">
                 <button class="btn-primary" id="savePromptBtn">Save Prompt</button>
                 <button class="btn-secondary" id="cancelPromptBtn">Cancel</button>
@@ -240,6 +266,10 @@
               <label for="maxContextLength">Max context length</label>
               <input type="number" id="maxContextLength" value="10000" min="1000" max="50000">
             </div>
+          </div>
+          <div class="global-save-section">
+            <button class="btn-primary global-save-btn" id="globalSaveBtn">💾 Save All Settings</button>
+            <p class="save-description">Save all API keys, preferences, and configurations</p>
           </div>
         </div>
       </div>

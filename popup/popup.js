@@ -12,6 +12,7 @@ class PopupManager {
     this.apiKeyStatuses = [];
     this.currentPromptTab = 'custom';
     this.favoritePrompts = new Set();
+    this.originalPromptData = null; // For tracking changes in prompt editing
     this.init();
   }
 
@@ -229,20 +230,25 @@ class PopupManager {
         this.savePreferences();
       });
     });
+
+    // Global save button
+    document.getElementById('globalSaveBtn')?.addEventListener('click', () => {
+      this.saveAllSettings();
+    });
   }
 
   async initializeUI() {
-    // Load settings
+    // Load settings (this includes knowledge base and prompts)
     await this.loadSettings();
-    
+
     // Load sessions
     await this.loadSessions();
-    
+
     // Update status
     this.updateStatus();
   }
 
-  switchTab(tabName) {
+  async switchTab(tabName) {
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.classList.remove('active');
@@ -266,7 +272,10 @@ class PopupManager {
         this.loadSessions();
         break;
       case 'settings':
-        this.loadSettings();
+        await this.loadSettings();
+        // Ensure knowledge base and prompts are always loaded when switching to settings
+        await this.loadKnowledgeBase();
+        await this.loadPrompts();
         break;
     }
   }
@@ -413,11 +422,14 @@ class PopupManager {
 
   async loadKnowledgeBase() {
     try {
-      let knowledgeBase = await this.getStorageData('knowledgeBase') || {};
+      // Force reload from storage to get the latest data
+      let knowledgeBase = await this.forceReloadFromStorage('knowledgeBase') || {};
 
       // Auto-populate variables from default prompts if Knowledge Base is empty
       if (Object.keys(knowledgeBase).length === 0) {
-        knowledgeBase = await this.autoPopulateKnowledgeBase();
+        await this.autoPopulateKnowledgeBase();
+        // Reload the knowledge base after auto-population
+        knowledgeBase = await this.forceReloadFromStorage('knowledgeBase') || {};
       }
 
       const container = document.getElementById('knowledgeBaseList');
@@ -480,9 +492,11 @@ class PopupManager {
       const defaultValues = {
         'bio': 'Your professional bio and background information',
         'services': 'List of services you offer',
+        'portfolio': 'Links to your portfolio or previous work',
+        'custom1': 'Custom field 1 - Add any specific information like project goals, availability, or desired tone',
+        'custom2': 'Custom field 2 - Add any specific information like updates, timeline, or special requirements',
         'availability': 'Your current availability and working hours',
         'experience': 'Your years of experience and expertise',
-        'portfolio': 'Links to your portfolio or previous work',
         'rates': 'Your pricing and rate information',
         'contact': 'Your contact information and preferred communication methods'
       };
@@ -495,19 +509,34 @@ class PopupManager {
 
       // Save to storage if any variables were found and autoSave is true
       if (autoSave && Object.keys(knowledgeBase).length > 0) {
-        await this.setStorageData({ knowledgeBase });
-        this.showToast(`Auto-populated ${Object.keys(knowledgeBase).length} variables from default prompts`, 'success');
+        const saveSuccess = await this.setStorageData({ knowledgeBase });
+        if (saveSuccess) {
+          // Verify the data was saved
+          const verifyData = await this.getStorageData('knowledgeBase');
+          if (verifyData && Object.keys(verifyData).length === Object.keys(knowledgeBase).length) {
+            this.showToast(`Auto-populated ${Object.keys(knowledgeBase).length} variables from default prompts`, 'success');
+          } else {
+            throw new Error('Data verification failed after auto-population save');
+          }
+        } else {
+          throw new Error('Failed to save auto-populated knowledge base');
+        }
       }
 
       return knowledgeBase;
     } catch (error) {
       console.error('Failed to auto-populate knowledge base:', error);
+      if (autoSave) {
+        this.showToast(`Failed to auto-populate knowledge base: ${error.message}`, 'error');
+      }
       return {};
     }
   }
 
   async populateKnowledgeBaseFromPrompts() {
     try {
+      this.showLoading(true);
+
       const existingKnowledgeBase = await this.getStorageData('knowledgeBase') || {};
       const newVariables = await this.autoPopulateKnowledgeBase(false);
 
@@ -528,10 +557,22 @@ class PopupManager {
         // Merge with existing variables
         const mergedKnowledgeBase = { ...existingKnowledgeBase, ...variablesToAdd };
 
-        await this.setStorageData({ knowledgeBase: mergedKnowledgeBase });
-        await this.loadKnowledgeBase();
+        // Save with explicit error handling
+        const saveSuccess = await this.setStorageData({ knowledgeBase: mergedKnowledgeBase });
 
-        this.showToast(`Added ${Object.keys(variablesToAdd).length} new variables from default prompts`, 'success');
+        if (saveSuccess) {
+          // Wait a moment for storage to complete
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Force reload data from storage to verify
+          const verifyData = await this.forceReloadFromStorage('knowledgeBase');
+          console.log('Verified saved data:', verifyData);
+
+          await this.loadKnowledgeBase();
+          this.showToast(`Added ${Object.keys(variablesToAdd).length} new variables from default prompts`, 'success');
+        } else {
+          throw new Error('Failed to save knowledge base data');
+        }
       } else if (Object.keys(newVariables).length > 0) {
         // Variables exist but user clicked the button - refresh the display
         await this.loadKnowledgeBase();
@@ -542,7 +583,9 @@ class PopupManager {
       }
     } catch (error) {
       console.error('Failed to populate knowledge base from prompts:', error);
-      this.showToast('Failed to populate variables from prompts', 'error');
+      this.showToast(`Failed to populate variables from prompts: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
     }
   }
 
@@ -621,17 +664,37 @@ class PopupManager {
         return;
       }
 
+      this.showLoading(true);
+
       const knowledgeBase = await this.getStorageData('knowledgeBase') || {};
       knowledgeBase[key] = value;
 
-      await this.setStorageData({ knowledgeBase });
-      await this.loadKnowledgeBase();
+      // Save with explicit error handling
+      const saveSuccess = await this.setStorageData({ knowledgeBase });
 
-      this.hideKnowledgeForm();
-      this.showToast(`Variable "${key}" saved successfully`, 'success');
+      if (saveSuccess) {
+        // Wait a moment for storage to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Force reload data from storage to verify
+        const verifyData = await this.forceReloadFromStorage('knowledgeBase');
+        console.log('Verified saved knowledge base:', verifyData);
+
+        if (verifyData && verifyData[key] === value) {
+          await this.loadKnowledgeBase();
+          this.hideKnowledgeForm();
+          this.showToast(`Variable "${key}" saved successfully`, 'success');
+        } else {
+          throw new Error('Data verification failed after save');
+        }
+      } else {
+        throw new Error('Failed to save knowledge base data');
+      }
     } catch (error) {
       console.error('Failed to save knowledge item:', error);
-      this.showToast('Failed to save variable', 'error');
+      this.showToast(`Failed to save variable: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
     }
   }
 
@@ -682,11 +745,11 @@ class PopupManager {
   // Prompt Management Methods
   async loadPrompts() {
     try {
-      // Load custom prompts
-      const customPrompts = await this.getStorageData('customPrompts') || {};
+      // Force reload custom prompts from storage
+      const customPrompts = await this.forceReloadFromStorage('customPrompts') || {};
 
-      // Load favorite prompts
-      const favorites = await this.getStorageData('favoritePrompts') || [];
+      // Force reload favorite prompts from storage
+      const favorites = await this.forceReloadFromStorage('favoritePrompts') || [];
       this.favoritePrompts = new Set(favorites);
 
       // Load default prompts from knowledge base
@@ -702,48 +765,134 @@ class PopupManager {
 
   getDefaultPrompts() {
     return {
-      'professional_reply': {
-        name: 'Professional Reply',
-        description: 'Generate a professional response to client messages',
-        prompt: `Generate a professional and friendly reply to the following message. Use my bio: {{bio}} and mention relevant services: {{services}} if appropriate. Maintain a helpful and solution-oriented tone.
+      'professional_initial_reply': {
+        name: 'Professional Initial Reply',
+        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message',
+        prompt: `You are an expert freelance assistant. Your goal is to generate a professional, friendly, and concise reply to a potential client's initial message.
 
-Message: {message}
+**Analyze this context:**
+*   **Client's Message:** {conversation}
+*   **Client's Username:** {username}
+*   **My Professional Bio:** {{bio}}
+*   **My Services:** {{services}}
+*   **My Portfolio:** {{portfolio}}
+*   **Custom Information:** {{custom1}}
 
-Please provide a response that:
-1. Acknowledges their message professionally
-2. Addresses their specific needs or questions
-3. Suggests next steps or solutions
-4. Maintains a friendly but professional tone`
+**Based on the context, generate a reply that:**
+1. Greets the client by their {username}.
+2. Acknowledges and shows understanding of their core request from the {conversation}.
+3. Intelligently incorporates a relevant point from my {{bio}} or mentions a specific service from {{services}} that fits their need. Do not just list them.
+4. Suggests a clear next step (e.g., asking a key question, suggesting a call).
+5. Maintains a helpful, confident, and professional tone.
+6. Provides the reply directly, without any extra explanations.`
       },
       'project_summary': {
         name: 'Project Summary',
-        description: 'Summarize project conversations and requirements',
-        prompt: `Please analyze the following conversation and provide a comprehensive project summary.
+        description: 'Analyze conversation and extract key details into a structured, concise summary',
+        prompt: `You are a project management assistant. Analyze the following conversation and extract the key details into a structured, concise summary.
 
-Conversation: {conversation}
+**Conversation to Analyze:**
+{conversation}
 
-Please provide:
-1. **Project Overview**: What the client needs
-2. **Key Decisions**: Important agreements or changes
-3. **Action Items**: What needs to be done next
-4. **Deadlines**: Any time-sensitive items
-5. **Budget/Pricing**: Financial discussions
-6. **Client Preferences**: Specific requirements or preferences mentioned
-
-Keep the summary concise but comprehensive.`
+**Generate the summary using this exact format:**
+*   **Project Overview:** A one-sentence summary of the client's primary goal.
+*   **Key Deliverables:** A bulleted list of the specific items the client expects.
+*   **Client Preferences:** A bulleted list of specific instructions or requirements mentioned.
+*   **Key Decisions Made:** A bulleted list of important agreements or changes confirmed.
+*   **Budget & Pricing:** Any mention of financial agreements. State "Not discussed" if absent.
+*   **Deadlines & Timeline:** Any specific dates or time frames mentioned. State "Not discussed" if absent.
+*   **Next Action Items:** What needs to be done next, and by whom.`
       },
-      'follow_up': {
+      'follow_up_message': {
         name: 'Follow-up Message',
-        description: 'Create follow-up messages for ongoing projects',
-        prompt: `Create a professional follow-up message for this project. Reference my availability: {{availability}} and include relevant updates.
+        description: 'Draft a concise and effective follow-up message to a client based on conversation history',
+        prompt: `You are a professional freelance communicator. Your goal is to draft a concise and effective follow-up message to a client based on our conversation history.
 
-Project context: {context}
+**Use this project context:**
+*   **Conversation History:** {conversation}
+*   **Purpose of this follow-up:** {{custom1}}
+*   **My availability or updates:** {{custom2}}
 
-The follow-up should:
-1. Check on project progress
-2. Offer assistance or clarification
-3. Maintain engagement
-4. Be concise and actionable`
+**Draft a follow-up message that:**
+1. Is friendly and professional.
+2. Directly addresses the purpose described in {{custom1}}.
+3. Briefly references a specific part of the project from the {conversation} to show context.
+4. Includes a clear, simple call to action.
+5. If provided, briefly mentions my availability or updates from {{custom2}}.
+6. Provides the reply directly, without any extra explanations.`
+      },
+      'project_proposal': {
+        name: 'Project Proposal',
+        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message',
+        prompt: `You are a skilled proposal writer. Your task is to transform my raw notes into a clear, professional, and persuasive project proposal message for a client.
+
+**Analyze this information:**
+*   **Client's Username:** {username}
+*   **Conversation History:** {conversation}
+*   **My Proposal Notes (Scope, Timeline, Price):** {proposal}
+*   **My Professional Bio:** {{bio}}
+*   **Relevant Portfolio Links:** {{portfolio}}
+
+**Generate a proposal message that follows this structure:**
+1.  **Personalized Greeting:** Start with a friendly greeting to {username}.
+2.  **Summary of Understanding:** Briefly state your understanding of their project goal, based on the {conversation}.
+3.  **The Proposal:** Clearly present the information from the {proposal} notes, using clear headings like "Scope," "Timeline," and "Investment."
+4.  **Why Me:** Subtly weave in a relevant point from your {{bio}} to build confidence.
+5.  **Proof of Work:** Naturally include a link to a relevant project from your {{portfolio}}.
+6.  **Clear Call to Action:** End with a clear next step, such as inviting them to ask questions or accept the offer.`
+      },
+      'translate_and_explain': {
+        name: 'Translate and Explain Message',
+        description: 'Translate text and provide a simple explanation of its content',
+        prompt: `You are an expert multilingual assistant. Your task is to translate the given text and provide a simple explanation of its content.
+
+**Analyze this information:**
+*   **Text to Analyze:** {conversation}
+*   **Translate to Language:** {language}
+
+**Provide your response in the following structured format:**
+
+**Simple Explanation (in English):**
+*   **Main Goal:** What is the sender trying to achieve?
+*   **Key Points:** What are the most important pieces of information or questions?
+*   **Tone:** Is the sender formal, informal, happy, urgent?
+
+---
+
+**Full Translation (in {language}):**
+[Provide the accurate and natural-sounding translation of the entire text here]`
+      },
+      'refine_and_translate': {
+        name: 'Refine and Translate My Message',
+        description: 'Refine draft message for clarity and professionalism, then translate to requested language',
+        prompt: `You are an expert multilingual editor and translator. Your task is to first refine the provided draft message for clarity, professionalism, and grammar, and then translate the improved version into the requested language.
+
+**Analyze this information:**
+*   **My Draft Message:** {conversation}
+*   **Translate to Language:** {language}
+
+**Perform the following steps:**
+1.  Silently review and refine the "My Draft Message" to make it more professional and effective. Correct all spelling and grammar mistakes.
+2.  Provide a perfect translation of that REFINED message into the target {language}.
+
+**Your output should ONLY be the final, translated text. Do not include the English version or any explanations.**`
+      },
+      'refine_message': {
+        name: 'Refine My Message (No Translation)',
+        description: 'Refine draft message to improve quality, clarity, and impact without translation',
+        prompt: `You are an expert copy editor and communication coach. Your task is to refine the following draft message to improve its quality, clarity, and impact.
+
+**Analyze this information:**
+*   **My Draft Message:** {conversation}
+*   **Desired Tone/Goal:** {{custom1}} (e.g., "more professional," "more friendly," "more persuasive," "more concise")
+
+**Based on the instructions, refine the draft by:**
+1. Correcting all spelling, grammar, and punctuation errors.
+2. Improving clarity, flow, and conciseness.
+3. Adjusting the tone to be more {{custom1}}.
+4. Retaining the original core meaning of the message.
+
+**Your output should ONLY be the final, refined message. Do not provide explanations or comments about the changes made.**`
       }
     };
   }
@@ -787,7 +936,7 @@ The follow-up should:
 
     if (!prompts || Object.keys(prompts).length === 0) {
       const emptyMessage = type === 'custom'
-        ? 'No custom prompts yet. Click "Add Custom Prompt" to create your first prompt.'
+        ? 'No custom prompts yet. Click "Add Custom Prompt" to create your first prompt, or favorite default prompts to customize them.'
         : `No ${type} prompts yet`;
       container.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
       return;
@@ -817,7 +966,12 @@ The follow-up should:
                 <button class="prompt-action-btn delete prompt-delete-btn"
                         data-key="${key}"
                         title="Delete prompt">×</button>
-              ` : ''}
+              ` : `
+                <button class="prompt-action-btn edit prompt-edit-btn"
+                        data-key="${key}"
+                        data-type="default"
+                        title="Copy to custom prompts for editing">✎</button>
+              `}
             </div>
           </div>
           <div class="prompt-item-description">${this.escapeHtml(prompt.description || '')}</div>
@@ -885,6 +1039,9 @@ The follow-up should:
     document.getElementById('newPromptDescription').value = '';
     document.getElementById('newPromptContent').value = '';
     document.getElementById('newPromptKey').readOnly = false;
+
+    // Clear original prompt data
+    this.originalPromptData = null;
   }
 
   async savePrompt() {
@@ -896,62 +1053,142 @@ The follow-up should:
 
       if (!key) {
         this.showToast('Please enter a prompt key', 'error');
+        document.getElementById('newPromptKey').focus();
         return;
       }
 
       if (!name) {
         this.showToast('Please enter a prompt name', 'error');
+        document.getElementById('newPromptName').focus();
         return;
       }
 
       if (!content) {
         this.showToast('Please enter prompt content', 'error');
+        document.getElementById('newPromptContent').focus();
         return;
       }
 
       // Validate key format
       if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
         this.showToast('Prompt key can only contain letters, numbers, and underscores', 'error');
+        document.getElementById('newPromptKey').focus();
         return;
       }
 
+      // Check if this is editing a default prompt and if changes were made
+      if (this.originalPromptData && this.originalPromptData.isDefaultPrompt) {
+        const originalName = this.originalPromptData.name + ' (Custom)';
+        const hasChanges =
+          name !== originalName ||
+          description !== this.originalPromptData.description ||
+          content !== this.originalPromptData.content;
+
+        if (!hasChanges) {
+          this.hidePromptForm();
+          this.showToast('No changes made to the prompt', 'info');
+          this.originalPromptData = null;
+          return;
+        }
+      }
+
+      this.showLoading(true);
+
       const customPrompts = await this.getStorageData('customPrompts') || {};
-      customPrompts[key] = {
+      const promptData = {
         name,
         description,
-        prompt: content
+        prompt: content,
+        created: customPrompts[key]?.created || Date.now(),
+        modified: Date.now()
       };
 
-      await this.setStorageData({ customPrompts });
-      await this.loadPrompts();
+      customPrompts[key] = promptData;
 
-      this.hidePromptForm();
-      this.showToast(`Prompt "${name}" saved successfully`, 'success');
+      // Save with explicit error handling
+      const saveSuccess = await this.setStorageData({ customPrompts });
+
+      if (saveSuccess) {
+        // Wait a moment for storage to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Force reload data from storage to verify
+        const verifyData = await this.forceReloadFromStorage('customPrompts');
+        console.log('Verified saved custom prompts:', verifyData);
+
+        if (verifyData && verifyData[key] && verifyData[key].name === name) {
+          await this.loadPrompts();
+          this.hidePromptForm();
+          this.showToast(`Prompt "${name}" saved successfully`, 'success');
+          this.originalPromptData = null; // Clear original data
+        } else {
+          throw new Error('Data verification failed after save');
+        }
+      } else {
+        throw new Error('Failed to save custom prompts data');
+      }
     } catch (error) {
       console.error('Failed to save prompt:', error);
-      this.showToast('Failed to save prompt', 'error');
+      this.showToast(`Failed to save prompt: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
     }
   }
 
   async editPrompt(key) {
     try {
+      // Check if it's a default prompt first
+      const defaultPrompts = this.getDefaultPrompts();
       const customPrompts = await this.getStorageData('customPrompts') || {};
-      const prompt = customPrompts[key];
+
+      let prompt = customPrompts[key];
+      let isDefaultPrompt = false;
+
+      // If not found in custom prompts, check default prompts
+      if (!prompt && defaultPrompts[key]) {
+        prompt = defaultPrompts[key];
+        isDefaultPrompt = true;
+      }
 
       if (!prompt) {
         this.showToast('Prompt not found', 'error');
         return;
       }
 
-      document.getElementById('newPromptKey').value = key;
-      document.getElementById('newPromptName').value = prompt.name;
+      // Store original values for change detection
+      this.originalPromptData = {
+        key: key,
+        name: prompt.name,
+        description: prompt.description || '',
+        content: prompt.prompt,
+        isDefaultPrompt: isDefaultPrompt
+      };
+
+      // If it's a default prompt, create a new key for the custom version
+      let editKey = key;
+      if (isDefaultPrompt) {
+        editKey = `custom_${key}`;
+        // Make sure the custom key doesn't already exist
+        let counter = 1;
+        while (customPrompts[editKey]) {
+          editKey = `custom_${key}_${counter}`;
+          counter++;
+        }
+      }
+
+      document.getElementById('newPromptKey').value = editKey;
+      document.getElementById('newPromptName').value = prompt.name + (isDefaultPrompt ? ' (Custom)' : '');
       document.getElementById('newPromptDescription').value = prompt.description || '';
       document.getElementById('newPromptContent').value = prompt.prompt;
 
-      // Make key field readonly when editing
-      document.getElementById('newPromptKey').readOnly = true;
+      // Make key field readonly when editing existing custom prompt
+      document.getElementById('newPromptKey').readOnly = !isDefaultPrompt;
 
       this.showPromptForm(true); // Pass true to indicate this is an edit
+
+      if (isDefaultPrompt) {
+        this.showToast('Default prompt copied for editing. You can modify it as needed.', 'info');
+      }
     } catch (error) {
       console.error('Failed to edit prompt:', error);
       this.showToast('Failed to edit prompt', 'error');
@@ -985,7 +1222,19 @@ The follow-up should:
       console.log('Toggling favorite for key:', key);
       console.log('Current favorites:', Array.from(this.favoritePrompts));
 
-      if (this.favoritePrompts.has(key)) {
+      // Check if prompt exists in either default or custom prompts
+      const defaultPrompts = this.getDefaultPrompts();
+      const customPrompts = await this.getStorageData('customPrompts') || {};
+      const allPrompts = { ...defaultPrompts, ...customPrompts };
+
+      if (!allPrompts[key]) {
+        this.showToast('Prompt not found', 'error');
+        return;
+      }
+
+      const wasInFavorites = this.favoritePrompts.has(key);
+
+      if (wasInFavorites) {
         this.favoritePrompts.delete(key);
         console.log('Removed from favorites');
       } else {
@@ -1000,7 +1249,7 @@ The follow-up should:
       });
 
       await this.loadPrompts();
-      this.showToast(`Prompt ${this.favoritePrompts.has(key) ? 'added to' : 'removed from'} favorites`, 'success');
+      this.showToast(`Prompt ${!wasInFavorites ? 'added to' : 'removed from'} favorites`, 'success');
     } catch (error) {
       console.error('Failed to toggle favorite:', error);
       this.showToast('Failed to update favorites', 'error');
@@ -1154,6 +1403,12 @@ The follow-up should:
         this.displayApiKeys();
         apiKeysInput.value = ''; // Clear input after saving
         this.showApiKeyStatus('API keys saved automatically', 'success');
+
+        // Also save to settings for persistence
+        const settings = await this.getStorageData('settings') || {};
+        settings.apiKeys = allKeys;
+        await this.setStorageData({ settings });
+
         await this.updateStats();
       } else {
         throw new Error(result.error || 'Failed to save API keys');
@@ -1239,7 +1494,9 @@ The follow-up should:
   async savePreferences() {
     try {
       const settings = await this.getStorageData('settings') || {};
-      
+
+      // Preserve API keys in settings
+      settings.apiKeys = this.currentApiKeys || [];
       settings.autoSave = document.getElementById('autoSave').checked;
       settings.notifications = document.getElementById('notifications').checked;
       settings.keyRotation = document.getElementById('keyRotation').checked;
@@ -1250,6 +1507,69 @@ The follow-up should:
     } catch (error) {
       console.error('Failed to save preferences:', error);
       this.showToast('Failed to save preferences', 'error');
+    }
+  }
+
+  async saveAllSettings() {
+    try {
+      this.showLoading(true);
+
+      // Save preferences first
+      await this.savePreferences();
+
+      // Try to save API keys to background, but don't fail if it doesn't work
+      if (this.currentApiKeys && this.currentApiKeys.length > 0) {
+        try {
+          const result = await this.sendMessageToBackground({
+            type: 'UPDATE_API_KEYS',
+            keys: this.currentApiKeys
+          });
+
+          if (!result.success) {
+            console.warn('Background API key save failed:', result.error);
+            // Continue anyway since we saved to settings
+          }
+        } catch (error) {
+          console.warn('Failed to communicate with background script:', error);
+          // Continue anyway since we saved to settings
+        }
+      }
+
+      // Save knowledge base (ensure it's persisted)
+      const knowledgeBase = await this.getStorageData('knowledgeBase') || {};
+      const kbSaveSuccess = await this.setStorageData({ knowledgeBase });
+      if (!kbSaveSuccess) {
+        throw new Error('Failed to save knowledge base');
+      }
+
+      // Save custom prompts (ensure they're persisted)
+      const customPrompts = await this.getStorageData('customPrompts') || {};
+      const promptsSaveSuccess = await this.setStorageData({ customPrompts });
+      if (!promptsSaveSuccess) {
+        throw new Error('Failed to save custom prompts');
+      }
+
+      // Save favorites (ensure they're persisted)
+      const favoritesSaveSuccess = await this.setStorageData({
+        favoritePrompts: Array.from(this.favoritePrompts)
+      });
+      if (!favoritesSaveSuccess) {
+        throw new Error('Failed to save favorite prompts');
+      }
+
+      // Verify all data was saved correctly
+      const verifyKB = await this.getStorageData('knowledgeBase');
+      const verifyPrompts = await this.getStorageData('customPrompts');
+      const verifyFavorites = await this.getStorageData('favoritePrompts');
+
+      console.log('Verification - KB:', Object.keys(verifyKB || {}).length, 'Prompts:', Object.keys(verifyPrompts || {}).length, 'Favorites:', (verifyFavorites || []).length);
+
+      this.showToast('All settings saved successfully! 🎉', 'success');
+    } catch (error) {
+      console.error('Failed to save all settings:', error);
+      this.showToast('Failed to save settings: ' + error.message, 'error');
+    } finally {
+      this.showLoading(false);
     }
   }
 
@@ -1474,29 +1794,151 @@ The follow-up should:
 
   async sendMessageToBackground(message) {
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage(message, (response) => {
-        resolve(response || { success: false, error: 'No response' });
-      });
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('Runtime error:', chrome.runtime.lastError);
+            resolve({ success: false, error: chrome.runtime.lastError.message });
+            return;
+          }
+          resolve(response || { success: false, error: 'No response from background script' });
+        });
+      } catch (error) {
+        console.error('Failed to send message to background:', error);
+        resolve({ success: false, error: error.message });
+      }
     });
   }
 
   async getStorageData(keys) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(keys, (result) => {
-        // If keys is a string, return the value directly
-        if (typeof keys === 'string') {
-          resolve(result[keys]);
-        } else {
-          resolve(result);
-        }
-      });
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.storage.local.get(keys, (result) => {
+          if (chrome.runtime.lastError) {
+            console.error('Storage get error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          // If keys is a string, return the value directly
+          if (typeof keys === 'string') {
+            resolve(result[keys]);
+          } else {
+            resolve(result);
+          }
+        });
+      } catch (error) {
+        console.error('Storage get exception:', error);
+        reject(error);
+      }
     });
   }
 
   async setStorageData(data) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set(data, resolve);
+    return new Promise((resolve, reject) => {
+      try {
+        // Validate data before saving
+        if (!data || typeof data !== 'object') {
+          reject(new Error('Invalid data format for storage'));
+          return;
+        }
+
+        // Check for circular references
+        try {
+          JSON.stringify(data);
+        } catch (circularError) {
+          reject(new Error('Data contains circular references'));
+          return;
+        }
+
+        // Add timestamp to track when data was saved
+        const dataWithTimestamp = {};
+        Object.keys(data).forEach(key => {
+          dataWithTimestamp[key] = data[key];
+          dataWithTimestamp[`${key}_timestamp`] = Date.now();
+        });
+
+        chrome.storage.local.set(dataWithTimestamp, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Storage set error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          console.log('Successfully saved to storage:', Object.keys(data));
+          resolve(true);
+        });
+      } catch (error) {
+        console.error('Storage set exception:', error);
+        reject(error);
+      }
     });
+  }
+
+  // Clear any potential cache conflicts
+  async clearStorageCache() {
+    try {
+      // Send message to content script to clear its cache
+      await this.sendMessageToTab({ type: 'CLEAR_STORAGE_CACHE' });
+    } catch (error) {
+      console.warn('Could not clear content script cache:', error);
+    }
+  }
+
+  // Force reload data from storage (bypassing any cache)
+  async forceReloadFromStorage(key) {
+    try {
+      // Clear any potential cache first
+      await this.clearStorageCache();
+
+      // Get fresh data from storage
+      const result = await chrome.storage.local.get([key, `${key}_timestamp`]);
+      console.log(`Force reloaded ${key}:`, result[key], 'timestamp:', result[`${key}_timestamp`]);
+      return result[key];
+    } catch (error) {
+      console.error(`Failed to force reload ${key}:`, error);
+      return null;
+    }
+  }
+
+  // Validation helper function
+  validateStorageData(key, data) {
+    switch (key) {
+      case 'knowledgeBase':
+        if (typeof data !== 'object' || data === null) {
+          throw new Error('Knowledge base must be an object');
+        }
+        for (const [varKey, varValue] of Object.entries(data)) {
+          if (typeof varKey !== 'string' || typeof varValue !== 'string') {
+            throw new Error('Knowledge base variables must be strings');
+          }
+          if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(varKey)) {
+            throw new Error(`Invalid variable name: ${varKey}`);
+          }
+        }
+        break;
+
+      case 'customPrompts':
+        if (typeof data !== 'object' || data === null) {
+          throw new Error('Custom prompts must be an object');
+        }
+        for (const [promptKey, promptData] of Object.entries(data)) {
+          if (typeof promptKey !== 'string' || typeof promptData !== 'object') {
+            throw new Error('Invalid prompt data structure');
+          }
+          if (!promptData.name || !promptData.prompt) {
+            throw new Error(`Prompt ${promptKey} missing required fields`);
+          }
+        }
+        break;
+
+      case 'favoritePrompts':
+        if (!Array.isArray(data)) {
+          throw new Error('Favorite prompts must be an array');
+        }
+        break;
+    }
+    return true;
   }
 
   // Fiverr-specific methods

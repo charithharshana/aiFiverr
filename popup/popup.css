@@ -782,24 +782,47 @@ body {
   display: block;
 }
 
-.prompt-form-row {
+.prompt-form-field {
+  margin-bottom: 16px;
+}
+
+.field-label {
   display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
   align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  font-size: 13px;
+  color: #495057;
+  margin-bottom: 4px;
+}
+
+.field-help {
+  cursor: help;
+  font-size: 12px;
+  color: #6c757d;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.field-help:hover {
+  opacity: 1;
+}
+
+.field-description {
+  display: block;
+  font-size: 11px;
+  color: #6c757d;
+  margin-top: 4px;
+  font-style: italic;
 }
 
 .prompt-key-input,
 .prompt-name-input {
-  flex: 1;
+  width: 100%;
   padding: 8px 12px;
   border: 1px solid #e9ecef;
   border-radius: 4px;
   font-size: 13px;
-  margin-bottom: 12px;
-}
-
-.prompt-key-input {
   margin-bottom: 0;
 }
 
@@ -1002,6 +1025,32 @@ body {
   border-radius: 8px;
   padding: 16px;
   border: 1px solid #e9ecef;
+}
+
+.global-save-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e9ecef;
+  text-align: center;
+}
+
+.global-save-btn {
+  font-size: 14px;
+  padding: 12px 24px;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(29, 191, 115, 0.2);
+}
+
+.global-save-btn:hover {
+  box-shadow: 0 4px 8px rgba(29, 191, 115, 0.3);
+  transform: translateY(-1px);
+}
+
+.save-description {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6c757d;
+  margin-bottom: 0;
 }
 
 .preference-item {
@@ -1264,6 +1313,10 @@ body {
 
 .toast.warning {
   border-left-color: #ffc107;
+}
+
+.toast.info {
+  border-left-color: #17a2b8;
 }
 
 @keyframes slideIn {
