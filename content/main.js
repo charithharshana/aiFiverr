@@ -265,9 +265,54 @@ class AiFiverrMain {
           sendResponse({ success: true, data: exportData });
           break;
 
+        case 'EXPORT_FIVERR_CONVERSATIONS':
+          const conversationsExport = await this.handleExportFiverrConversations(request.format);
+          sendResponse({ success: true, data: conversationsExport });
+          break;
+
         case 'IMPORT_DATA':
           const importResult = await window.exportImportManager?.importData(request.data, request.options);
           sendResponse({ success: true, data: importResult });
+          break;
+
+        case 'FETCH_FIVERR_CONTACTS':
+          const contactsResult = await this.handleFetchFiverrContacts();
+          sendResponse({ success: true, data: contactsResult });
+          break;
+
+        case 'EXTRACT_CURRENT_CONVERSATION':
+          const currentConversation = await this.handleExtractCurrentConversation();
+          sendResponse({ success: true, data: currentConversation });
+          break;
+
+        case 'EXTRACT_CONVERSATION_BY_USERNAME':
+          const conversationByUsername = await this.handleExtractConversationByUsername(request.username);
+          sendResponse({ success: true, data: conversationByUsername });
+          break;
+
+        case 'UPDATE_CONVERSATION':
+          const updatedConversation = await this.handleUpdateConversation(request.username);
+          sendResponse({ success: true, data: updatedConversation });
+          break;
+
+        case 'DELETE_CONVERSATION':
+          const deleteResult = await this.handleDeleteConversation(request.username);
+          sendResponse({ success: true, data: deleteResult });
+          break;
+
+        case 'EXPORT_SINGLE_CONVERSATION':
+          const singleConversationExport = await this.handleExportSingleConversation(request.username, request.format);
+          sendResponse({ success: true, data: singleConversationExport });
+          break;
+
+        case 'GET_STORED_CONVERSATIONS':
+          const storedConversations = await this.handleGetStoredConversations();
+          sendResponse({ success: true, data: storedConversations });
+          break;
+
+        case 'GET_STORED_CONTACTS':
+          const storedContacts = await this.handleGetStoredContacts();
+          sendResponse({ success: true, data: storedContacts });
           break;
 
         default:
@@ -470,6 +515,154 @@ class AiFiverrMain {
     }, 10000);
   }
 
+  // Fiverr-specific handlers
+  async handleExportFiverrConversations(format = 'json') {
+    try {
+      if (!window.fiverrExtractor) {
+        throw new Error('Fiverr extractor not available');
+      }
+
+      const conversations = window.fiverrExtractor.getAllStoredConversations();
+
+      const exportData = {
+        version: '1.0.0',
+        timestamp: Date.now(),
+        type: 'fiverr-conversations',
+        conversations: conversations
+      };
+
+      return window.exportImportManager.formatExportData(exportData, format);
+    } catch (error) {
+      console.error('Failed to export Fiverr conversations:', error);
+      throw error;
+    }
+  }
+
+  async handleFetchFiverrContacts() {
+    try {
+      if (!window.fiverrExtractor) {
+        throw new Error('Fiverr extractor not available');
+      }
+
+      return await window.fiverrExtractor.fetchAllContacts();
+    } catch (error) {
+      console.error('Failed to fetch Fiverr contacts:', error);
+      throw error;
+    }
+  }
+
+  async handleExtractCurrentConversation() {
+    try {
+      if (!window.fiverrExtractor) {
+        throw new Error('Fiverr extractor not available');
+      }
+
+      return await window.fiverrExtractor.extractConversation(true); // Force refresh
+    } catch (error) {
+      console.error('Failed to extract current conversation:', error);
+      throw error;
+    }
+  }
+
+  async handleExtractConversationByUsername(username) {
+    try {
+      if (!window.fiverrExtractor) {
+        throw new Error('Fiverr extractor not available');
+      }
+
+      return await window.fiverrExtractor.extractConversationByUsername(username, true);
+    } catch (error) {
+      console.error('Failed to extract conversation by username:', error);
+      throw error;
+    }
+  }
+
+  async handleUpdateConversation(username) {
+    try {
+      if (!window.fiverrExtractor) {
+        throw new Error('Fiverr extractor not available');
+      }
+
+      return await window.fiverrExtractor.updateConversation(username);
+    } catch (error) {
+      console.error('Failed to update conversation:', error);
+      throw error;
+    }
+  }
+
+  async handleDeleteConversation(username) {
+    try {
+      if (!window.fiverrExtractor) {
+        throw new Error('Fiverr extractor not available');
+      }
+
+      return await window.fiverrExtractor.deleteStoredConversation(username);
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      throw error;
+    }
+  }
+
+  async handleExportSingleConversation(username, format = 'markdown') {
+    try {
+      if (!window.fiverrExtractor) {
+        throw new Error('Fiverr extractor not available');
+      }
+
+      const content = await window.fiverrExtractor.exportConversation(username, format);
+
+      let mimeType, extension;
+      switch (format.toLowerCase()) {
+        case 'json':
+          mimeType = 'application/json';
+          extension = 'json';
+          break;
+        case 'txt':
+          mimeType = 'text/plain';
+          extension = 'txt';
+          break;
+        default:
+          mimeType = 'text/markdown';
+          extension = 'md';
+      }
+
+      return {
+        content,
+        filename: `fiverr-conversation-${username}-${Date.now()}.${extension}`,
+        mimeType
+      };
+    } catch (error) {
+      console.error('Failed to export single conversation:', error);
+      throw error;
+    }
+  }
+
+  async handleGetStoredConversations() {
+    try {
+      if (!window.fiverrExtractor) {
+        return [];
+      }
+
+      return window.fiverrExtractor.getAllStoredConversations();
+    } catch (error) {
+      console.error('Failed to get stored conversations:', error);
+      return [];
+    }
+  }
+
+  async handleGetStoredContacts() {
+    try {
+      if (!window.fiverrExtractor) {
+        return { contacts: [], totalCount: 0, lastFetched: 0 };
+      }
+
+      return await window.fiverrExtractor.getStoredContacts();
+    } catch (error) {
+      console.error('Failed to get stored contacts:', error);
+      return { contacts: [], totalCount: 0, lastFetched: 0 };
+    }
+  }
+
   /**
    * Cleanup on page unload
    */
@@ -477,7 +670,7 @@ class AiFiverrMain {
     if (window.fiverrDetector) {
       window.fiverrDetector.cleanup();
     }
-    
+
     if (window.fiverrInjector) {
       window.fiverrInjector.cleanup();
     }

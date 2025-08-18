@@ -37,6 +37,12 @@ class ExportImportManager {
       // Export statistics
       exportData.data.statistics = await this.exportStatistics();
 
+      // Export Fiverr conversations
+      exportData.data.fiverrConversations = await this.exportFiverrConversations();
+
+      // Export Fiverr contacts
+      exportData.data.fiverrContacts = await this.exportFiverrContacts();
+
       return this.formatExportData(exportData, format);
     } catch (error) {
       console.error('Export failed:', error);
@@ -125,11 +131,11 @@ class ExportImportManager {
     try {
       const keyStats = apiKeyManager.getKeyStats();
       const sessions = await sessionManager.getAllSessions();
-      
+
       const sessionStats = {
         totalSessions: sessions.length,
         totalMessages: sessions.reduce((sum, s) => sum + s.metadata.messageCount, 0),
-        averageSessionLength: sessions.length > 0 ? 
+        averageSessionLength: sessions.length > 0 ?
           sessions.reduce((sum, s) => sum + s.metadata.messageCount, 0) / sessions.length : 0
       };
 
@@ -141,6 +147,66 @@ class ExportImportManager {
     } catch (error) {
       console.error('Statistics export failed:', error);
       return {};
+    }
+  }
+
+  /**
+   * Export Fiverr conversations
+   */
+  async exportFiverrConversations() {
+    try {
+      if (!window.fiverrExtractor) {
+        return { conversations: [], count: 0, exportedAt: Date.now() };
+      }
+
+      const conversations = window.fiverrExtractor.getAllStoredConversations();
+
+      return {
+        conversations: conversations.map(conv => ({
+          username: conv.username,
+          conversationId: conv.conversationId,
+          messageCount: conv.messages?.length || 0,
+          lastExtracted: conv.lastExtracted,
+          lastUpdated: conv.lastUpdated,
+          extractedAt: conv.extractedAt,
+          // Include full conversation data
+          messages: conv.messages || [],
+          metadata: {
+            totalAttachments: conv.messages?.reduce((sum, msg) => sum + (msg.attachments?.length || 0), 0) || 0,
+            senders: conv.messages ? [...new Set(conv.messages.map(msg => msg.sender))] : [],
+            firstMessageDate: conv.messages?.[0]?.createdAt,
+            lastMessageDate: conv.messages?.[conv.messages.length - 1]?.createdAt
+          }
+        })),
+        count: conversations.length,
+        exportedAt: Date.now()
+      };
+    } catch (error) {
+      console.error('Fiverr conversations export failed:', error);
+      return { conversations: [], count: 0, exportedAt: Date.now() };
+    }
+  }
+
+  /**
+   * Export Fiverr contacts
+   */
+  async exportFiverrContacts() {
+    try {
+      if (!window.fiverrExtractor) {
+        return { contacts: [], count: 0, exportedAt: Date.now() };
+      }
+
+      const contactsData = await window.fiverrExtractor.getStoredContacts();
+
+      return {
+        contacts: contactsData.contacts || [],
+        count: contactsData.totalCount || 0,
+        lastFetched: contactsData.lastFetched || 0,
+        exportedAt: Date.now()
+      };
+    } catch (error) {
+      console.error('Fiverr contacts export failed:', error);
+      return { contacts: [], count: 0, exportedAt: Date.now() };
     }
   }
 
@@ -239,6 +305,47 @@ class ExportImportManager {
       markdown += `\n`;
     }
 
+    // Export Fiverr conversations
+    if (data.data?.fiverrConversations?.conversations?.length > 0) {
+      markdown += `## Fiverr Conversations (${data.data.fiverrConversations.count})\n\n`;
+
+      data.data.fiverrConversations.conversations.forEach(conv => {
+        markdown += `### Conversation with ${conv.username}\n\n`;
+        markdown += `- **Messages:** ${conv.messageCount}\n`;
+        markdown += `- **Last Extracted:** ${new Date(conv.lastExtracted).toLocaleString()}\n`;
+        markdown += `- **Attachments:** ${conv.metadata.totalAttachments}\n`;
+        markdown += `- **Participants:** ${conv.metadata.senders.join(', ')}\n\n`;
+
+        if (conv.messages && conv.messages.length > 0) {
+          markdown += `#### Recent Messages (Last 5)\n\n`;
+          const recentMessages = conv.messages.slice(-5);
+          recentMessages.forEach(message => {
+            const time = new Date(message.createdAt).toLocaleString();
+            markdown += `**${message.sender}** (${time}):\n${message.body}\n\n`;
+          });
+        }
+
+        markdown += `---\n\n`;
+      });
+    }
+
+    // Export Fiverr contacts
+    if (data.data?.fiverrContacts?.contacts?.length > 0) {
+      markdown += `## Fiverr Contacts (${data.data.fiverrContacts.count})\n\n`;
+      markdown += `**Last Fetched:** ${new Date(data.data.fiverrContacts.lastFetched).toLocaleString()}\n\n`;
+
+      const contacts = data.data.fiverrContacts.contacts.slice(0, 20); // Show first 20
+      contacts.forEach(contact => {
+        const lastMessage = new Date(contact.recentMessageDate).toLocaleString();
+        markdown += `- **${contact.username}** - Last message: ${lastMessage}\n`;
+      });
+
+      if (data.data.fiverrContacts.contacts.length > 20) {
+        markdown += `\n... and ${data.data.fiverrContacts.contacts.length - 20} more contacts\n`;
+      }
+      markdown += `\n`;
+    }
+
     return {
       content: markdown,
       filename: `aifiverr-export-${Date.now()}.md`,
@@ -277,6 +384,8 @@ class ExportImportManager {
         settings: false,
         knowledgeBase: false,
         apiKeys: 0,
+        fiverrConversations: 0,
+        fiverrContacts: 0,
         errors: []
       };
 
@@ -315,6 +424,24 @@ class ExportImportManager {
           results.apiKeys = await this.importApiKeys(importData.data.apiKeys);
         } catch (error) {
           results.errors.push(`API keys import failed: ${error.message}`);
+        }
+      }
+
+      // Import Fiverr conversations
+      if (importData.data?.fiverrConversations) {
+        try {
+          results.fiverrConversations = await this.importFiverrConversations(importData.data.fiverrConversations);
+        } catch (error) {
+          results.errors.push(`Fiverr conversations import failed: ${error.message}`);
+        }
+      }
+
+      // Import Fiverr contacts
+      if (importData.data?.fiverrContacts) {
+        try {
+          results.fiverrContacts = await this.importFiverrContacts(importData.data.fiverrContacts);
+        } catch (error) {
+          results.errors.push(`Fiverr contacts import failed: ${error.message}`);
         }
       }
 
@@ -379,14 +506,68 @@ class ExportImportManager {
     if (!apiKeysData.keys || !Array.isArray(apiKeysData.keys)) {
       return 0;
     }
-    
+
     // Deobfuscate keys
     const deobfuscatedKeys = apiKeysData.keys.map(key => this.deobfuscateApiKey(key));
-    
+
     // Update API keys
     await apiKeyManager.updateKeys(deobfuscatedKeys);
-    
+
     return deobfuscatedKeys.length;
+  }
+
+  /**
+   * Import Fiverr conversations
+   */
+  async importFiverrConversations(conversationsData) {
+    if (!window.fiverrExtractor || !conversationsData.conversations) {
+      return 0;
+    }
+
+    let importedCount = 0;
+
+    for (const conv of conversationsData.conversations) {
+      try {
+        // Reconstruct conversation data
+        const conversationData = {
+          conversationId: conv.conversationId,
+          username: conv.username,
+          messages: conv.messages || [],
+          extractedAt: conv.extractedAt || Date.now(),
+          lastExtracted: conv.lastExtracted || Date.now(),
+          lastUpdated: conv.lastUpdated || Date.now()
+        };
+
+        await window.fiverrExtractor.saveConversation(conv.username, conversationData);
+        importedCount++;
+      } catch (error) {
+        console.error(`Failed to import conversation for ${conv.username}:`, error);
+      }
+    }
+
+    return importedCount;
+  }
+
+  /**
+   * Import Fiverr contacts
+   */
+  async importFiverrContacts(contactsData) {
+    if (!window.fiverrExtractor || !contactsData.contacts) {
+      return 0;
+    }
+
+    try {
+      await storageManager.set('fiverrContacts', {
+        contacts: contactsData.contacts,
+        lastFetched: contactsData.lastFetched || Date.now(),
+        totalCount: contactsData.count || contactsData.contacts.length
+      });
+
+      return contactsData.contacts.length;
+    } catch (error) {
+      console.error('Failed to import Fiverr contacts:', error);
+      return 0;
+    }
   }
 
   /**

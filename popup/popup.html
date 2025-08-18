@@ -113,29 +113,111 @@
         <div class="settings-section">
           <h3>API Keys</h3>
           <div class="api-keys-container">
-            <textarea 
-              id="apiKeysInput" 
-              placeholder="Enter your Gemini API keys (one per line)&#10;AIzaSyC...&#10;AIzaSyD..."
-              rows="4"
-            ></textarea>
-            <div class="api-keys-actions">
-              <button class="btn-primary" id="saveApiKeys">Save API Keys</button>
-              <button class="btn-secondary" id="testApiKeys">Test Keys</button>
+            <div class="api-keys-input-section">
+              <div class="api-keys-input-wrapper">
+                <textarea
+                  id="apiKeysInput"
+                  placeholder="Enter your Gemini API keys (one per line)&#10;AIzaSyC...&#10;AIzaSyD..."
+                  rows="4"
+                ></textarea>
+                <button class="api-keys-visibility-toggle" id="toggleApiKeysVisibility" title="Toggle API keys visibility">
+                  <span class="eye-icon" id="eyeIcon">👁️</span>
+                </button>
+              </div>
+              <div class="api-keys-actions">
+                <button class="btn-secondary" id="testApiKeys">Test Keys</button>
+                <button class="btn-secondary" id="clearApiKeys">Clear All</button>
+              </div>
             </div>
             <div class="api-keys-status" id="apiKeysStatus"></div>
+            <div class="api-keys-summary" id="apiKeysSummary"></div>
           </div>
         </div>
 
         <div class="settings-section">
           <h3>Knowledge Base</h3>
           <div class="knowledge-base-container">
-            <div class="knowledge-item">
-              <input type="text" placeholder="Variable name (e.g., bio)" class="kb-key">
-              <textarea placeholder="Variable value" class="kb-value" rows="2"></textarea>
-              <button class="btn-icon" onclick="addKnowledgeItem(this)">+</button>
+            <div class="kb-header">
+              <p class="kb-description">Create variables for AI responses. Use <code>{{variable_name}}</code> in prompts.</p>
+              <div class="kb-header-actions">
+                <button class="btn-secondary kb-populate-btn" id="populateFromPrompts">Auto-populate from Prompts</button>
+                <button class="btn-primary kb-add-btn" id="addKnowledgeItem">+ Add</button>
+              </div>
             </div>
-            <div id="knowledgeBaseList"></div>
-            <button class="btn-secondary" id="addKnowledgeItem">Add Variable</button>
+
+            <!-- Add/Edit Form -->
+            <div class="kb-form-overlay" id="knowledgeFormOverlay">
+              <div class="kb-form-modal">
+                <div class="kb-form-header">
+                  <h4 id="kbFormTitle">Add Variable</h4>
+                  <button class="kb-form-close" id="closeKnowledgeForm">×</button>
+                </div>
+                <div class="kb-form-body">
+                  <div class="kb-form-group">
+                    <label for="newKbKey">Name</label>
+                    <input type="text" id="newKbKey" placeholder="bio, services, experience" class="kb-input">
+                  </div>
+                  <div class="kb-form-group">
+                    <label for="newKbValue">Value</label>
+                    <textarea id="newKbValue" placeholder="Enter content..." class="kb-textarea" rows="3"></textarea>
+                  </div>
+                </div>
+                <div class="kb-form-footer">
+                  <button class="btn-secondary" id="cancelKnowledgeItem">Cancel</button>
+                  <button class="btn-primary" id="saveKnowledgeItem">Save</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Variables List -->
+            <div class="kb-variables-list" id="knowledgeBaseList">
+              <!-- Variables will be populated here -->
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Prompt Management</h3>
+          <div class="prompt-management-container">
+            <div class="prompt-management-header">
+              <p class="prompt-management-description">
+                Create and manage custom prompts for different scenarios. Favorite your most-used prompts for quick access.
+              </p>
+              <div class="prompt-management-tabs">
+                <button class="prompt-tab-btn active" data-tab="custom">Custom Prompts</button>
+                <button class="prompt-tab-btn" data-tab="default">Default Prompts</button>
+                <button class="prompt-tab-btn" data-tab="favorites">Favorites</button>
+              </div>
+            </div>
+
+            <div class="prompt-add-button-container">
+              <button class="btn-primary" id="addPromptBtn">+ Add Custom Prompt</button>
+            </div>
+
+            <div class="prompt-add-form" id="promptAddForm">
+              <div class="prompt-form-row">
+                <input type="text" id="newPromptKey" placeholder="Prompt name (e.g., professional_reply)" class="prompt-key-input">
+              </div>
+              <input type="text" id="newPromptName" placeholder="Display name (e.g., Professional Reply)" class="prompt-name-input">
+              <textarea id="newPromptDescription" placeholder="Brief description of what this prompt does..." class="prompt-description-input" rows="2"></textarea>
+              <textarea id="newPromptContent" placeholder="Enter your prompt content here. Use {{variable_name}} to reference knowledge base variables..." class="prompt-content-input" rows="6"></textarea>
+              <div class="prompt-form-actions">
+                <button class="btn-primary" id="savePromptBtn">Save Prompt</button>
+                <button class="btn-secondary" id="cancelPromptBtn">Cancel</button>
+              </div>
+            </div>
+
+            <div class="prompt-tab-content">
+              <div class="prompt-panel active" id="customPromptsPanel">
+                <div class="prompt-list" id="customPromptsList"></div>
+              </div>
+              <div class="prompt-panel" id="defaultPromptsPanel">
+                <div class="prompt-list" id="defaultPromptsList"></div>
+              </div>
+              <div class="prompt-panel" id="favoritesPanel">
+                <div class="prompt-list" id="favoritePromptsList"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -164,8 +246,42 @@
 
       <!-- Export Tab -->
       <div class="tab-panel" id="export">
+        <!-- Fiverr Conversation Extraction -->
+        <div class="fiverr-section">
+          <h3>🎯 Fiverr Conversation Extraction</h3>
+          <div class="fiverr-status" id="fiverrStatus">
+            <div class="status-indicator" id="fiverrStatusIndicator">⚪</div>
+            <span id="fiverrStatusText">Ready to extract conversations</span>
+          </div>
+
+          <div class="fiverr-actions">
+            <div class="action-group">
+              <button class="btn-primary" id="fetchContactsBtn">📋 Fetch All Contacts</button>
+              <button class="btn-secondary" id="extractCurrentBtn">💬 Extract Current Conversation</button>
+            </div>
+            <div class="progress-info" id="progressInfo" style="display: none;">
+              <div class="progress-text" id="progressText"></div>
+              <div class="progress-counter" id="progressCounter"></div>
+            </div>
+          </div>
+
+          <div class="stored-conversations" id="storedConversations">
+            <h4>Stored Conversations</h4>
+            <div class="conversations-list" id="conversationsList">
+              <div class="no-conversations">No conversations stored yet</div>
+            </div>
+          </div>
+
+          <div class="contacts-section" id="contactsSection" style="display: none;">
+            <h4>Available Contacts</h4>
+            <div class="contacts-list" id="contactsList">
+              <div class="no-contacts">No contacts found</div>
+            </div>
+          </div>
+        </div>
+
         <div class="export-section">
-          <h3>Export Data</h3>
+          <h3>📤 Export Data</h3>
           <div class="export-options">
             <div class="export-format">
               <label>Export Format:</label>
@@ -178,6 +294,7 @@
             <div class="export-actions">
               <button class="btn-primary" id="exportAllData">Export All Data</button>
               <button class="btn-secondary" id="exportSessions">Export Sessions Only</button>
+              <button class="btn-secondary" id="exportConversations">Export Conversations Only</button>
             </div>
           </div>
         </div>

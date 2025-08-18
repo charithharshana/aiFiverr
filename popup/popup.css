@@ -197,9 +197,7 @@ body {
   background: #f8fff9;
 }
 
-.btn-icon {
-  font-size: 16px;
-}
+
 
 /* Recent Activity */
 .recent-activity h3 {
@@ -316,15 +314,19 @@ body {
   border: 1px solid #e9ecef;
 }
 
+.api-keys-input-wrapper {
+  position: relative;
+  margin-bottom: 12px;
+}
+
 #apiKeysInput {
   width: 100%;
   border: 1px solid #e9ecef;
   border-radius: 6px;
-  padding: 12px;
+  padding: 12px 40px 12px 12px;
   font-size: 13px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   resize: vertical;
-  margin-bottom: 12px;
 }
 
 #apiKeysInput:focus {
@@ -333,9 +335,34 @@ body {
   box-shadow: 0 0 0 2px rgba(29, 191, 115, 0.2);
 }
 
+.api-keys-visibility-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.api-keys-visibility-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.eye-icon {
+  font-size: 16px;
+  user-select: none;
+}
+
 .api-keys-actions {
   display: flex;
   gap: 8px;
+  justify-content: center;
   margin-bottom: 12px;
 }
 
@@ -360,56 +387,613 @@ body {
   display: block;
 }
 
-/* Knowledge Base */
+.api-keys-input-section {
+  margin-bottom: 16px;
+}
+
+.api-keys-summary {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #6c757d;
+}
+
+.api-keys-summary.has-keys {
+  background: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+.api-keys-summary.has-errors {
+  background: #f8d7da;
+  border-color: #f5c6cb;
+  color: #721c24;
+}
+
+/* Knowledge Base - Improved Layout */
 .knowledge-base-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid #e9ecef;
+  margin-bottom: 20px;
+}
+
+.kb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.kb-description {
+  font-size: 14px;
+  color: #6c757d;
+  margin: 0;
+  line-height: 1.6;
+  flex: 1;
+  min-width: 300px;
+  max-width: 65%;
+  word-wrap: break-word;
+}
+
+.kb-description code {
+  background: #f8f9fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  color: #e83e8c;
+  border: 1px solid #e9ecef;
+  white-space: nowrap;
+}
+
+.kb-header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 200px;
+}
+
+.kb-populate-btn {
+  padding: 8px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  border-radius: 6px;
+}
+
+.kb-add-btn {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: 6px;
+}
+
+/* Responsive design for Knowledge Base */
+@media (max-width: 600px) {
+  .kb-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+
+  .kb-description {
+    max-width: 100%;
+    min-width: auto;
+    margin-bottom: 10px;
+  }
+
+  .kb-header-actions {
+    justify-content: flex-start;
+    min-width: auto;
+  }
+}
+
+/* Knowledge Base Form Modal */
+.kb-form-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.kb-form-overlay.active {
+  display: flex;
+}
+
+.kb-form-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.kb-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.kb-form-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.kb-form-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #6c757d;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.kb-form-close:hover {
+  background: #e9ecef;
+  color: #495057;
+}
+
+.kb-form-body {
+  padding: 20px;
+}
+
+.kb-form-group {
+  margin-bottom: 16px;
+}
+
+.kb-form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2c3e50;
+  margin-bottom: 6px;
+}
+
+.kb-input, .kb-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: border-color 0.2s ease;
+  font-family: inherit;
+}
+
+.kb-input:focus, .kb-textarea:focus {
+  outline: none;
+  border-color: #1dbf73;
+  box-shadow: 0 0 0 2px rgba(29, 191, 115, 0.1);
+}
+
+.kb-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.kb-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+/* Variables List Section */
+.kb-variables-list {
+  min-height: 80px;
+}
+
+.kb-variables-list .empty-state {
+  background: #f8f9fa;
+  border: 2px dashed #dee2e6;
+  border-radius: 8px;
+  padding: 30px 20px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.kb-variable-card {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.kb-variable-card:hover {
+  border-color: #1dbf73;
+  box-shadow: 0 4px 12px rgba(29, 191, 115, 0.15);
+  transform: translateY(-1px);
+}
+
+.kb-variable-card:last-child {
+  margin-bottom: 0;
+}
+
+.kb-variable-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.kb-variable-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background: #f8f9fa;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.kb-variable-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.kb-action-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e9ecef;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #6c757d;
+  transition: all 0.2s ease;
+}
+
+.kb-action-btn:hover {
+  background: #1dbf73;
+  color: white;
+  border-color: #1dbf73;
+  transform: scale(1.05);
+}
+
+.kb-action-btn.delete:hover {
+  background: #dc3545;
+  border-color: #dc3545;
+}
+
+.kb-variable-value {
+  font-size: 13px;
+  color: #495057;
+  line-height: 1.5;
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+
+
+/* Prompt Management */
+.prompt-management-container {
   background: white;
   border-radius: 8px;
   padding: 16px;
   border: 1px solid #e9ecef;
 }
 
-.knowledge-item {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-  align-items: flex-start;
+.prompt-management-header {
+  margin-bottom: 16px;
 }
 
-.kb-key {
-  flex: 0 0 120px;
-  padding: 8px 12px;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
+.prompt-management-description {
   font-size: 13px;
+  color: #6c757d;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
 }
 
-.kb-value {
+.prompt-management-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 16px;
+}
+
+.prompt-tab-btn {
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  color: #6c757d;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.prompt-tab-btn.active {
+  color: #1dbf73;
+  border-bottom-color: #1dbf73;
+  font-weight: 500;
+}
+
+.prompt-tab-btn:hover {
+  color: #1dbf73;
+}
+
+.prompt-add-button-container {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.prompt-add-form {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: none;
+}
+
+.prompt-add-form.active {
+  display: block;
+}
+
+.prompt-form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.prompt-key-input,
+.prompt-name-input {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid #e9ecef;
   border-radius: 4px;
   font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.prompt-key-input {
+  margin-bottom: 0;
+}
+
+.prompt-description-input,
+.prompt-content-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  font-size: 13px;
   resize: vertical;
-  min-height: 36px;
+  margin-bottom: 12px;
+  font-family: inherit;
+}
+
+.prompt-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.prompt-tab-content {
+  min-height: 60px;
+}
+
+.prompt-panel {
+  display: none;
+}
+
+.prompt-panel.active {
+  display: block;
+}
+
+.prompt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 50px;
+}
+
+.prompt-list .empty-state {
+  background: #f8f9fa;
+  border: 1px dashed #dee2e6;
+  border-radius: 6px;
+  padding: 20px 16px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 13px;
+}
+
+.prompt-item {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 16px;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.prompt-item:hover {
+  border-color: #1dbf73;
+  box-shadow: 0 2px 8px rgba(29, 191, 115, 0.15);
+}
+
+.prompt-item.favorite {
+  border-color: #ffc107;
+  background: #fff9e6;
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.prompt-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.prompt-item-title {
+  flex: 1;
+}
+
+.prompt-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+}
+
+.prompt-item-key {
+  font-size: 11px;
+  color: #6c757d;
+  font-family: 'Courier New', monospace;
+  background: #e9ecef;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.prompt-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.prompt-item-description {
+  font-size: 13px;
+  color: #6c757d;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.prompt-item-content {
+  font-size: 12px;
+  color: #495057;
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 8px;
+  max-height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: 'Courier New', monospace;
+}
+
+.prompt-action-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e9ecef;
+  background: white;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.prompt-action-btn:hover {
+  background: #f8f9fa;
+}
+
+.prompt-action-btn.favorite {
+  color: #ffc107;
+  border-color: #ffc107;
+}
+
+.prompt-action-btn.favorite:hover {
+  background: #ffc107;
+  color: white;
+}
+
+.prompt-action-btn.edit {
+  color: #17a2b8;
+}
+
+.prompt-action-btn.edit:hover {
+  background: #17a2b8;
+  color: white;
+}
+
+.prompt-action-btn.delete {
+  color: #dc3545;
+}
+
+.prompt-action-btn.delete:hover {
+  background: #dc3545;
+  color: white;
 }
 
 .btn-icon {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 1px solid #e9ecef;
   background: #f8f9fa;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  color: #1dbf73;
+  font-size: 14px;
+  color: #6c757d;
+  transition: all 0.2s ease;
 }
 
 .btn-icon:hover {
   background: #1dbf73;
   color: white;
+  border-color: #1dbf73;
+  transform: translateY(-1px);
+}
+
+.btn-icon:active {
+  transform: translateY(0);
 }
 
 /* Preferences */
@@ -703,4 +1287,147 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #adb5bd;
+}
+
+/* Fiverr Section Styles */
+.fiverr-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #1dbf73 0%, #00b22d 100%);
+  border-radius: 8px;
+  color: white;
+}
+
+.fiverr-section h3 {
+  margin: 0 0 1rem 0;
+  color: white;
+}
+
+.fiverr-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.status-indicator {
+  font-size: 1.2rem;
+}
+
+.fiverr-actions {
+  margin-bottom: 1.5rem;
+}
+
+.action-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.progress-info {
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.progress-text {
+  margin-bottom: 0.5rem;
+}
+
+.progress-counter {
+  font-weight: 500;
+}
+
+.stored-conversations, .contacts-section {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.stored-conversations h4, .contacts-section h4 {
+  margin: 0 0 0.75rem 0;
+  color: white;
+  font-size: 1rem;
+}
+
+.conversations-list, .contacts-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.conversation-item, .contact-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.conversation-item:hover, .contact-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.conversation-info, .contact-info {
+  flex: 1;
+}
+
+.conversation-name, .contact-name {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.conversation-meta, .contact-meta {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.conversation-actions, .contact-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.fiverr-section .btn-icon {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem;
+  color: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s;
+  width: auto;
+  height: auto;
+}
+
+.fiverr-section .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.no-conversations, .no-contacts {
+  text-align: center;
+  padding: 2rem;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* Responsive Design for Fiverr Section */
+@media (max-width: 400px) {
+  .action-group {
+    flex-direction: column;
+  }
+
+  .fiverr-actions .btn-primary,
+  .fiverr-actions .btn-secondary {
+    width: 100%;
+  }
 }

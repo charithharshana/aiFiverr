@@ -8,6 +8,10 @@ class PopupManager {
     this.currentTab = 'dashboard';
     this.currentTabId = null;
     this.isLoading = false;
+    this.currentApiKeys = [];
+    this.apiKeyStatuses = [];
+    this.currentPromptTab = 'custom';
+    this.favoritePrompts = new Set();
     this.init();
   }
 
@@ -57,16 +61,110 @@ class PopupManager {
     });
 
     // Settings actions
-    document.getElementById('saveApiKeys')?.addEventListener('click', () => {
-      this.saveApiKeys();
-    });
-
     document.getElementById('testApiKeys')?.addEventListener('click', () => {
       this.testApiKeys();
     });
 
     document.getElementById('addKnowledgeItem')?.addEventListener('click', () => {
-      this.addKnowledgeItem();
+      this.showKnowledgeForm();
+    });
+
+    document.getElementById('populateFromPrompts')?.addEventListener('click', () => {
+      this.populateKnowledgeBaseFromPrompts();
+    });
+
+    document.getElementById('saveKnowledgeItem')?.addEventListener('click', () => {
+      this.saveKnowledgeItem();
+    });
+
+    document.getElementById('cancelKnowledgeItem')?.addEventListener('click', () => {
+      this.hideKnowledgeForm();
+    });
+
+    document.getElementById('closeKnowledgeForm')?.addEventListener('click', () => {
+      this.hideKnowledgeForm();
+    });
+
+    // Close modal when clicking overlay
+    document.getElementById('knowledgeFormOverlay')?.addEventListener('click', (e) => {
+      if (e.target.id === 'knowledgeFormOverlay') {
+        this.hideKnowledgeForm();
+      }
+    });
+
+    // Event delegation for Knowledge Base buttons
+    document.getElementById('knowledgeBaseList')?.addEventListener('click', (e) => {
+      if (e.target.classList.contains('kb-edit-btn')) {
+        const key = e.target.getAttribute('data-key');
+        this.editKnowledgeItem(key);
+      } else if (e.target.classList.contains('kb-delete-btn')) {
+        const key = e.target.getAttribute('data-key');
+        this.removeKnowledgeItem(key);
+      }
+    });
+
+    document.getElementById('toggleApiKeysVisibility')?.addEventListener('click', () => {
+      this.toggleApiKeysVisibility();
+    });
+
+    document.getElementById('clearApiKeys')?.addEventListener('click', () => {
+      this.clearApiKeys();
+    });
+
+    // Auto-save API keys on paste and input
+    const apiKeysInput = document.getElementById('apiKeysInput');
+    if (apiKeysInput) {
+      // Auto-save on paste
+      apiKeysInput.addEventListener('paste', (e) => {
+        setTimeout(() => {
+          this.autoSaveApiKeys();
+        }, 100); // Small delay to ensure paste content is processed
+      });
+
+      // Auto-save on input with debouncing
+      let saveTimeout;
+      apiKeysInput.addEventListener('input', () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+          this.autoSaveApiKeys();
+        }, 1000); // 1 second delay to avoid excessive saves
+      });
+    }
+
+
+
+    // Prompt management
+    document.getElementById('addPromptBtn')?.addEventListener('click', () => {
+      this.showPromptForm();
+    });
+
+    document.getElementById('savePromptBtn')?.addEventListener('click', () => {
+      this.savePrompt();
+    });
+
+    document.getElementById('cancelPromptBtn')?.addEventListener('click', () => {
+      this.hidePromptForm();
+    });
+
+    // Prompt tabs
+    document.querySelectorAll('.prompt-tab-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        this.switchPromptTab(e.target.dataset.tab);
+      });
+    });
+
+    // Event delegation for prompt buttons
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('prompt-favorite-btn')) {
+        const key = e.target.getAttribute('data-key');
+        this.toggleFavoritePrompt(key);
+      } else if (e.target.classList.contains('prompt-edit-btn')) {
+        const key = e.target.getAttribute('data-key');
+        this.editPrompt(key);
+      } else if (e.target.classList.contains('prompt-delete-btn')) {
+        const key = e.target.getAttribute('data-key');
+        this.deletePrompt(key);
+      }
     });
 
     // Export/Import actions
@@ -76,6 +174,19 @@ class PopupManager {
 
     document.getElementById('exportSessions')?.addEventListener('click', () => {
       this.exportData('sessions');
+    });
+
+    document.getElementById('exportConversations')?.addEventListener('click', () => {
+      this.exportData('conversations');
+    });
+
+    // Fiverr conversation extraction actions
+    document.getElementById('fetchContactsBtn')?.addEventListener('click', () => {
+      this.fetchFiverrContacts();
+    });
+
+    document.getElementById('extractCurrentBtn')?.addEventListener('click', () => {
+      this.extractCurrentConversation();
     });
 
     document.getElementById('fileDropZone')?.addEventListener('click', () => {
@@ -164,12 +275,16 @@ class PopupManager {
     try {
       // Get page info
       const pageInfo = await this.sendMessageToTab({ type: 'GET_PAGE_INFO' });
-      
+
       // Update stats
       await this.updateStats();
-      
+
       // Update activity
       this.updateActivity();
+
+      // Load Fiverr data
+      await this.loadStoredConversations();
+      await this.loadStoredContacts();
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     }
@@ -264,13 +379,25 @@ class PopupManager {
     try {
       // Load API keys
       const settings = await this.getStorageData('settings');
+      this.currentApiKeys = settings?.apiKeys || [];
+
+      // Display API keys in the list
+      this.displayApiKeys();
+
+      // Initialize API keys visibility (default to hidden)
       const apiKeysInput = document.getElementById('apiKeysInput');
-      if (apiKeysInput && settings?.apiKeys) {
-        apiKeysInput.value = settings.apiKeys.join('\n');
+      const eyeIcon = document.getElementById('eyeIcon');
+      if (apiKeysInput && eyeIcon) {
+        apiKeysInput.type = 'password';
+        eyeIcon.textContent = '👁️';
+        eyeIcon.parentElement.title = 'Show API keys';
       }
 
       // Load knowledge base
       await this.loadKnowledgeBase();
+
+      // Load prompt management
+      await this.loadPrompts();
 
       // Load preferences
       if (settings) {
@@ -286,21 +413,38 @@ class PopupManager {
 
   async loadKnowledgeBase() {
     try {
-      const knowledgeBase = await this.getStorageData('knowledgeBase');
+      let knowledgeBase = await this.getStorageData('knowledgeBase') || {};
+
+      // Auto-populate variables from default prompts if Knowledge Base is empty
+      if (Object.keys(knowledgeBase).length === 0) {
+        knowledgeBase = await this.autoPopulateKnowledgeBase();
+      }
+
       const container = document.getElementById('knowledgeBaseList');
-      
+
       if (!container) return;
 
-      if (!knowledgeBase || Object.keys(knowledgeBase).length === 0) {
-        container.innerHTML = '<div class="empty-state">No knowledge base items yet</div>';
+      const count = Object.keys(knowledgeBase).length;
+
+      if (count === 0) {
+        container.innerHTML = '<div class="empty-state">No variables created yet. Click "Add" to get started.</div>';
         return;
       }
 
       container.innerHTML = Object.entries(knowledgeBase).map(([key, value]) => `
-        <div class="knowledge-item">
-          <input type="text" class="kb-key" value="${key}" readonly>
-          <textarea class="kb-value" readonly>${value}</textarea>
-          <button class="btn-icon" onclick="popupManager.removeKnowledgeItem('${key}')">×</button>
+        <div class="kb-variable-card" data-key="${key}">
+          <div class="kb-variable-header">
+            <h5 class="kb-variable-name">{{${key}}}</h5>
+            <div class="kb-variable-actions">
+              <button class="kb-action-btn kb-edit-btn" data-key="${key}" title="Edit variable">
+                ✎
+              </button>
+              <button class="kb-action-btn delete kb-delete-btn" data-key="${key}" title="Delete variable">
+                ×
+              </button>
+            </div>
+          </div>
+          <div class="kb-variable-value">${this.escapeHtml(value)}</div>
         </div>
       `).join('');
     } catch (error) {
@@ -308,67 +452,767 @@ class PopupManager {
     }
   }
 
-  async saveApiKeys() {
+  async autoPopulateKnowledgeBase(autoSave = true) {
     try {
-      this.showLoading(true);
-      
+      // Extract variables from default prompts
+      const defaultPrompts = this.getDefaultPrompts();
+      console.log('Default prompts:', defaultPrompts);
+
+      const variables = new Set();
+
+      // Regular expression to find {{variable}} patterns
+      const variableRegex = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+
+      // Extract variables from all default prompts
+      Object.values(defaultPrompts).forEach(prompt => {
+        console.log('Processing prompt:', prompt.name, prompt.prompt);
+        let match;
+        while ((match = variableRegex.exec(prompt.prompt)) !== null) {
+          console.log('Found variable:', match[1]);
+          variables.add(match[1]);
+        }
+      });
+
+      console.log('All variables found:', Array.from(variables));
+
+      // Create default values for detected variables
+      const knowledgeBase = {};
+      const defaultValues = {
+        'bio': 'Your professional bio and background information',
+        'services': 'List of services you offer',
+        'availability': 'Your current availability and working hours',
+        'experience': 'Your years of experience and expertise',
+        'portfolio': 'Links to your portfolio or previous work',
+        'rates': 'Your pricing and rate information',
+        'contact': 'Your contact information and preferred communication methods'
+      };
+
+      variables.forEach(variable => {
+        knowledgeBase[variable] = defaultValues[variable] || `Please update this ${variable} variable with your information`;
+      });
+
+      console.log('Generated knowledge base:', knowledgeBase);
+
+      // Save to storage if any variables were found and autoSave is true
+      if (autoSave && Object.keys(knowledgeBase).length > 0) {
+        await this.setStorageData({ knowledgeBase });
+        this.showToast(`Auto-populated ${Object.keys(knowledgeBase).length} variables from default prompts`, 'success');
+      }
+
+      return knowledgeBase;
+    } catch (error) {
+      console.error('Failed to auto-populate knowledge base:', error);
+      return {};
+    }
+  }
+
+  async populateKnowledgeBaseFromPrompts() {
+    try {
+      const existingKnowledgeBase = await this.getStorageData('knowledgeBase') || {};
+      const newVariables = await this.autoPopulateKnowledgeBase(false);
+
+      console.log('Existing KB:', existingKnowledgeBase);
+      console.log('New variables from prompts:', newVariables);
+
+      // Only add variables that don't already exist
+      const variablesToAdd = {};
+      Object.entries(newVariables).forEach(([key, value]) => {
+        if (!existingKnowledgeBase.hasOwnProperty(key)) {
+          variablesToAdd[key] = value;
+        }
+      });
+
+      console.log('Variables to add:', variablesToAdd);
+
+      if (Object.keys(variablesToAdd).length > 0) {
+        // Merge with existing variables
+        const mergedKnowledgeBase = { ...existingKnowledgeBase, ...variablesToAdd };
+
+        await this.setStorageData({ knowledgeBase: mergedKnowledgeBase });
+        await this.loadKnowledgeBase();
+
+        this.showToast(`Added ${Object.keys(variablesToAdd).length} new variables from default prompts`, 'success');
+      } else if (Object.keys(newVariables).length > 0) {
+        // Variables exist but user clicked the button - refresh the display
+        await this.loadKnowledgeBase();
+        this.showToast('All variables from default prompts are already in your Knowledge Base', 'info');
+      } else {
+        // No variables found in default prompts
+        this.showToast('No variables found in default prompts to populate', 'warning');
+      }
+    } catch (error) {
+      console.error('Failed to populate knowledge base from prompts:', error);
+      this.showToast('Failed to populate variables from prompts', 'error');
+    }
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  showKnowledgeForm(editKey = null) {
+    const overlay = document.getElementById('knowledgeFormOverlay');
+    const title = document.getElementById('kbFormTitle');
+    const keyInput = document.getElementById('newKbKey');
+    const valueInput = document.getElementById('newKbValue');
+
+    if (editKey) {
+      title.textContent = 'Edit Variable';
+      keyInput.readOnly = true;
+    } else {
+      title.textContent = 'Add New Variable';
+      keyInput.readOnly = false;
+      // Clear any previous values
+      keyInput.value = '';
+      valueInput.value = '';
+    }
+
+    overlay.classList.add('active');
+    setTimeout(() => keyInput.focus(), 100);
+  }
+
+  hideKnowledgeForm() {
+    const overlay = document.getElementById('knowledgeFormOverlay');
+    overlay.classList.remove('active');
+
+    // Clear form
+    document.getElementById('newKbKey').value = '';
+    document.getElementById('newKbValue').value = '';
+    document.getElementById('newKbKey').readOnly = false;
+  }
+
+  applySuggestion(key, value) {
+    const keyInput = document.getElementById('newKbKey');
+    const valueInput = document.getElementById('newKbValue');
+
+    keyInput.value = key;
+    valueInput.value = value;
+
+    this.showKnowledgeForm();
+    valueInput.focus();
+  }
+
+  async saveKnowledgeItem() {
+    try {
+      const keyInput = document.getElementById('newKbKey');
+      const valueInput = document.getElementById('newKbValue');
+
+      const key = keyInput.value.trim();
+      const value = valueInput.value.trim();
+
+      if (!key) {
+        this.showToast('Please enter a variable name', 'error');
+        keyInput.focus();
+        return;
+      }
+
+      if (!value) {
+        this.showToast('Please enter a variable value', 'error');
+        valueInput.focus();
+        return;
+      }
+
+      // Validate key format (alphanumeric and underscores only)
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+        this.showToast('Variable name can only contain letters, numbers, and underscores, and must start with a letter or underscore', 'error');
+        keyInput.focus();
+        return;
+      }
+
+      const knowledgeBase = await this.getStorageData('knowledgeBase') || {};
+      knowledgeBase[key] = value;
+
+      await this.setStorageData({ knowledgeBase });
+      await this.loadKnowledgeBase();
+
+      this.hideKnowledgeForm();
+      this.showToast(`Variable "${key}" saved successfully`, 'success');
+    } catch (error) {
+      console.error('Failed to save knowledge item:', error);
+      this.showToast('Failed to save variable', 'error');
+    }
+  }
+
+  async editKnowledgeItem(key) {
+    try {
+      const knowledgeBase = await this.getStorageData('knowledgeBase') || {};
+      const value = knowledgeBase[key];
+
+      if (!value) {
+        this.showToast('Variable not found', 'error');
+        return;
+      }
+
+      const keyInput = document.getElementById('newKbKey');
+      const valueInput = document.getElementById('newKbValue');
+
+      keyInput.value = key;
+      valueInput.value = value;
+
+      this.showKnowledgeForm(key);
+      setTimeout(() => valueInput.focus(), 150);
+
+      // Store the editing key
+      this.editingKey = key;
+    } catch (error) {
+      console.error('Failed to edit knowledge item:', error);
+      this.showToast('Failed to edit variable', 'error');
+    }
+  }
+
+  async removeKnowledgeItem(key) {
+    if (confirm(`Are you sure you want to remove the variable "${key}"?`)) {
+      try {
+        const knowledgeBase = await this.getStorageData('knowledgeBase') || {};
+        delete knowledgeBase[key];
+
+        await this.setStorageData({ knowledgeBase });
+        await this.loadKnowledgeBase();
+
+        this.showToast(`Variable "${key}" removed successfully`, 'success');
+      } catch (error) {
+        console.error('Failed to remove knowledge item:', error);
+        this.showToast('Failed to remove variable', 'error');
+      }
+    }
+  }
+
+  // Prompt Management Methods
+  async loadPrompts() {
+    try {
+      // Load custom prompts
+      const customPrompts = await this.getStorageData('customPrompts') || {};
+
+      // Load favorite prompts
+      const favorites = await this.getStorageData('favoritePrompts') || [];
+      this.favoritePrompts = new Set(favorites);
+
+      // Load default prompts from knowledge base
+      const defaultPrompts = this.getDefaultPrompts();
+
+      this.displayPrompts('custom', customPrompts);
+      this.displayPrompts('default', defaultPrompts);
+      this.displayFavoritePrompts();
+    } catch (error) {
+      console.error('Failed to load prompts:', error);
+    }
+  }
+
+  getDefaultPrompts() {
+    return {
+      'professional_reply': {
+        name: 'Professional Reply',
+        description: 'Generate a professional response to client messages',
+        prompt: `Generate a professional and friendly reply to the following message. Use my bio: {{bio}} and mention relevant services: {{services}} if appropriate. Maintain a helpful and solution-oriented tone.
+
+Message: {message}
+
+Please provide a response that:
+1. Acknowledges their message professionally
+2. Addresses their specific needs or questions
+3. Suggests next steps or solutions
+4. Maintains a friendly but professional tone`
+      },
+      'project_summary': {
+        name: 'Project Summary',
+        description: 'Summarize project conversations and requirements',
+        prompt: `Please analyze the following conversation and provide a comprehensive project summary.
+
+Conversation: {conversation}
+
+Please provide:
+1. **Project Overview**: What the client needs
+2. **Key Decisions**: Important agreements or changes
+3. **Action Items**: What needs to be done next
+4. **Deadlines**: Any time-sensitive items
+5. **Budget/Pricing**: Financial discussions
+6. **Client Preferences**: Specific requirements or preferences mentioned
+
+Keep the summary concise but comprehensive.`
+      },
+      'follow_up': {
+        name: 'Follow-up Message',
+        description: 'Create follow-up messages for ongoing projects',
+        prompt: `Create a professional follow-up message for this project. Reference my availability: {{availability}} and include relevant updates.
+
+Project context: {context}
+
+The follow-up should:
+1. Check on project progress
+2. Offer assistance or clarification
+3. Maintain engagement
+4. Be concise and actionable`
+      }
+    };
+  }
+
+  switchPromptTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.prompt-tab-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+    // Update tab panels
+    document.querySelectorAll('.prompt-panel').forEach(panel => {
+      panel.classList.remove('active');
+    });
+
+    // Map tab names to panel IDs
+    const panelMap = {
+      'custom': 'customPromptsPanel',
+      'default': 'defaultPromptsPanel',
+      'favorites': 'favoritesPanel'
+    };
+
+    const panelId = panelMap[tab];
+    if (panelId) {
+      document.getElementById(panelId).classList.add('active');
+    }
+
+    this.currentPromptTab = tab;
+
+    // Reload prompts to ensure they are displayed correctly
+    this.loadPrompts();
+  }
+
+  displayPrompts(type, prompts) {
+    const container = document.getElementById(`${type}PromptsList`);
+    if (!container) {
+      console.warn(`Container not found: ${type}PromptsList`);
+      return;
+    }
+
+    if (!prompts || Object.keys(prompts).length === 0) {
+      const emptyMessage = type === 'custom'
+        ? 'No custom prompts yet. Click "Add Custom Prompt" to create your first prompt.'
+        : `No ${type} prompts yet`;
+      container.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
+      return;
+    }
+
+    container.innerHTML = Object.entries(prompts).map(([key, prompt]) => {
+      const isFavorite = this.favoritePrompts.has(key);
+      const isDefault = type === 'default';
+
+      return `
+        <div class="prompt-item ${isFavorite ? 'favorite' : ''}" data-key="${key}" data-type="${type}">
+          <div class="prompt-item-header">
+            <div class="prompt-item-title">
+              <h4 class="prompt-item-name">${this.escapeHtml(prompt.name)}</h4>
+              <span class="prompt-item-key">${key}</span>
+            </div>
+            <div class="prompt-item-actions">
+              <button class="prompt-action-btn favorite ${isFavorite ? 'favorite' : ''} prompt-favorite-btn"
+                      data-key="${key}"
+                      title="${isFavorite ? 'Remove from favorites' : 'Add to favorites'}">
+                ${isFavorite ? '★' : '☆'}
+              </button>
+              ${!isDefault ? `
+                <button class="prompt-action-btn edit prompt-edit-btn"
+                        data-key="${key}"
+                        title="Edit prompt">✎</button>
+                <button class="prompt-action-btn delete prompt-delete-btn"
+                        data-key="${key}"
+                        title="Delete prompt">×</button>
+              ` : ''}
+            </div>
+          </div>
+          <div class="prompt-item-description">${this.escapeHtml(prompt.description || '')}</div>
+          <div class="prompt-item-content">${this.escapeHtml(prompt.prompt)}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  displayFavoritePrompts() {
+    const container = document.getElementById('favoritePromptsList');
+    if (!container) return;
+
+    if (this.favoritePrompts.size === 0) {
+      container.innerHTML = '<div class="empty-state">No favorite prompts yet. Click the star icon on any prompt to add it to favorites.</div>';
+      return;
+    }
+
+    // Get all prompts (custom and default) and filter favorites
+    Promise.all([
+      this.getStorageData('customPrompts'),
+      Promise.resolve(this.getDefaultPrompts())
+    ]).then(([customPrompts, defaultPrompts]) => {
+      const allPrompts = { ...defaultPrompts, ...customPrompts };
+      const favoritePrompts = {};
+
+      this.favoritePrompts.forEach(key => {
+        if (allPrompts[key]) {
+          favoritePrompts[key] = allPrompts[key];
+        }
+      });
+
+      // Use 'favorite' (singular) to match the HTML ID 'favoritePromptsList'
+      this.displayPrompts('favorite', favoritePrompts);
+    });
+  }
+
+  showPromptForm(isEdit = false) {
+    const form = document.getElementById('promptAddForm');
+    form.classList.add('active');
+
+    if (!isEdit) {
+      // Clear form only for new prompts
+      document.getElementById('newPromptKey').value = '';
+      document.getElementById('newPromptName').value = '';
+      document.getElementById('newPromptDescription').value = '';
+      document.getElementById('newPromptContent').value = '';
+
+      // Make sure key field is enabled for new prompts
+      document.getElementById('newPromptKey').readOnly = false;
+      document.getElementById('newPromptKey').focus();
+    } else {
+      // For editing, focus on the name field since key is readonly
+      document.getElementById('newPromptName').focus();
+    }
+  }
+
+  hidePromptForm() {
+    const form = document.getElementById('promptAddForm');
+    form.classList.remove('active');
+
+    // Clear form when hiding
+    document.getElementById('newPromptKey').value = '';
+    document.getElementById('newPromptName').value = '';
+    document.getElementById('newPromptDescription').value = '';
+    document.getElementById('newPromptContent').value = '';
+    document.getElementById('newPromptKey').readOnly = false;
+  }
+
+  async savePrompt() {
+    try {
+      const key = document.getElementById('newPromptKey').value.trim();
+      const name = document.getElementById('newPromptName').value.trim();
+      const description = document.getElementById('newPromptDescription').value.trim();
+      const content = document.getElementById('newPromptContent').value.trim();
+
+      if (!key) {
+        this.showToast('Please enter a prompt key', 'error');
+        return;
+      }
+
+      if (!name) {
+        this.showToast('Please enter a prompt name', 'error');
+        return;
+      }
+
+      if (!content) {
+        this.showToast('Please enter prompt content', 'error');
+        return;
+      }
+
+      // Validate key format
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+        this.showToast('Prompt key can only contain letters, numbers, and underscores', 'error');
+        return;
+      }
+
+      const customPrompts = await this.getStorageData('customPrompts') || {};
+      customPrompts[key] = {
+        name,
+        description,
+        prompt: content
+      };
+
+      await this.setStorageData({ customPrompts });
+      await this.loadPrompts();
+
+      this.hidePromptForm();
+      this.showToast(`Prompt "${name}" saved successfully`, 'success');
+    } catch (error) {
+      console.error('Failed to save prompt:', error);
+      this.showToast('Failed to save prompt', 'error');
+    }
+  }
+
+  async editPrompt(key) {
+    try {
+      const customPrompts = await this.getStorageData('customPrompts') || {};
+      const prompt = customPrompts[key];
+
+      if (!prompt) {
+        this.showToast('Prompt not found', 'error');
+        return;
+      }
+
+      document.getElementById('newPromptKey').value = key;
+      document.getElementById('newPromptName').value = prompt.name;
+      document.getElementById('newPromptDescription').value = prompt.description || '';
+      document.getElementById('newPromptContent').value = prompt.prompt;
+
+      // Make key field readonly when editing
+      document.getElementById('newPromptKey').readOnly = true;
+
+      this.showPromptForm(true); // Pass true to indicate this is an edit
+    } catch (error) {
+      console.error('Failed to edit prompt:', error);
+      this.showToast('Failed to edit prompt', 'error');
+    }
+  }
+
+  async deletePrompt(key) {
+    if (confirm('Are you sure you want to delete this prompt?')) {
+      try {
+        const customPrompts = await this.getStorageData('customPrompts') || {};
+        delete customPrompts[key];
+
+        // Remove from favorites if it exists
+        this.favoritePrompts.delete(key);
+        await this.setStorageData({
+          customPrompts,
+          favoritePrompts: Array.from(this.favoritePrompts)
+        });
+
+        await this.loadPrompts();
+        this.showToast('Prompt deleted successfully', 'success');
+      } catch (error) {
+        console.error('Failed to delete prompt:', error);
+        this.showToast('Failed to delete prompt', 'error');
+      }
+    }
+  }
+
+  async toggleFavoritePrompt(key) {
+    try {
+      console.log('Toggling favorite for key:', key);
+      console.log('Current favorites:', Array.from(this.favoritePrompts));
+
+      if (this.favoritePrompts.has(key)) {
+        this.favoritePrompts.delete(key);
+        console.log('Removed from favorites');
+      } else {
+        this.favoritePrompts.add(key);
+        console.log('Added to favorites');
+      }
+
+      console.log('New favorites:', Array.from(this.favoritePrompts));
+
+      await this.setStorageData({
+        favoritePrompts: Array.from(this.favoritePrompts)
+      });
+
+      await this.loadPrompts();
+      this.showToast(`Prompt ${this.favoritePrompts.has(key) ? 'added to' : 'removed from'} favorites`, 'success');
+    } catch (error) {
+      console.error('Failed to toggle favorite:', error);
+      this.showToast('Failed to update favorites', 'error');
+    }
+  }
+
+  displayApiKeys() {
+    this.updateApiKeysSummary();
+  }
+
+  updateApiKeysSummary() {
+    const container = document.getElementById('apiKeysSummary');
+    if (!container) return;
+
+    if (!this.currentApiKeys || this.currentApiKeys.length === 0) {
+      container.innerHTML = 'No API keys configured. Add your Gemini API keys above to get started.';
+      container.className = 'api-keys-summary';
+      return;
+    }
+
+    const validKeys = this.apiKeyStatuses ? this.apiKeyStatuses.filter(status => status === 'valid').length : 0;
+    const invalidKeys = this.apiKeyStatuses ? this.apiKeyStatuses.filter(status => status === 'invalid').length : 0;
+    const testingKeys = this.apiKeyStatuses ? this.apiKeyStatuses.filter(status => status === 'testing').length : 0;
+    const totalKeys = this.currentApiKeys.length;
+
+    let statusText = `${totalKeys} API key${totalKeys > 1 ? 's' : ''} configured`;
+    let statusClass = 'api-keys-summary';
+
+    if (testingKeys > 0) {
+      statusText += ` (${testingKeys} testing...)`;
+      statusClass += ' has-keys';
+    } else if (validKeys > 0) {
+      statusText += ` (${validKeys} valid`;
+      if (invalidKeys > 0) {
+        statusText += `, ${invalidKeys} invalid`;
+        statusClass += ' has-errors';
+      } else {
+        statusClass += ' has-keys';
+      }
+      statusText += ')';
+    } else if (invalidKeys > 0) {
+      statusText += ` (${invalidKeys} invalid)`;
+      statusClass += ' has-errors';
+    }
+
+    container.innerHTML = statusText;
+    container.className = statusClass;
+  }
+
+
+
+  toggleApiKeysVisibility() {
+    const apiKeysInput = document.getElementById('apiKeysInput');
+    const eyeIcon = document.getElementById('eyeIcon');
+
+    // Toggle between text and password type
+    const isCurrentlyHidden = apiKeysInput.type === 'password' || !apiKeysInput.type;
+
+    if (isCurrentlyHidden) {
+      // Show actual keys
+      apiKeysInput.type = 'text';
+      eyeIcon.textContent = '🙈'; // Hide icon when keys are visible
+      eyeIcon.parentElement.title = 'Hide API keys';
+    } else {
+      // Hide keys
+      apiKeysInput.type = 'password';
+      eyeIcon.textContent = '👁️'; // Show icon when keys are hidden
+      eyeIcon.parentElement.title = 'Show API keys';
+    }
+
+    // Maintain font family
+    apiKeysInput.style.fontFamily = "'Monaco', 'Menlo', 'Ubuntu Mono', monospace";
+
+    // Also update the displayed list
+    this.displayApiKeys();
+  }
+
+
+
+  async clearApiKeys() {
+    try {
+      // Clear the input field
       const apiKeysInput = document.getElementById('apiKeysInput');
-      const keys = apiKeysInput.value
+      if (apiKeysInput) {
+        apiKeysInput.value = '';
+      }
+
+      // Clear saved API keys
+      this.currentApiKeys = [];
+      this.apiKeyStatuses = [];
+
+      // Update storage
+      const result = await this.sendMessageToBackground({
+        type: 'UPDATE_API_KEYS',
+        keys: []
+      });
+
+      if (result.success) {
+        // Update display
+        this.displayApiKeys();
+
+        // Reset status indicators
+        const statusElement = document.getElementById('apiKeysStatus');
+        if (statusElement) {
+          statusElement.textContent = '';
+          statusElement.className = 'api-keys-status';
+          statusElement.style.display = 'none';
+        }
+
+        this.showApiKeyStatus('All API keys cleared', 'success');
+        await this.updateStats();
+      } else {
+        throw new Error(result.error || 'Failed to clear API keys');
+      }
+    } catch (error) {
+      console.error('Failed to clear API keys:', error);
+      this.showApiKeyStatus('Failed to clear API keys: ' + error.message, 'error');
+    }
+  }
+
+  async autoSaveApiKeys() {
+    try {
+      const apiKeysInput = document.getElementById('apiKeysInput');
+      const inputValue = apiKeysInput.value.trim();
+
+      // Only save if there's actual content
+      if (!inputValue) {
+        return;
+      }
+
+      const newKeys = inputValue
         .split('\n')
         .map(key => key.trim())
         .filter(key => key.length > 0);
 
+      // Only save if there are valid keys
+      if (newKeys.length === 0) {
+        return;
+      }
+
+      // Combine existing keys with new ones (avoid duplicates)
+      const allKeys = [...new Set([...this.currentApiKeys, ...newKeys])];
+
       const result = await this.sendMessageToBackground({
         type: 'UPDATE_API_KEYS',
-        keys
+        keys: allKeys
       });
 
       if (result.success) {
-        this.showApiKeyStatus('API keys saved successfully!', 'success');
+        this.currentApiKeys = allKeys;
+        this.displayApiKeys();
+        apiKeysInput.value = ''; // Clear input after saving
+        this.showApiKeyStatus('API keys saved automatically', 'success');
         await this.updateStats();
       } else {
         throw new Error(result.error || 'Failed to save API keys');
       }
     } catch (error) {
-      console.error('Failed to save API keys:', error);
-      this.showApiKeyStatus('Failed to save API keys: ' + error.message, 'error');
-    } finally {
-      this.showLoading(false);
+      console.error('Auto-save failed:', error);
+      this.showApiKeyStatus('Auto-save failed: ' + error.message, 'error');
     }
   }
+
+
 
   async testApiKeys() {
     try {
       this.showLoading(true);
-      
-      const apiKeysInput = document.getElementById('apiKeysInput');
-      const keys = apiKeysInput.value
-        .split('\n')
-        .map(key => key.trim())
-        .filter(key => key.length > 0);
 
-      if (keys.length === 0) {
-        this.showApiKeyStatus('Please enter at least one API key', 'error');
+      if (!this.currentApiKeys || this.currentApiKeys.length === 0) {
+        this.showApiKeyStatus('No API keys to test', 'error');
         return;
       }
 
-      // Test each key
+      // Initialize status tracking
+      this.apiKeyStatuses = new Array(this.currentApiKeys.length).fill('testing');
+      this.displayApiKeys();
+
+      // Test each key individually
       let validKeys = 0;
-      for (const key of keys) {
+      const testPromises = this.currentApiKeys.map(async (key, index) => {
         try {
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
           if (response.ok) {
+            this.apiKeyStatuses[index] = 'valid';
             validKeys++;
+          } else {
+            this.apiKeyStatuses[index] = 'invalid';
+            console.warn(`API key ${index + 1} test failed:`, response.status, response.statusText);
           }
         } catch (error) {
-          console.warn('Key test failed:', error);
+          this.apiKeyStatuses[index] = 'invalid';
+          console.warn(`API key ${index + 1} test error:`, error);
         }
-      }
 
-      if (validKeys === keys.length) {
-        this.showApiKeyStatus(`All ${keys.length} API keys are valid!`, 'success');
+        // Update display after each test
+        this.displayApiKeys();
+      });
+
+      await Promise.all(testPromises);
+
+      // Show final status
+      if (validKeys === this.currentApiKeys.length) {
+        this.showApiKeyStatus(`All ${this.currentApiKeys.length} API keys are valid!`, 'success');
       } else if (validKeys > 0) {
-        this.showApiKeyStatus(`${validKeys} out of ${keys.length} API keys are valid`, 'error');
+        this.showApiKeyStatus(`${validKeys} out of ${this.currentApiKeys.length} API keys are valid`, 'error');
       } else {
         this.showApiKeyStatus('No valid API keys found', 'error');
       }
@@ -484,19 +1328,36 @@ class PopupManager {
   async exportData(type) {
     try {
       this.showLoading(true);
-      
-      const format = document.getElementById('exportFormat').value;
-      const result = await this.sendMessageToTab({
-        type: 'EXPORT_DATA',
-        format,
-        dataType: type
-      });
 
-      if (result.success && result.data) {
-        this.downloadFile(result.data);
-        this.showToast('Data exported successfully!');
+      const format = document.getElementById('exportFormat').value;
+
+      if (type === 'conversations') {
+        // Export only Fiverr conversations
+        const result = await this.sendMessageToTab({
+          type: 'EXPORT_FIVERR_CONVERSATIONS',
+          format
+        });
+
+        if (result.success && result.data) {
+          this.downloadFile(result.data);
+          this.showToast('Conversations exported successfully!');
+        } else {
+          throw new Error('Failed to export conversations');
+        }
       } else {
-        throw new Error('Failed to export data');
+        // Export all data or sessions
+        const result = await this.sendMessageToTab({
+          type: 'EXPORT_DATA',
+          format,
+          dataType: type
+        });
+
+        if (result.success && result.data) {
+          this.downloadFile(result.data);
+          this.showToast('Data exported successfully!');
+        } else {
+          throw new Error('Failed to export data');
+        }
       }
     } catch (error) {
       console.error('Failed to export data:', error);
@@ -621,7 +1482,14 @@ class PopupManager {
 
   async getStorageData(keys) {
     return new Promise((resolve) => {
-      chrome.storage.local.get(keys, resolve);
+      chrome.storage.local.get(keys, (result) => {
+        // If keys is a string, return the value directly
+        if (typeof keys === 'string') {
+          resolve(result[keys]);
+        } else {
+          resolve(result);
+        }
+      });
     });
   }
 
@@ -630,7 +1498,332 @@ class PopupManager {
       chrome.storage.local.set(data, resolve);
     });
   }
+
+  // Fiverr-specific methods
+  async fetchFiverrContacts() {
+    try {
+      this.showLoading(true);
+      this.updateFiverrStatus('🔄', 'Fetching contacts...');
+
+      const result = await this.sendMessageToTab({
+        type: 'FETCH_FIVERR_CONTACTS'
+      });
+
+      if (result.success) {
+        this.showToast('Contacts fetched successfully!');
+        await this.loadStoredContacts();
+      } else {
+        throw new Error(result.error || 'Failed to fetch contacts');
+      }
+    } catch (error) {
+      console.error('Failed to fetch contacts:', error);
+      this.showToast('Failed to fetch contacts', 'error');
+      this.updateFiverrStatus('❌', 'Failed to fetch contacts');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async extractCurrentConversation() {
+    try {
+      this.showLoading(true);
+      this.updateFiverrStatus('🔄', 'Extracting conversation...');
+
+      const result = await this.sendMessageToTab({
+        type: 'EXTRACT_CURRENT_CONVERSATION'
+      });
+
+      if (result.success && result.data) {
+        this.showToast('Conversation extracted successfully!');
+        await this.loadStoredConversations();
+        this.updateFiverrStatus('✅', 'Conversation extracted');
+      } else {
+        throw new Error(result.error || 'Failed to extract conversation');
+      }
+    } catch (error) {
+      console.error('Failed to extract conversation:', error);
+      this.showToast('Failed to extract conversation', 'error');
+      this.updateFiverrStatus('❌', 'Failed to extract conversation');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async extractConversationByUsername(username) {
+    try {
+      this.showLoading(true);
+      this.updateFiverrStatus('🔄', `Extracting conversation with ${username}...`);
+
+      const result = await this.sendMessageToTab({
+        type: 'EXTRACT_CONVERSATION_BY_USERNAME',
+        username
+      });
+
+      if (result.success && result.data) {
+        this.showToast(`Conversation with ${username} extracted successfully!`);
+        await this.loadStoredConversations();
+        this.updateFiverrStatus('✅', 'Conversation extracted');
+      } else {
+        throw new Error(result.error || 'Failed to extract conversation');
+      }
+    } catch (error) {
+      console.error('Failed to extract conversation:', error);
+      this.showToast(`Failed to extract conversation with ${username}`, 'error');
+      this.updateFiverrStatus('❌', 'Failed to extract conversation');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async updateConversation(username) {
+    try {
+      this.showLoading(true);
+      this.updateFiverrStatus('🔄', `Updating conversation with ${username}...`);
+
+      const result = await this.sendMessageToTab({
+        type: 'UPDATE_CONVERSATION',
+        username
+      });
+
+      if (result.success && result.data) {
+        const newMessages = result.data.newMessages || 0;
+        this.showToast(`Updated conversation with ${username} (${newMessages} new messages)`);
+        await this.loadStoredConversations();
+        this.updateFiverrStatus('✅', 'Conversation updated');
+      } else {
+        throw new Error(result.error || 'Failed to update conversation');
+      }
+    } catch (error) {
+      console.error('Failed to update conversation:', error);
+      this.showToast(`Failed to update conversation with ${username}`, 'error');
+      this.updateFiverrStatus('❌', 'Failed to update conversation');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async deleteConversation(username) {
+    if (!confirm(`Are you sure you want to delete the conversation with ${username}?`)) {
+      return;
+    }
+
+    try {
+      this.showLoading(true);
+
+      const result = await this.sendMessageToTab({
+        type: 'DELETE_CONVERSATION',
+        username
+      });
+
+      if (result.success) {
+        this.showToast(`Conversation with ${username} deleted`);
+        await this.loadStoredConversations();
+      } else {
+        throw new Error(result.error || 'Failed to delete conversation');
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      this.showToast(`Failed to delete conversation with ${username}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async exportSingleConversation(username, format = 'markdown') {
+    try {
+      this.showLoading(true);
+
+      const result = await this.sendMessageToTab({
+        type: 'EXPORT_SINGLE_CONVERSATION',
+        username,
+        format
+      });
+
+      if (result.success && result.data) {
+        this.downloadFile(result.data);
+        this.showToast(`Conversation with ${username} exported successfully!`);
+      } else {
+        throw new Error(result.error || 'Failed to export conversation');
+      }
+    } catch (error) {
+      console.error('Failed to export conversation:', error);
+      this.showToast(`Failed to export conversation with ${username}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  updateFiverrStatus(indicator, text) {
+    const statusIndicator = document.getElementById('fiverrStatusIndicator');
+    const statusText = document.getElementById('fiverrStatusText');
+
+    if (statusIndicator) statusIndicator.textContent = indicator;
+    if (statusText) statusText.textContent = text;
+  }
+
+  updateProgressInfo(text, counter = '') {
+    const progressInfo = document.getElementById('progressInfo');
+    const progressText = document.getElementById('progressText');
+    const progressCounter = document.getElementById('progressCounter');
+
+    if (progressInfo) {
+      progressInfo.style.display = text ? 'block' : 'none';
+    }
+    if (progressText) progressText.textContent = text;
+    if (progressCounter) progressCounter.textContent = counter;
+  }
+
+  async loadStoredConversations() {
+    try {
+      const result = await this.sendMessageToTab({
+        type: 'GET_STORED_CONVERSATIONS'
+      });
+
+      if (result.success && result.data) {
+        this.displayStoredConversations(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to load stored conversations:', error);
+    }
+  }
+
+  displayStoredConversations(conversations) {
+    const conversationsList = document.getElementById('conversationsList');
+    if (!conversationsList) return;
+
+    if (!conversations || conversations.length === 0) {
+      conversationsList.innerHTML = '<div class="no-conversations">No conversations stored yet</div>';
+      return;
+    }
+
+    conversationsList.innerHTML = conversations.map(conv => `
+      <div class="conversation-item">
+        <div class="conversation-info">
+          <div class="conversation-name">${conv.username}</div>
+          <div class="conversation-meta">
+            ${conv.messageCount || 0} messages •
+            Last extracted: ${new Date(conv.lastExtracted || 0).toLocaleDateString()}
+          </div>
+        </div>
+        <div class="conversation-actions">
+          <button class="btn-icon" onclick="popupManager.updateConversation('${conv.username}')" title="Update">🔄</button>
+          <button class="btn-icon" onclick="popupManager.exportSingleConversation('${conv.username}', 'markdown')" title="Export">📤</button>
+          <button class="btn-icon" onclick="popupManager.deleteConversation('${conv.username}')" title="Delete">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async loadStoredContacts() {
+    try {
+      const result = await this.sendMessageToTab({
+        type: 'GET_STORED_CONTACTS'
+      });
+
+      if (result.success && result.data) {
+        this.displayStoredContacts(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to load stored contacts:', error);
+    }
+  }
+
+  displayStoredContacts(contactsData) {
+    const contactsList = document.getElementById('contactsList');
+    const contactsSection = document.getElementById('contactsSection');
+
+    if (!contactsList || !contactsSection) return;
+
+    const contacts = contactsData.contacts || [];
+
+    if (contacts.length === 0) {
+      contactsSection.style.display = 'none';
+      return;
+    }
+
+    contactsSection.style.display = 'block';
+
+    // Show first 20 contacts
+    const displayContacts = contacts.slice(0, 20);
+
+    contactsList.innerHTML = displayContacts.map(contact => `
+      <div class="contact-item" onclick="popupManager.extractConversationByUsername('${contact.username}')">
+        <div class="contact-info">
+          <div class="contact-name">${contact.username}</div>
+          <div class="contact-meta">
+            Last message: ${new Date(contact.recentMessageDate).toLocaleDateString()}
+          </div>
+        </div>
+        <div class="contact-actions">
+          <button class="btn-icon" onclick="event.stopPropagation(); popupManager.extractConversationByUsername('${contact.username}')" title="Extract">💬</button>
+        </div>
+      </div>
+    `).join('');
+
+    if (contacts.length > 20) {
+      contactsList.innerHTML += `
+        <div class="contact-item" style="text-align: center; opacity: 0.7;">
+          ... and ${contacts.length - 20} more contacts
+        </div>
+      `;
+    }
+  }
+
+  handleRuntimeMessage(request, sender, sendResponse) {
+    switch (request.type) {
+      case 'CONTACTS_PROGRESS':
+        this.updateProgressInfo(request.message, request.totalContacts ? `Total: ${request.totalContacts}` : '');
+        if (request.isError) {
+          this.updateFiverrStatus('❌', request.message);
+        } else {
+          this.updateFiverrStatus('🔄', request.message);
+        }
+        break;
+
+      case 'CONTACTS_FETCHED':
+        this.updateProgressInfo('');
+        this.updateFiverrStatus('✅', request.message);
+        this.loadStoredContacts();
+        break;
+
+      case 'EXTRACTION_PROGRESS':
+        this.updateProgressInfo(request.message);
+        this.updateFiverrStatus('🔄', request.message);
+        break;
+
+      case 'CONVERSATION_EXTRACTED':
+        this.updateProgressInfo('');
+        this.updateFiverrStatus('✅', request.message);
+        this.loadStoredConversations();
+        break;
+
+      case 'CONVERSATION_UPDATED':
+        this.updateProgressInfo('');
+        this.updateFiverrStatus('✅', request.message);
+        this.loadStoredConversations();
+        break;
+
+      case 'EXTRACTION_ERROR':
+        this.updateProgressInfo('');
+        this.updateFiverrStatus('❌', request.message);
+        this.showToast(request.message, 'error');
+        break;
+
+      case 'CONTACTS_ERROR':
+        this.updateProgressInfo('');
+        this.updateFiverrStatus('❌', request.message);
+        this.showToast(request.message, 'error');
+        break;
+    }
+  }
 }
+
+// Listen for messages from content script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (window.popupManager) {
+    window.popupManager.handleRuntimeMessage(request, sender, sendResponse);
+  }
+});
 
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
