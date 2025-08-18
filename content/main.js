@@ -182,12 +182,7 @@ class AiFiverrMain {
       this.handleKeyboardShortcut(e);
     });
 
-    // Listen for focus events on input fields
-    document.addEventListener('focus', (e) => {
-      if (isValidInputField(e.target)) {
-        this.handleInputFocus(e.target);
-      }
-    }, true);
+
 
     // Listen for custom events
     window.addEventListener('aifiverr:sessionCreated', (e) => {
@@ -394,51 +389,8 @@ class AiFiverrMain {
     // Ctrl+Shift+G shortcut removed - use message icon instead
   }
 
-  /**
-   * Handle input field focus
-   */
-  handleInputFocus(inputElement) {
-    // Add AI assistance hint if not already present
-    if (!inputElement.hasAttribute('data-aifiverr-hint-added')) {
-      this.addAIHint(inputElement);
-      inputElement.setAttribute('data-aifiverr-hint-added', 'true');
-    }
-  }
 
-  /**
-   * Add AI assistance hint to input
-   */
-  addAIHint(inputElement) {
-    const hint = document.createElement('div');
-    hint.className = 'aifiverr-hint';
-    hint.textContent = 'Press Ctrl+Shift+G to generate AI reply';
-    hint.style.cssText = `
-      position: absolute;
-      background: #1dbf73;
-      color: white;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      z-index: 1000;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    `;
 
-    document.body.appendChild(hint);
-
-    // Position hint
-    const rect = inputElement.getBoundingClientRect();
-    hint.style.left = rect.left + 'px';
-    hint.style.top = (rect.bottom + 5) + 'px';
-
-    // Show hint briefly
-    setTimeout(() => hint.style.opacity = '1', 100);
-    setTimeout(() => {
-      hint.style.opacity = '0';
-      setTimeout(() => hint.remove(), 300);
-    }, 3000);
-  }
 
   /**
    * Toggle floating widget

@@ -593,12 +593,12 @@ class ExportImportManager {
    * Basic API key obfuscation
    */
   obfuscateApiKey(key) {
-    if (!key || key.length < 8) return key;
-    
+    if (!key || typeof key !== 'string' || key.length < 8) return key;
+
     const start = key.substring(0, 4);
     const end = key.substring(key.length - 4);
     const middle = '*'.repeat(key.length - 8);
-    
+
     return start + middle + end;
   }
 

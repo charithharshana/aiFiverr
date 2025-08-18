@@ -346,18 +346,7 @@
   100% { transform: rotate(360deg); }
 }
 
-/* Hint styles */
-.aifiverr-hint {
-  position: absolute;
-  background: #1dbf73;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  z-index: 1000;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-}
+
 
 /* Error notification */
 .aifiverr-error-notification {
@@ -461,12 +450,11 @@
   .aifiverr-floating-widget .widget-toggle,
   .aifiverr-floating-widget .widget-panel,
   .aifiverr-analysis-popup,
-  .aifiverr-hint,
   .aifiverr-error-notification {
     animation: none;
     transition: none;
   }
-  
+
   .aifiverr-floating-widget .ai-icon {
     animation: none;
   }

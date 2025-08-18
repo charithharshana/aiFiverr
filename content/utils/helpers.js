@@ -76,7 +76,7 @@ function getCursorPosition(input, selectionPoint = null) {
   div.style.wordWrap = 'break-word';
   
   // Get text content up to cursor
-  const textContent = input.value.substring(0, point);
+  const textContent = (input.value || '').substring(0, point);
   div.textContent = textContent;
   
   document.body.appendChild(div);
@@ -161,6 +161,44 @@ function removeTooltip() {
 }
 
 /**
+ * Remove markdown formatting from text
+ */
+function removeMarkdownFormatting(text) {
+  if (!text || typeof text !== 'string') return text;
+
+  return text
+    // Remove bold/italic markers
+    .replace(/\*\*([^*]+)\*\*/g, '$1')  // **bold** -> bold
+    .replace(/\*([^*]+)\*/g, '$1')      // *italic* -> italic
+    .replace(/__([^_]+)__/g, '$1')      // __bold__ -> bold
+    .replace(/_([^_]+)_/g, '$1')        // _italic_ -> italic
+
+    // Remove headers
+    .replace(/^#{1,6}\s+(.+)$/gm, '$1') // # Header -> Header
+
+    // Remove code blocks and inline code
+    .replace(/```[\s\S]*?```/g, '')     // Remove code blocks
+    .replace(/`([^`]+)`/g, '$1')        // `code` -> code
+
+    // Remove links but keep text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) -> text
+
+    // Remove horizontal rules
+    .replace(/^[-*_]{3,}$/gm, '')
+
+    // Remove list markers
+    .replace(/^\s*[-*+]\s+/gm, '• ')    // Convert to bullet points
+    .replace(/^\s*\d+\.\s+/gm, '')      // Remove numbered list markers
+
+    // Remove blockquotes
+    .replace(/^>\s+/gm, '')
+
+    // Clean up extra whitespace
+    .replace(/\n{3,}/g, '\n\n')         // Max 2 consecutive newlines
+    .trim();
+}
+
+/**
  * Debounce function to limit API calls
  */
 function debounce(func, wait) {
@@ -179,7 +217,7 @@ function debounce(func, wait) {
  * Generates a unique session ID
  */
 function generateSessionId() {
-  return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  return 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 }
 
 /**

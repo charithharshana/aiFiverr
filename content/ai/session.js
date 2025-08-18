@@ -77,8 +77,8 @@ class ChatSession {
     this.metadata.lastUpdated = Date.now();
 
     // Update session title based on first user message
-    if (role === 'user' && this.messages.length === 1) {
-      this.metadata.title = content.substring(0, 50) + (content.length > 50 ? '...' : '');
+    if (role === 'user' && this.messages.length === 1 && content) {
+      this.metadata.title = (content.length > 50) ? content.substring(0, 50) + '...' : content;
     }
 
     return message;

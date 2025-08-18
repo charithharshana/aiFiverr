@@ -486,8 +486,8 @@ class FiverrInjector {
       `;
 
       // Get first few characters of prompt title or key
-      const title = prompt.name || prompt.title || key;
-      const displayTitle = title.length > 30 ? title.substring(0, 30) + '...' : title;
+      const title = prompt.name || prompt.title || key || 'Untitled';
+      const displayTitle = (title && title.length > 30) ? title.substring(0, 30) + '...' : title;
 
       item.innerHTML = `
         <div style="font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 2px;">
@@ -1043,7 +1043,9 @@ class FiverrInjector {
       const reply = await this.generateAIReply(context, session, promptKey);
 
       if (reply) {
-        inputElement.value = reply;
+        // Remove markdown formatting from the reply
+        const cleanReply = removeMarkdownFormatting(reply);
+        inputElement.value = cleanReply;
         inputElement.dispatchEvent(new Event('input', { bubbles: true }));
         this.showMessageIconNotification('Reply generated successfully!', inputElement, 2000);
       } else {
@@ -1249,7 +1251,7 @@ class FiverrInjector {
       const response = await geminiClient.generateContent(prompt);
 
       removeTooltip();
-      return response.text;
+      return removeMarkdownFormatting(response.text);
     } catch (error) {
       console.error('Message refinement failed:', error);
       removeTooltip();
@@ -1279,7 +1281,7 @@ class FiverrInjector {
       const response = await geminiClient.generateContent(prompt);
 
       removeTooltip();
-      return response.text;
+      return removeMarkdownFormatting(response.text);
     } catch (error) {
       console.error('Detailed response generation failed:', error);
       removeTooltip();
@@ -1309,7 +1311,7 @@ class FiverrInjector {
       const response = await geminiClient.generateContent(prompt);
 
       removeTooltip();
-      return response.text;
+      return removeMarkdownFormatting(response.text);
     } catch (error) {
       console.error('Translate and refine failed:', error);
       removeTooltip();
@@ -1386,7 +1388,7 @@ class FiverrInjector {
       removeTooltip();
       return {
         title: `Translation (${language})`,
-        content: response.text
+        content: removeMarkdownFormatting(response.text)
       };
     } catch (error) {
       console.error('Translation failed:', error);
@@ -1419,7 +1421,7 @@ class FiverrInjector {
       removeTooltip();
       return {
         title: 'Summary',
-        content: response.text
+        content: removeMarkdownFormatting(response.text)
       };
     } catch (error) {
       console.error('Summarization failed:', error);
@@ -1488,20 +1490,36 @@ class FiverrInjector {
    */
   async handleBriefCopy() {
     try {
-      const briefData = fiverrExtractor.extractBriefDetails();
+      // Check if fiverrExtractor is available
+      if (!window.fiverrExtractor || typeof window.fiverrExtractor.extractBriefDetails !== 'function') {
+        showTooltip('Brief extraction not available', document.body);
+        setTimeout(removeTooltip, 3000);
+        return;
+      }
+
+      const briefData = window.fiverrExtractor.extractBriefDetails();
       if (!briefData) {
-        showTooltip('No brief data found', document.body);
+        showTooltip('No brief data found on this page', document.body);
+        setTimeout(removeTooltip, 3000);
         return;
       }
 
       const briefText = this.formatBriefForCopy(briefData);
+
+      // Check if copyToClipboard function is available
+      if (typeof copyToClipboard !== 'function') {
+        showTooltip('Clipboard functionality not available', document.body);
+        setTimeout(removeTooltip, 3000);
+        return;
+      }
+
       await copyToClipboard(briefText);
-      
+
       showTooltip('Brief copied to clipboard!', document.body);
       setTimeout(removeTooltip, 2000);
     } catch (error) {
       console.error('Brief copy failed:', error);
-      showTooltip('Failed to copy brief', document.body);
+      showTooltip(`Failed to copy brief: ${error.message}`, document.body);
       setTimeout(removeTooltip, 3000);
     }
   }
@@ -1721,7 +1739,7 @@ class FiverrInjector {
       }
 
       const response = await geminiClient.generateChatReply(session, prompt);
-      return response.response;
+      return removeMarkdownFormatting(response.response);
     } catch (error) {
       console.error('AI reply generation failed:', error);
       throw new Error('Failed to generate AI reply');
@@ -1764,7 +1782,7 @@ class FiverrInjector {
 
       // Generate proposal using the processed prompt
       const response = await geminiClient.generateContent(prompt);
-      return response.text;
+      return removeMarkdownFormatting(response.text);
     } catch (error) {
       console.error('AI proposal generation failed:', error);
       throw new Error('Failed to generate AI proposal');
@@ -1806,16 +1824,32 @@ class FiverrInjector {
    * Format brief data for copying
    */
   formatBriefForCopy(briefData) {
+    if (!briefData || typeof briefData !== 'object') {
+      return 'No brief data available';
+    }
+
     let text = '';
-    
-    if (briefData.title) text += `Title: ${briefData.title}\n\n`;
-    if (briefData.description) text += `Description: ${briefData.description}\n\n`;
-    if (briefData.requirements?.length) text += `Requirements: ${briefData.requirements.join(', ')}\n\n`;
-    if (briefData.budget) text += `Budget: ${briefData.budget}\n\n`;
-    if (briefData.deadline) text += `Deadline: ${briefData.deadline}\n\n`;
-    if (briefData.skills?.length) text += `Skills: ${briefData.skills.join(', ')}\n\n`;
-    
-    return text.trim();
+
+    if (briefData.title && typeof briefData.title === 'string') {
+      text += `Title: ${briefData.title}\n\n`;
+    }
+    if (briefData.description && typeof briefData.description === 'string') {
+      text += `Description: ${briefData.description}\n\n`;
+    }
+    if (briefData.requirements && Array.isArray(briefData.requirements) && briefData.requirements.length > 0) {
+      text += `Requirements: ${briefData.requirements.join(', ')}\n\n`;
+    }
+    if (briefData.budget && typeof briefData.budget === 'string') {
+      text += `Budget: ${briefData.budget}\n\n`;
+    }
+    if (briefData.deadline && typeof briefData.deadline === 'string') {
+      text += `Deadline: ${briefData.deadline}\n\n`;
+    }
+    if (briefData.skills && Array.isArray(briefData.skills) && briefData.skills.length > 0) {
+      text += `Skills: ${briefData.skills.join(', ')}\n\n`;
+    }
+
+    return text.trim() || 'No brief details found';
   }
 
   /**
