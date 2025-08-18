@@ -32,7 +32,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.fiverr.com/*"],
+      "matches": ["https://www.fiverr.com/*", "file://*/*", "http://*/*", "https://*/*"],
       "js": [
         "content/utils/helpers.js",
         "content/utils/storage.js",
@@ -41,6 +41,7 @@
         "content/fiverr/detector.js",
         "content/fiverr/extractor.js",
         "content/fiverr/injector.js",
+        "content/fiverr/text-selector.js",
         "content/ai/session.js",
         "content/ai/api-manager.js",
         "content/ai/gemini-client.js",
@@ -58,7 +59,7 @@
         "icons/*",
         "popup/*"
       ],
-      "matches": ["https://www.fiverr.com/*"]
+      "matches": ["https://www.fiverr.com/*", "file://*/*", "http://*/*", "https://*/*"]
     }
   ]
 }

@@ -57,7 +57,8 @@ class AiFiverrMain {
         promptSelector: !!window.promptSelector,
         fiverrDetector: !!window.fiverrDetector,
         fiverrInjector: !!window.fiverrInjector,
-        storageManager: !!window.storageManager
+        storageManager: !!window.storageManager,
+        textSelector: !!window.textSelector
       });
 
       // Let normal detection work - don't force it automatically
@@ -96,7 +97,8 @@ class AiFiverrMain {
       'fiverrExtractor',
       'fiverrInjector',
       'exportImportManager',
-      'promptSelector'
+      'promptSelector',
+      'textSelector'
     ];
 
     const maxWait = 10000; // 10 seconds

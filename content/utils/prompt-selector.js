@@ -15,10 +15,12 @@ class PromptSelector {
   }
 
   async init() {
+    console.log('aiFiverr: Initializing prompt selector...');
     // Wait for storage manager to be ready
     await this.waitForStorage();
     await this.loadPrompts();
     this.createSelectorUI();
+    console.log('aiFiverr: Prompt selector initialized with', Object.keys(this.allPrompts).length, 'prompts');
   }
 
   /**

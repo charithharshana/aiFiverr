@@ -27,6 +27,7 @@ A comprehensive Chrome extension that enhances your Fiverr experience with AI-po
 - **Conversation Extraction**: Pulls entire conversation history for AI context
 - **Proposal Generation**: AI-powered proposal creation based on project briefs
 - **Message Analysis**: Analyze client messages for tone, intent, and key points
+- **Text Selection AI**: Select any text on Fiverr pages for instant AI processing
 
 ### 🧠 Knowledge Base System
 - **Custom Variables**: Store personal info, services, experience for reuse
@@ -66,11 +67,26 @@ A comprehensive Chrome extension that enhances your Fiverr experience with AI-po
 3. **Generate Replies**: Click "Generate Reply" on chat inputs
 4. **Analyze Messages**: Click the 🤖 icon on messages for analysis
 5. **Create Proposals**: Use "Generate Proposal" on project briefs
+6. **Text Selection AI**: Select any text to see floating AI action icon
 
 ### Keyboard Shortcuts
 - `Ctrl+Shift+A`: Open floating AI assistant
 
 ### Advanced Features
+
+#### Text Selection AI (NEW!)
+Select any text on Fiverr pages to instantly access AI tools:
+1. **Select Text**: Highlight any message, project brief, or content
+2. **Floating Icon**: Green action icon appears near your selection
+3. **AI Menu**: Click icon to see available AI prompts
+4. **Process & Insert**: AI generates response you can edit and insert
+
+Perfect for:
+- Analyzing client messages for tone and intent
+- Translating and explaining foreign language text
+- Generating professional responses to inquiries
+- Summarizing long project descriptions
+- Creating proposals based on brief requirements
 
 #### Knowledge Base Variables
 Set up variables in Settings > Knowledge Base:
