@@ -52,9 +52,19 @@ class AiFiverrMain {
       this.isInitialized = true;
       console.log('aiFiverr: Extension initialized successfully');
 
-      // Notify background script
-      chrome.runtime.sendMessage({
-        type: 'EXTENSION_INITIALIZED',
+      // Add debugging info
+      console.log('aiFiverr: Available global objects:', {
+        promptSelector: !!window.promptSelector,
+        fiverrDetector: !!window.fiverrDetector,
+        fiverrInjector: !!window.fiverrInjector,
+        storageManager: !!window.storageManager
+      });
+
+      // Let normal detection work - don't force it automatically
+      console.log('aiFiverr: Extension ready. Use Ctrl+Shift+D to manually trigger detection if needed.');
+
+      // Extension initialized - no background communication needed
+      console.log('aiFiverr: Extension initialized for:', {
         url: window.location.href,
         pageType: fiverrDetector.pageType
       });
@@ -85,7 +95,8 @@ class AiFiverrMain {
       'fiverrDetector',
       'fiverrExtractor',
       'fiverrInjector',
-      'exportImportManager'
+      'exportImportManager',
+      'promptSelector'
     ];
 
     const maxWait = 10000; // 10 seconds
@@ -231,6 +242,31 @@ class AiFiverrMain {
   }
 
   /**
+   * Safe message sending to background script with context validation
+   */
+  safeMessageToBackground(message, callback = null) {
+    try {
+      // Check if extension context is still valid
+      if (!chrome.runtime?.id) {
+        console.warn('aiFiverr: Extension context invalidated, cannot send message');
+        return;
+      }
+
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('aiFiverr: Background message error:', chrome.runtime.lastError.message);
+          if (callback) callback(null, chrome.runtime.lastError);
+        } else {
+          if (callback) callback(response, null);
+        }
+      });
+    } catch (error) {
+      console.warn('aiFiverr: Failed to send message to background:', error.message);
+      if (callback) callback(null, error);
+    }
+  }
+
+  /**
    * Handle extension messages
    */
   async handleMessage(request, sender, sendResponse) {
@@ -355,14 +391,7 @@ class AiFiverrMain {
       this.toggleFloatingWidget();
     }
 
-    // Ctrl/Cmd + Shift + G: Generate reply for focused input
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'G') {
-      e.preventDefault();
-      const activeElement = document.activeElement;
-      if (isValidInputField(activeElement)) {
-        this.generateReplyForInput(activeElement);
-      }
-    }
+    // Ctrl+Shift+G shortcut removed - use message icon instead
   }
 
   /**
@@ -422,36 +451,9 @@ class AiFiverrMain {
     }
   }
 
-  /**
-   * Generate reply for input element
-   */
-  async generateReplyForInput(inputElement) {
-    try {
-      showTooltip('Generating AI reply...', inputElement);
-      
-      // Get conversation context
-      const conversationData = await window.fiverrExtractor?.extractConversation();
-      const context = conversationData ? window.fiverrExtractor.getConversationSummary(conversationData) : '';
-      
-      // Get or create session
-      const session = await window.sessionManager?.getOrCreateSession(window.location.href);
-      
-      // Generate reply
-      const reply = await window.fiverrInjector?.generateAIReply(context, session);
-      
-      if (reply) {
-        inputElement.value = reply;
-        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-        showTooltip('AI reply generated!', inputElement);
-      }
-      
-      setTimeout(removeTooltip, 2000);
-    } catch (error) {
-      console.error('Reply generation failed:', error);
-      showTooltip('Failed to generate reply', inputElement);
-      setTimeout(removeTooltip, 3000);
-    }
-  }
+  // showPromptSelectorForInput removed - use message icon instead
+
+  // generateReplyForInput removed - use message icon instead
 
   /**
    * Handle session creation

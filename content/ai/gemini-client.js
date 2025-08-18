@@ -20,25 +20,115 @@ class GeminiClient {
   }
 
   /**
+   * Get API key with fallback to background script
+   */
+  async getApiKey(sessionId) {
+    try {
+      // Try local API key manager first
+      if (window.apiKeyManager && window.apiKeyManager.initialized) {
+        const keyData = window.apiKeyManager.getKeyForSession(sessionId);
+        if (keyData) {
+          return keyData;
+        }
+      }
+
+      // Fallback to background script
+      return await this.getApiKeyFromBackground();
+    } catch (error) {
+      console.error('Failed to get API key:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get API key from background script
+   */
+  async getApiKeyFromBackground() {
+    return new Promise((resolve) => {
+      try {
+        if (!chrome.runtime?.id) {
+          console.warn('Extension context invalidated, cannot get API key');
+          resolve(null);
+          return;
+        }
+
+        chrome.runtime.sendMessage({ type: 'GET_API_KEY' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn('Background API key error:', chrome.runtime.lastError.message);
+            resolve(null);
+          } else if (response?.success && response?.data) {
+            resolve(response.data);
+          } else {
+            resolve(null);
+          }
+        });
+      } catch (error) {
+        console.warn('Failed to get API key from background:', error.message);
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Mark key as successful
+   */
+  markKeySuccess(keyIndex) {
+    try {
+      if (window.apiKeyManager && window.apiKeyManager.initialized) {
+        window.apiKeyManager.markKeySuccess(keyIndex);
+      } else {
+        // Notify background script
+        this.notifyBackgroundKeyStatus(keyIndex, true);
+      }
+    } catch (error) {
+      console.warn('Failed to mark key success:', error);
+    }
+  }
+
+  /**
+   * Mark key as failed
+   */
+  markKeyFailure(keyIndex, error) {
+    try {
+      if (window.apiKeyManager && window.apiKeyManager.initialized) {
+        window.apiKeyManager.markKeyFailure(keyIndex, error);
+      } else {
+        // Notify background script
+        this.notifyBackgroundKeyStatus(keyIndex, false, error);
+      }
+    } catch (error) {
+      console.warn('Failed to mark key failure:', error);
+    }
+  }
+
+  /**
+   * Log key status locally (no background communication)
+   */
+  notifyBackgroundKeyStatus(keyIndex, success, error = null) {
+    // Just log locally - no background script communication needed
+    console.log(`aiFiverr: API Key ${keyIndex} status:`, success ? 'SUCCESS' : 'FAILED', error?.message || '');
+  }
+
+  /**
    * Generate content using Gemini API
    */
   async generateContent(prompt, options = {}) {
-    const keyData = apiKeyManager.getKeyForSession(options.sessionId || 'default');
-    
+    const keyData = await this.getApiKey(options.sessionId || 'default');
+
     if (!keyData) {
       throw new Error('No API key available');
     }
 
     try {
       const response = await this.makeRequest(keyData, prompt, options);
-      
+
       // Mark key as successful
-      apiKeyManager.markKeySuccess(keyData.index);
-      
+      this.markKeySuccess(keyData.index);
+
       return response;
     } catch (error) {
       // Mark key as failed
-      apiKeyManager.markKeyFailure(keyData.index, error);
+      this.markKeyFailure(keyData.index, error);
       throw error;
     }
   }
@@ -47,22 +137,22 @@ class GeminiClient {
    * Generate streaming content
    */
   async generateStreamingContent(prompt, options = {}) {
-    const keyData = apiKeyManager.getKeyForSession(options.sessionId || 'default');
-    
+    const keyData = await this.getApiKey(options.sessionId || 'default');
+
     if (!keyData) {
       throw new Error('No API key available');
     }
 
     try {
       const stream = await this.makeStreamingRequest(keyData, prompt, options);
-      
+
       // Mark key as successful
-      apiKeyManager.markKeySuccess(keyData.index);
-      
+      this.markKeySuccess(keyData.index);
+
       return stream;
     } catch (error) {
       // Mark key as failed
-      apiKeyManager.markKeyFailure(keyData.index, error);
+      this.markKeyFailure(keyData.index, error);
       throw error;
     }
   }

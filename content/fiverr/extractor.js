@@ -38,7 +38,7 @@ class FiverrExtractor {
       });
 
       const storageData = Object.fromEntries(this.storedConversations);
-      await storageManager.set('fiverrConversations', storageData);
+      await storageManager.set({ 'fiverrConversations': storageData });
 
       // Also save to cache
       this.conversationCache.set(username, {
@@ -871,19 +871,11 @@ class FiverrExtractor {
   }
 
   /**
-   * Send progress notifications
+   * Send progress notifications (local logging only)
    */
   notifyProgress(type, message, data = {}) {
-    // Send to popup if available
-    try {
-      chrome.runtime.sendMessage({
-        type,
-        message,
-        ...data
-      });
-    } catch (error) {
-      console.log('Could not send message to popup:', error);
-    }
+    // Just log locally - no background script communication needed
+    console.log(`aiFiverr: ${type} - ${message}`, data);
   }
 
   /**

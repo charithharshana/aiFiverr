@@ -210,6 +210,63 @@ class KnowledgeBaseManager {
 4. Retaining the original core meaning of the message.
 
 **Your output should ONLY be the final, refined message. Do not provide explanations or comments about the changes made.**`
+      },
+      'translate_message': {
+        name: 'Translate Message',
+        description: 'Translate a message to a specified language while maintaining context and tone',
+        prompt: `You are a professional translator. Your task is to translate the following message accurately while preserving the original tone, context, and meaning.
+
+**Message to translate:** {message}
+**Target language:** {language}
+**Original context:** {conversation}
+
+**Translation guidelines:**
+1. **Maintain the original tone** (formal, casual, friendly, professional, etc.)
+2. **Preserve cultural context** and adapt idioms appropriately
+3. **Keep technical terms** accurate and industry-appropriate
+4. **Ensure natural flow** in the target language
+5. **Maintain the same level of formality** as the original
+
+Please provide only the translated text without additional explanations.`
+      },
+      'summarize_message': {
+        name: 'Summarize Message',
+        description: 'Create a concise summary of a message highlighting key points',
+        prompt: `You are an expert at creating clear, concise summaries. Your task is to summarize the following message, extracting the most important information.
+
+**Message to summarize:** {message}
+**Context:** {conversation}
+
+**Summary guidelines:**
+1. **Extract key points** and main ideas
+2. **Identify action items** or requests if any
+3. **Maintain important details** while removing redundancy
+4. **Keep the original tone** and intent
+5. **Make it concise** but comprehensive
+
+**Format:** Provide a bullet-point summary followed by a brief conclusion if needed.
+
+Please create the summary now.`
+      },
+      'detailed_response': {
+        name: 'Detailed Response',
+        description: 'Generate a comprehensive, detailed response to a message or inquiry',
+        prompt: `You are an expert communicator specializing in detailed, comprehensive responses. Your task is to create a thorough response that addresses all aspects of the inquiry.
+
+**Message/Inquiry:** {message}
+**Context:** {conversation}
+**My expertise:** {{services}}
+**My background:** {{bio}}
+
+**Response guidelines:**
+1. **Address all points** mentioned in the original message
+2. **Provide detailed explanations** and examples where appropriate
+3. **Show expertise** and knowledge in the subject matter
+4. **Include actionable insights** or next steps
+5. **Maintain professional tone** while being approachable
+6. **Structure clearly** with headings or bullet points if needed
+
+Please generate a comprehensive, detailed response now.`
       }
     };
 

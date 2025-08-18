@@ -18,9 +18,12 @@ class FiverrInjector {
 
     // Inject floating widget
     this.injectFloatingWidget();
-    
+
     // Monitor for new elements
     this.startMonitoring();
+
+    // Add manual trigger for debugging/testing
+    this.addManualTrigger();
   }
 
   /**
@@ -43,23 +46,27 @@ class FiverrInjector {
   }
 
   /**
-   * Inject chat-related UI elements
+   * Inject chat-related UI elements - CONSERVATIVE APPROACH
    */
   injectChatUI(elements) {
-    // Inject AI button for chat inputs
-    if (elements.chat) {
-      elements.chat.forEach(element => {
+    console.log('aiFiverr: Injecting chat UI with elements:', elements);
+
+    // ONLY inject for specifically detected chat inputs
+    if (elements.inputs) {
+      elements.inputs.forEach(element => {
         if (fiverrDetector.isChatInput(element) && !fiverrDetector.isProcessed(element)) {
+          console.log('aiFiverr: Injecting chat input button for:', element);
           this.injectChatInputButton(element);
           fiverrDetector.markAsProcessed(element);
         }
       });
     }
 
-    // Inject message analysis buttons
-    if (elements.inputs) {
-      elements.inputs.forEach(element => {
-        if (this.isMessageElement(element) && !fiverrDetector.isProcessed(element)) {
+    // ONLY inject for specifically detected message elements
+    if (elements.messages && elements.messages.length > 0) {
+      elements.messages.forEach(element => {
+        if (!fiverrDetector.isProcessed(element)) {
+          console.log('aiFiverr: Injecting message button for:', element);
           this.injectMessageAnalysisButton(element);
           fiverrDetector.markAsProcessed(element);
         }
@@ -92,44 +99,50 @@ class FiverrInjector {
   }
 
   /**
-   * Inject AI button for chat input
+   * Inject AI button for chat input - COMPACT VERSION
    */
   injectChatInputButton(inputElement) {
     const container = this.createButtonContainer();
-    const button = this.createAIButton('Generate Reply', 'chat');
-    
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      await this.handleChatGeneration(inputElement);
-    });
 
-    container.appendChild(button);
+    // Create compact AI button with dropdown
+    const compactButton = this.createCompactAIButton(inputElement);
+
+    container.appendChild(compactButton);
     this.insertButtonContainer(inputElement, container);
-    
+
+    // Add refinement functionality
+    this.addRefinementFeature(inputElement);
+
     this.injectedElements.set(inputElement, container);
   }
 
   /**
-   * Inject message analysis button
+   * Inject message interaction buttons
    */
   injectMessageAnalysisButton(messageElement) {
-    const button = this.createAIButton('🤖', 'analysis', { small: true });
-    
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      await this.handleMessageAnalysis(messageElement);
-    });
+    // Create container for message interaction buttons
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'aifiverr-message-actions';
 
-    // Position button relative to message
-    button.style.position = 'absolute';
-    button.style.top = '5px';
-    button.style.right = '5px';
-    button.style.zIndex = '1000';
+    // Create dropdown toggle button
+    const toggleButton = this.createMessageToggleButton();
+
+    // Create dropdown menu
+    const dropdown = this.createMessageDropdown(messageElement);
+
+    buttonContainer.appendChild(toggleButton);
+    buttonContainer.appendChild(dropdown);
+
+    // Position container relative to message
+    buttonContainer.style.position = 'absolute';
+    buttonContainer.style.top = '5px';
+    buttonContainer.style.right = '5px';
+    buttonContainer.style.zIndex = '1000';
 
     messageElement.style.position = 'relative';
-    messageElement.appendChild(button);
-    
-    this.injectedElements.set(messageElement, button);
+    messageElement.appendChild(buttonContainer);
+
+    this.injectedElements.set(messageElement, buttonContainer);
   }
 
   /**
@@ -289,6 +302,640 @@ class FiverrInjector {
   }
 
   /**
+   * Create AI icon for prompt selection
+   */
+  createAIIcon() {
+    const icon = document.createElement('button');
+    icon.className = 'aifiverr-ai-icon';
+    icon.innerHTML = '🤖';
+    icon.title = 'aiFiverr: Select AI Prompt';
+
+    const iconStyles = {
+      backgroundColor: '#3b82f6',
+      color: 'white',
+      border: 'none',
+      borderRadius: '50%',
+      width: '32px',
+      height: '32px',
+      fontSize: '16px',
+      cursor: 'pointer',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      transition: 'all 0.2s ease',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      marginLeft: '8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    };
+
+    Object.assign(icon.style, iconStyles);
+
+    // Hover effects
+    icon.addEventListener('mouseenter', () => {
+      icon.style.backgroundColor = '#2563eb';
+      icon.style.transform = 'translateY(-1px) scale(1.05)';
+    });
+
+    icon.addEventListener('mouseleave', () => {
+      icon.style.backgroundColor = '#3b82f6';
+      icon.style.transform = 'translateY(0) scale(1)';
+    });
+
+    return icon;
+  }
+
+  /**
+   * Create single message icon button with dropdown
+   */
+  createCompactAIButton(inputElement) {
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'aifiverr-message-icon-container';
+    buttonContainer.style.cssText = `
+      display: flex;
+      align-items: center;
+      margin: 4px 0;
+      position: relative;
+    `;
+
+    // Create single message icon button
+    const messageButton = document.createElement('button');
+    messageButton.className = 'aifiverr-message-icon-button';
+    messageButton.innerHTML = '💬'; // Message icon
+    messageButton.title = 'AI Reply Options';
+
+    // Style the button with no background
+    Object.assign(messageButton.style, {
+      background: 'none',
+      border: 'none',
+      fontSize: '18px',
+      cursor: 'pointer',
+      padding: '4px',
+      borderRadius: '4px',
+      transition: 'all 0.2s ease',
+      opacity: '0.7'
+    });
+
+    // Hover effect
+    messageButton.addEventListener('mouseenter', () => {
+      messageButton.style.opacity = '1';
+      messageButton.style.transform = 'scale(1.1)';
+    });
+
+    messageButton.addEventListener('mouseleave', () => {
+      messageButton.style.opacity = '0.7';
+      messageButton.style.transform = 'scale(1)';
+    });
+
+    // Create dropdown menu (initially hidden)
+    const dropdown = this.createPromptDropup(inputElement);
+
+    // Click handler to toggle dropdown
+    messageButton.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Toggle dropdown visibility
+      const isVisible = dropdown.style.display === 'block';
+      if (isVisible) {
+        dropdown.style.display = 'none';
+      } else {
+        // Load prompts and show dropdown
+        await this.populatePromptDropup(dropdown, inputElement);
+        dropdown.style.display = 'block';
+
+        // Position dropdown above the button
+        this.positionDropup(dropdown, messageButton);
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!buttonContainer.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    buttonContainer.appendChild(messageButton);
+    buttonContainer.appendChild(dropdown);
+
+    return buttonContainer;
+  }
+
+  /**
+   * Create prompt dropdown menu (drop-up style)
+   */
+  createPromptDropup(inputElement) {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'aifiverr-prompt-dropup';
+    dropdown.style.cssText = `
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1001;
+      min-width: 200px;
+      max-width: 300px;
+      max-height: 300px;
+      overflow-y: auto;
+      display: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    return dropdown;
+  }
+
+  /**
+   * Populate dropdown with custom prompts
+   */
+  async populatePromptDropup(dropdown, inputElement) {
+    try {
+      // Clear existing content
+      dropdown.innerHTML = '';
+
+      // Get custom prompts from storage
+      const customPrompts = await this.getCustomPrompts();
+
+      if (!customPrompts || Object.keys(customPrompts).length === 0) {
+        // Show default prompts if no custom prompts
+        const defaultPrompts = this.getDefaultPrompts();
+        this.renderPromptItems(dropdown, defaultPrompts, inputElement);
+      } else {
+        this.renderPromptItems(dropdown, customPrompts, inputElement);
+      }
+    } catch (error) {
+      console.error('Failed to populate prompt dropdown:', error);
+      dropdown.innerHTML = '<div style="padding: 12px; color: #6b7280;">Failed to load prompts</div>';
+    }
+  }
+
+  /**
+   * Render prompt items in dropdown
+   */
+  renderPromptItems(dropdown, prompts, inputElement) {
+    Object.entries(prompts).forEach(([key, prompt]) => {
+      const item = document.createElement('div');
+      item.className = 'aifiverr-prompt-item';
+      item.style.cssText = `
+        padding: 12px 16px;
+        cursor: pointer;
+        border-bottom: 1px solid #f3f4f6;
+        transition: background-color 0.2s ease;
+      `;
+
+      // Get first few characters of prompt title or key
+      const title = prompt.name || prompt.title || key;
+      const displayTitle = title.length > 30 ? title.substring(0, 30) + '...' : title;
+
+      item.innerHTML = `
+        <div style="font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 2px;">
+          ${displayTitle}
+        </div>
+        <div style="font-size: 12px; color: #6b7280; line-height: 1.3;">
+          ${prompt.description || 'AI-powered response'}
+        </div>
+      `;
+
+      // Hover effect
+      item.addEventListener('mouseenter', () => {
+        item.style.backgroundColor = '#f9fafb';
+      });
+
+      item.addEventListener('mouseleave', () => {
+        item.style.backgroundColor = 'transparent';
+      });
+
+      // Click handler
+      item.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Hide dropdown
+        dropdown.style.display = 'none';
+
+        // Execute prompt
+        await this.executePrompt(inputElement, key);
+      });
+
+      dropdown.appendChild(item);
+    });
+
+    // Remove border from last item
+    const lastItem = dropdown.lastElementChild;
+    if (lastItem) {
+      lastItem.style.borderBottom = 'none';
+    }
+  }
+
+  /**
+   * Position dropdown above the button
+   */
+  positionDropup(dropdown, button) {
+    const buttonRect = button.getBoundingClientRect();
+    const dropdownRect = dropdown.getBoundingClientRect();
+
+    // Position above the button
+    dropdown.style.bottom = '100%';
+    dropdown.style.left = '0';
+    dropdown.style.marginBottom = '4px';
+
+    // Adjust if dropdown would go off-screen
+    const viewportHeight = window.innerHeight;
+    const spaceAbove = buttonRect.top;
+    const dropdownHeight = dropdown.offsetHeight || 200; // estimated height
+
+    if (spaceAbove < dropdownHeight + 20) {
+      // Not enough space above, show below instead
+      dropdown.style.bottom = 'auto';
+      dropdown.style.top = '100%';
+      dropdown.style.marginTop = '4px';
+      dropdown.style.marginBottom = '0';
+    }
+  }
+
+  /**
+   * Get custom prompts from knowledge base
+   */
+  async getCustomPrompts() {
+    try {
+      // Use knowledge base manager if available
+      if (window.knowledgeBaseManager) {
+        return window.knowledgeBaseManager.getAllCustomPrompts();
+      }
+
+      // Fallback to direct storage access
+      const result = await storageManager.get('customPrompts');
+      return result.customPrompts || {};
+    } catch (error) {
+      console.error('Failed to get custom prompts:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Get default prompts
+   */
+  getDefaultPrompts() {
+    // Use knowledge base manager if available
+    if (window.knowledgeBaseManager) {
+      const allPrompts = window.knowledgeBaseManager.getAllCustomPrompts();
+      if (Object.keys(allPrompts).length > 0) {
+        return allPrompts;
+      }
+    }
+
+    // Fallback default prompts
+    return {
+      'professional_initial_reply': {
+        name: 'Professional Reply',
+        title: 'Professional Reply',
+        description: 'Generate a professional initial response'
+      },
+      'project_summary': {
+        name: 'Project Summary',
+        title: 'Project Summary',
+        description: 'Create a project summary response'
+      },
+      'follow_up_message': {
+        name: 'Follow-up Message',
+        title: 'Follow-up Message',
+        description: 'Generate a follow-up message'
+      }
+    };
+  }
+
+  /**
+   * Execute selected prompt
+   */
+  async executePrompt(inputElement, promptKey) {
+    try {
+      // Clear any existing notifications first
+      this.clearMessageIconNotification();
+      await this.generateReplyWithPrompt(inputElement, promptKey);
+    } catch (error) {
+      console.error('Failed to execute prompt:', error);
+      this.showMessageIconNotification('Failed to generate reply', inputElement);
+    }
+  }
+
+  /**
+   * Clear existing message icon notification
+   */
+  clearMessageIconNotification() {
+    const existingNotification = document.querySelector('.aifiverr-message-icon-notification');
+    if (existingNotification) {
+      existingNotification.remove();
+    }
+  }
+
+  /**
+   * Show notification next to the message icon (simple positioning)
+   */
+  showMessageIconNotification(message, inputElement, duration = 3000) {
+    // Clear any existing notification
+    this.clearMessageIconNotification();
+
+    // Find the message icon container
+    const messageIconContainer = inputElement.parentElement?.querySelector('.aifiverr-message-icon-container');
+    if (!messageIconContainer) {
+      // Fallback to regular tooltip if message icon not found
+      showTooltip(message, inputElement);
+      if (duration > 0) setTimeout(removeTooltip, duration);
+      return;
+    }
+
+    // Create notification
+    const notification = document.createElement('div');
+    notification.className = 'aifiverr-message-icon-notification';
+    notification.textContent = message;
+
+    // Simple positioning: just append to the message icon container and position to the right
+    messageIconContainer.style.position = 'relative';
+    messageIconContainer.appendChild(notification);
+
+    // Position to the right of the icon
+    Object.assign(notification.style, {
+      position: 'absolute',
+      left: '100%',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      marginLeft: '8px',
+      zIndex: '1002',
+      whiteSpace: 'nowrap'
+    });
+
+    // Auto-remove after duration (if duration > 0)
+    if (duration > 0) {
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.remove();
+        }
+      }, duration);
+    }
+  }
+
+  /**
+   * Create message toggle button for dropdown
+   */
+  createMessageToggleButton() {
+    const button = document.createElement('button');
+    button.className = 'aifiverr-message-toggle';
+    button.innerHTML = '⚡';
+    button.title = 'aiFiverr: Message Actions';
+
+    const buttonStyles = {
+      backgroundColor: '#6366f1',
+      color: 'white',
+      border: 'none',
+      borderRadius: '50%',
+      width: '28px',
+      height: '28px',
+      fontSize: '14px',
+      cursor: 'pointer',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      transition: 'all 0.2s ease',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    };
+
+    Object.assign(button.style, buttonStyles);
+
+    // Hover effects
+    button.addEventListener('mouseenter', () => {
+      button.style.backgroundColor = '#4f46e5';
+      button.style.transform = 'scale(1.05)';
+    });
+
+    button.addEventListener('mouseleave', () => {
+      button.style.backgroundColor = '#6366f1';
+      button.style.transform = 'scale(1)';
+    });
+
+    // Toggle dropdown on click
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dropdown = button.parentElement.querySelector('.aifiverr-message-dropdown');
+      if (dropdown) {
+        const isVisible = dropdown.style.display === 'block';
+        dropdown.style.display = isVisible ? 'none' : 'block';
+      }
+    });
+
+    return button;
+  }
+
+  /**
+   * Create message dropdown menu
+   */
+  createMessageDropdown(messageElement) {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'aifiverr-message-dropdown';
+
+    const dropdownStyles = {
+      position: 'absolute',
+      top: '35px',
+      right: '0',
+      backgroundColor: 'white',
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px',
+      boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+      minWidth: '200px',
+      zIndex: '1001',
+      display: 'none',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    };
+
+    Object.assign(dropdown.style, dropdownStyles);
+
+    // Create dropdown items
+    const actions = [
+      { key: 'translate_message', label: 'Translate', icon: '🌐' },
+      { key: 'summarize_message', label: 'Summarize', icon: '📝' },
+      { key: 'analyze', label: 'Analyze', icon: '🔍' }
+    ];
+
+    actions.forEach(action => {
+      const item = document.createElement('div');
+      item.className = 'aifiverr-dropdown-item';
+      item.innerHTML = `<span class="dropdown-icon">${action.icon}</span> ${action.label}`;
+
+      const itemStyles = {
+        padding: '12px 16px',
+        cursor: 'pointer',
+        borderBottom: '1px solid #f3f4f6',
+        transition: 'background-color 0.2s ease',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '14px',
+        color: '#374151'
+      };
+
+      Object.assign(item.style, itemStyles);
+
+      // Hover effects
+      item.addEventListener('mouseenter', () => {
+        item.style.backgroundColor = '#f9fafb';
+      });
+
+      item.addEventListener('mouseleave', () => {
+        item.style.backgroundColor = 'transparent';
+      });
+
+      // Click handler
+      item.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropdown.style.display = 'none';
+        await this.handleMessageAction(messageElement, action.key);
+      });
+
+      dropdown.appendChild(item);
+    });
+
+    // Remove border from last item
+    const lastItem = dropdown.lastElementChild;
+    if (lastItem) {
+      lastItem.style.borderBottom = 'none';
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && !dropdown.parentElement.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    return dropdown;
+  }
+
+  /**
+   * Add refinement feature to input element
+   */
+  addRefinementFeature(inputElement) {
+    let refinementIcon = null;
+    let typingTimer = null;
+
+    // Function to show refinement icon
+    const showRefinementIcon = () => {
+      if (refinementIcon) return; // Already showing
+
+      refinementIcon = this.createRefinementIcon();
+
+      // Position icon relative to input
+      const rect = inputElement.getBoundingClientRect();
+      refinementIcon.style.position = 'fixed';
+      refinementIcon.style.top = `${rect.top - 40}px`;
+      refinementIcon.style.right = `${window.innerWidth - rect.right}px`;
+      refinementIcon.style.zIndex = '1000';
+
+      document.body.appendChild(refinementIcon);
+
+      // Add click handler
+      refinementIcon.addEventListener('click', async (e) => {
+        e.preventDefault();
+        await this.handleRefinementOptions(inputElement);
+      });
+
+      // Auto-hide after 10 seconds of no typing
+      setTimeout(() => {
+        if (refinementIcon && refinementIcon.parentNode) {
+          refinementIcon.remove();
+          refinementIcon = null;
+        }
+      }, 10000);
+    };
+
+    // Function to hide refinement icon
+    const hideRefinementIcon = () => {
+      if (refinementIcon && refinementIcon.parentNode) {
+        refinementIcon.remove();
+        refinementIcon = null;
+      }
+    };
+
+    // Listen for input events
+    inputElement.addEventListener('input', () => {
+      const text = inputElement.value.trim();
+
+      // Clear existing timer
+      if (typingTimer) {
+        clearTimeout(typingTimer);
+      }
+
+      // Hide icon if input is empty
+      if (!text) {
+        hideRefinementIcon();
+        return;
+      }
+
+      // Show icon after user stops typing for 1 second
+      typingTimer = setTimeout(() => {
+        if (text.length > 10) { // Only show for meaningful text
+          showRefinementIcon();
+        }
+      }, 1000);
+    });
+
+    // Hide icon when input loses focus
+    inputElement.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!document.activeElement?.closest('.aifiverr-refinement-popup')) {
+          hideRefinementIcon();
+        }
+      }, 200);
+    });
+  }
+
+  /**
+   * Create refinement icon
+   */
+  createRefinementIcon() {
+    const icon = document.createElement('div');
+    icon.className = 'aifiverr-refinement-icon';
+    icon.innerHTML = '✨';
+    icon.title = 'aiFiverr: Refine your message';
+
+    const iconStyles = {
+      backgroundColor: '#8b5cf6',
+      color: 'white',
+      border: 'none',
+      borderRadius: '50%',
+      width: '36px',
+      height: '36px',
+      fontSize: '18px',
+      cursor: 'pointer',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      transition: 'all 0.2s ease',
+      boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      animation: 'aifiverr-pulse 2s infinite'
+    };
+
+    Object.assign(icon.style, iconStyles);
+
+    // Hover effects
+    icon.addEventListener('mouseenter', () => {
+      icon.style.backgroundColor = '#7c3aed';
+      icon.style.transform = 'scale(1.1)';
+    });
+
+    icon.addEventListener('mouseleave', () => {
+      icon.style.backgroundColor = '#8b5cf6';
+      icon.style.transform = 'scale(1)';
+    });
+
+    return icon;
+  }
+
+  /**
    * Create button container
    */
   createButtonContainer() {
@@ -327,22 +974,22 @@ class FiverrInjector {
   async handleChatGeneration(inputElement) {
     try {
       showTooltip('Generating reply...', inputElement);
-      
+
       // Get conversation context
       const conversationData = await fiverrExtractor.extractConversation();
       const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
-      
+
       // Get or create session
       const session = await sessionManager.getOrCreateSession(window.location.href);
-      
+
       // Generate reply using AI
       const reply = await this.generateAIReply(context, session);
-      
+
       if (reply) {
         inputElement.value = reply;
         inputElement.dispatchEvent(new Event('input', { bubbles: true }));
       }
-      
+
       removeTooltip();
     } catch (error) {
       console.error('Chat generation failed:', error);
@@ -352,28 +999,462 @@ class FiverrInjector {
   }
 
   /**
-   * Handle message analysis
+   * Handle prompt selection for chat generation
    */
-  async handleMessageAnalysis(messageElement) {
+  async handlePromptSelection(inputElement) {
     try {
-      const messageData = fiverrExtractor.parseMessageElement(messageElement);
-      if (!messageData) return;
-
-      showTooltip('Analyzing message...', messageElement);
-      
-      // Analyze message with AI
-      const analysis = await this.analyzeMessage(messageData.content);
-      
-      if (analysis) {
-        this.showAnalysisPopup(analysis, messageElement);
+      if (!window.promptSelector) {
+        console.error('Prompt selector not available');
+        showTooltip('Prompt selector not available', inputElement);
+        setTimeout(removeTooltip, 3000);
+        return;
       }
-      
-      removeTooltip();
+
+      // Show prompt selector with callback
+      await window.promptSelector.show(inputElement, async (promptKey, element) => {
+        await this.generateReplyWithPrompt(element, promptKey);
+      });
     } catch (error) {
-      console.error('Message analysis failed:', error);
-      showTooltip('Analysis failed', messageElement);
+      console.error('Failed to show prompt selector:', error);
+      showTooltip('Failed to show prompt selector', inputElement);
       setTimeout(removeTooltip, 3000);
     }
+  }
+
+  /**
+   * Generate reply with specific prompt
+   */
+  async generateReplyWithPrompt(inputElement, promptKey) {
+    const messageIconContainer = inputElement.parentElement?.querySelector('.aifiverr-message-icon-container');
+    const messageIcon = messageIconContainer?.querySelector('.aifiverr-message-icon-button');
+
+    try {
+      // Start loading animation on message icon
+      this.startMessageIconLoading(messageIcon);
+
+      // Get conversation context
+      const conversationData = await fiverrExtractor.extractConversation();
+      const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
+
+      // Get or create session
+      const session = await sessionManager.getOrCreateSession(window.location.href);
+
+      // Generate reply using AI with specific prompt
+      const reply = await this.generateAIReply(context, session, promptKey);
+
+      if (reply) {
+        inputElement.value = reply;
+        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        this.showMessageIconNotification('Reply generated successfully!', inputElement, 2000);
+      } else {
+        this.showMessageIconNotification('No reply generated', inputElement);
+      }
+    } catch (error) {
+      console.error('Chat generation with prompt failed:', error);
+      this.showMessageIconNotification('Failed to generate reply', inputElement);
+    } finally {
+      // Stop loading animation
+      this.stopMessageIconLoading(messageIcon);
+    }
+  }
+
+  /**
+   * Start loading animation on message icon
+   */
+  startMessageIconLoading(messageIcon) {
+    if (!messageIcon) return;
+
+    messageIcon.classList.add('loading');
+    messageIcon.innerHTML = '💬';
+
+    // Add animated dots
+    let dotCount = 0;
+    const animateIcon = () => {
+      if (!messageIcon.classList.contains('loading')) return;
+
+      dotCount = (dotCount + 1) % 4;
+      const dots = '.'.repeat(dotCount);
+      messageIcon.innerHTML = `💬${dots}`;
+
+      setTimeout(animateIcon, 500);
+    };
+
+    setTimeout(animateIcon, 500);
+  }
+
+  /**
+   * Stop loading animation on message icon
+   */
+  stopMessageIconLoading(messageIcon) {
+    if (!messageIcon) return;
+
+    messageIcon.classList.remove('loading');
+    messageIcon.innerHTML = '💬';
+  }
+
+  /**
+   * Handle refinement options
+   */
+  async handleRefinementOptions(inputElement) {
+    try {
+      const currentText = inputElement.value.trim();
+      if (!currentText) {
+        showTooltip('No text to refine', inputElement);
+        setTimeout(removeTooltip, 3000);
+        return;
+      }
+
+      // Show refinement popup
+      this.showRefinementPopup(inputElement, currentText);
+    } catch (error) {
+      console.error('Failed to show refinement options:', error);
+      showTooltip('Failed to show refinement options', inputElement);
+      setTimeout(removeTooltip, 3000);
+    }
+  }
+
+  /**
+   * Show refinement popup
+   */
+  showRefinementPopup(inputElement, currentText) {
+    // Remove existing popup
+    const existingPopup = document.querySelector('.aifiverr-refinement-popup');
+    if (existingPopup) {
+      existingPopup.remove();
+    }
+
+    const popup = document.createElement('div');
+    popup.className = 'aifiverr-refinement-popup';
+
+    const refinementOptions = [
+      { key: 'refine_message', label: 'Refine Message', icon: '✨', description: 'Improve clarity and professionalism' },
+      { key: 'detailed_response', label: 'Make More Detailed', icon: '📝', description: 'Generate a comprehensive response' },
+      { key: 'translate_and_refine', label: 'Translate & Refine', icon: '🌐', description: 'Refine and translate to another language' }
+    ];
+
+    popup.innerHTML = `
+      <div class="refinement-popup-backdrop"></div>
+      <div class="refinement-popup-modal">
+        <div class="refinement-popup-header">
+          <h3>Refine Your Message</h3>
+          <button class="close-btn">×</button>
+        </div>
+        <div class="refinement-popup-content">
+          <div class="original-text">
+            <h4>Original Text:</h4>
+            <div class="text-preview">${escapeHtml(currentText)}</div>
+          </div>
+          <div class="refinement-options">
+            <h4>Choose Refinement Option:</h4>
+            ${refinementOptions.map(option => `
+              <div class="refinement-option" data-key="${option.key}">
+                <div class="option-icon">${option.icon}</div>
+                <div class="option-content">
+                  <div class="option-label">${option.label}</div>
+                  <div class="option-description">${option.description}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Style the popup
+    const popupStyles = {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '100%',
+      height: '100%',
+      zIndex: '10003',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    };
+    Object.assign(popup.style, popupStyles);
+
+    document.body.appendChild(popup);
+
+    // Event listeners
+    popup.querySelector('.close-btn').addEventListener('click', () => {
+      popup.remove();
+    });
+
+    popup.querySelector('.refinement-popup-backdrop').addEventListener('click', () => {
+      popup.remove();
+    });
+
+    popup.querySelectorAll('.refinement-option').forEach(option => {
+      option.addEventListener('click', async () => {
+        const optionKey = option.dataset.key;
+        popup.remove();
+        await this.handleRefinementAction(inputElement, currentText, optionKey);
+      });
+    });
+  }
+
+  /**
+   * Handle refinement action
+   */
+  async handleRefinementAction(inputElement, originalText, actionKey) {
+    try {
+      let result;
+
+      switch (actionKey) {
+        case 'refine_message':
+          result = await this.refineMessage(originalText);
+          break;
+        case 'detailed_response':
+          result = await this.makeDetailedResponse(originalText);
+          break;
+        case 'translate_and_refine':
+          result = await this.translateAndRefine(originalText);
+          break;
+        default:
+          console.warn('Unknown refinement action:', actionKey);
+          return;
+      }
+
+      if (result) {
+        inputElement.value = result;
+        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        showTooltip('Message refined!', inputElement);
+        setTimeout(removeTooltip, 2000);
+      }
+    } catch (error) {
+      console.error(`Refinement action '${actionKey}' failed:`, error);
+      showTooltip('Failed to refine message', inputElement);
+      setTimeout(removeTooltip, 3000);
+    }
+  }
+
+  /**
+   * Refine message for clarity and professionalism
+   */
+  async refineMessage(originalText) {
+    showTooltip('Refining message...', document.body);
+
+    try {
+      // Get conversation context
+      const conversationData = await fiverrExtractor.extractConversation();
+      const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
+
+      // Prepare context variables
+      const contextVars = {
+        conversation: originalText,
+        message: originalText
+      };
+
+      // Process refine prompt
+      const prompt = await knowledgeBaseManager.processPrompt('refine_message', contextVars);
+      const response = await geminiClient.generateContent(prompt);
+
+      removeTooltip();
+      return response.text;
+    } catch (error) {
+      console.error('Message refinement failed:', error);
+      removeTooltip();
+      throw error;
+    }
+  }
+
+  /**
+   * Make detailed response
+   */
+  async makeDetailedResponse(originalText) {
+    showTooltip('Creating detailed response...', document.body);
+
+    try {
+      // Get conversation context
+      const conversationData = await fiverrExtractor.extractConversation();
+      const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
+
+      // Prepare context variables
+      const contextVars = {
+        message: originalText,
+        conversation: context
+      };
+
+      // Process detailed response prompt
+      const prompt = await knowledgeBaseManager.processPrompt('detailed_response', contextVars);
+      const response = await geminiClient.generateContent(prompt);
+
+      removeTooltip();
+      return response.text;
+    } catch (error) {
+      console.error('Detailed response generation failed:', error);
+      removeTooltip();
+      throw error;
+    }
+  }
+
+  /**
+   * Translate and refine message
+   */
+  async translateAndRefine(originalText) {
+    // Show language selection
+    const language = await this.showLanguageSelector(document.body);
+    if (!language) return null;
+
+    showTooltip(`Refining and translating to ${language}...`, document.body);
+
+    try {
+      // Prepare context variables
+      const contextVars = {
+        conversation: originalText,
+        language: language
+      };
+
+      // Process refine and translate prompt
+      const prompt = await knowledgeBaseManager.processPrompt('refine_and_translate', contextVars);
+      const response = await geminiClient.generateContent(prompt);
+
+      removeTooltip();
+      return response.text;
+    } catch (error) {
+      console.error('Translate and refine failed:', error);
+      removeTooltip();
+      throw error;
+    }
+  }
+
+  /**
+   * Handle message action (translate, summarize, analyze)
+   */
+  async handleMessageAction(messageElement, actionKey) {
+    try {
+      const messageData = fiverrExtractor.parseMessageElement(messageElement);
+      if (!messageData) {
+        showTooltip('Could not extract message content', messageElement);
+        setTimeout(removeTooltip, 3000);
+        return;
+      }
+
+      const messageContent = messageData.content;
+      let result;
+
+      switch (actionKey) {
+        case 'translate_message':
+          result = await this.handleTranslateMessage(messageContent, messageElement);
+          break;
+        case 'summarize_message':
+          result = await this.handleSummarizeMessage(messageContent, messageElement);
+          break;
+        case 'analyze':
+          result = await this.handleAnalyzeMessage(messageContent, messageElement);
+          break;
+        default:
+          console.warn('Unknown action key:', actionKey);
+          return;
+      }
+
+      if (result) {
+        this.showActionResult(result, messageElement, actionKey);
+      }
+    } catch (error) {
+      console.error(`Message action '${actionKey}' failed:`, error);
+      showTooltip(`Failed to ${actionKey.replace('_', ' ')}`, messageElement);
+      setTimeout(removeTooltip, 3000);
+    }
+  }
+
+  /**
+   * Handle translate message action
+   */
+  async handleTranslateMessage(messageContent, messageElement) {
+    // Show language selection popup
+    const language = await this.showLanguageSelector(messageElement);
+    if (!language) return null;
+
+    showTooltip(`Translating to ${language}...`, messageElement);
+
+    try {
+      // Get conversation context
+      const conversationData = await fiverrExtractor.extractConversation();
+      const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
+
+      // Prepare context variables
+      const contextVars = {
+        message: messageContent,
+        language: language,
+        conversation: context
+      };
+
+      // Process translate prompt
+      const prompt = await knowledgeBaseManager.processPrompt('translate_message', contextVars);
+      const response = await geminiClient.generateContent(prompt);
+
+      removeTooltip();
+      return {
+        title: `Translation (${language})`,
+        content: response.text
+      };
+    } catch (error) {
+      console.error('Translation failed:', error);
+      removeTooltip();
+      throw error;
+    }
+  }
+
+  /**
+   * Handle summarize message action
+   */
+  async handleSummarizeMessage(messageContent, messageElement) {
+    showTooltip('Summarizing message...', messageElement);
+
+    try {
+      // Get conversation context
+      const conversationData = await fiverrExtractor.extractConversation();
+      const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
+
+      // Prepare context variables
+      const contextVars = {
+        message: messageContent,
+        conversation: context
+      };
+
+      // Process summarize prompt
+      const prompt = await knowledgeBaseManager.processPrompt('summarize_message', contextVars);
+      const response = await geminiClient.generateContent(prompt);
+
+      removeTooltip();
+      return {
+        title: 'Summary',
+        content: response.text
+      };
+    } catch (error) {
+      console.error('Summarization failed:', error);
+      removeTooltip();
+      throw error;
+    }
+  }
+
+  /**
+   * Handle analyze message action
+   */
+  async handleAnalyzeMessage(messageContent, messageElement) {
+    showTooltip('Analyzing message...', messageElement);
+
+    try {
+      // Use existing analysis method
+      const analysis = await this.analyzeMessage(messageContent);
+
+      removeTooltip();
+      return {
+        title: 'Analysis',
+        content: analysis
+      };
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      removeTooltip();
+      throw error;
+    }
+  }
+
+  /**
+   * Handle message analysis (legacy method for compatibility)
+   */
+  async handleMessageAnalysis(messageElement) {
+    await this.handleMessageAction(messageElement, 'analyze');
   }
 
   /**
@@ -492,18 +1573,125 @@ class FiverrInjector {
   }
 
   /**
-   * Start monitoring for new elements
+   * Start monitoring for new elements - CONSERVATIVE
    */
   startMonitoring() {
+    // Less frequent detection to avoid spam
     setInterval(() => {
       fiverrDetector.detectAllElements();
-    }, 5000); // Check every 5 seconds
+    }, 10000); // Check every 10 seconds only
+
+    // More conservative DOM monitoring - only for textareas
+    const observer = new MutationObserver((mutations) => {
+      let shouldRedetect = false;
+
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          // Only check for textareas being added
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node;
+              // Only care about textareas
+              if (element.tagName === 'TEXTAREA' ||
+                  element.querySelector('textarea')) {
+                shouldRedetect = true;
+              }
+            }
+          });
+        }
+      });
+
+      if (shouldRedetect) {
+        setTimeout(() => {
+          fiverrDetector.detectAllElements();
+        }, 2000); // Longer delay to let DOM settle
+      }
+    });
+
+    // Start observing
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    // Store observer for cleanup
+    this.mutationObserver = observer;
+  }
+
+  /**
+   * Add manual trigger for testing/debugging
+   */
+  addManualTrigger() {
+    // Add a keyboard shortcut to manually trigger detection
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Shift+D: Manual detection trigger
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        console.log('aiFiverr: Manual detection triggered');
+        this.forceDetectionAndInjection();
+      }
+    });
+
+    // DISABLE automatic click-based detection - it's too aggressive
+    // Only manual triggers now
+  }
+
+  /**
+   * Force detection and injection - CONSERVATIVE
+   */
+  forceDetectionAndInjection() {
+    console.log('aiFiverr: Force detecting elements...');
+
+    // DON'T clear all processed markers - only clear if needed
+
+    // Force detection through proper channels
+    fiverrDetector.detectAllElements();
+
+    // ONLY manually look for textareas with very specific criteria
+    const textareas = document.querySelectorAll('textarea');
+    console.log('aiFiverr: Found textareas:', textareas.length);
+
+    let validTextareas = 0;
+    textareas.forEach((textarea, index) => {
+      console.log(`aiFiverr: Textarea ${index}:`, textarea);
+      console.log('  - Placeholder:', textarea.placeholder);
+      console.log('  - Is chat input:', fiverrDetector.isChatInput(textarea));
+      console.log('  - Is processed:', fiverrDetector.isProcessed(textarea));
+
+      if (fiverrDetector.isChatInput(textarea) && !fiverrDetector.isProcessed(textarea)) {
+        console.log('  - Injecting button for textarea');
+        this.injectChatInputButton(textarea);
+        fiverrDetector.markAsProcessed(textarea);
+        validTextareas++;
+      }
+    });
+
+    console.log(`aiFiverr: Injected buttons for ${validTextareas} valid textareas`);
+
+    // ONLY look for very specific message elements
+    const messageElements = document.querySelectorAll('[data-qa="message-item"], [data-qa="message-bubble"], .message-item');
+    console.log('aiFiverr: Found specific message elements:', messageElements.length);
+
+    let validMessages = 0;
+    messageElements.forEach((element, index) => {
+      if (!fiverrDetector.isProcessed(element) &&
+          element.textContent &&
+          element.textContent.trim().length > 20 &&
+          element.textContent.trim().length < 1000) {
+        console.log(`aiFiverr: Injecting message button for element ${index}:`, element);
+        this.injectMessageAnalysisButton(element);
+        fiverrDetector.markAsProcessed(element);
+        validMessages++;
+      }
+    });
+
+    console.log(`aiFiverr: Injected buttons for ${validMessages} valid messages`);
   }
 
   /**
    * AI integration methods
    */
-  async generateAIReply(context, session) {
+  async generateAIReply(context, session, promptKey = null) {
     try {
       // Extract conversation data and username
       const conversationData = await fiverrExtractor.extractConversation();
@@ -515,12 +1703,15 @@ class FiverrInjector {
         username: username || 'Client'
       };
 
-      // Use knowledge base manager to process the professional reply prompt
+      // Use specified prompt key or default to professional reply
+      const selectedPromptKey = promptKey || 'professional_initial_reply';
+
+      // Use knowledge base manager to process the selected prompt
       let prompt;
       try {
-        prompt = await knowledgeBaseManager.processPrompt('professional_initial_reply', contextVars);
+        prompt = await knowledgeBaseManager.processPrompt(selectedPromptKey, contextVars);
       } catch (error) {
-        console.warn('Professional reply prompt not found, using fallback:', error);
+        console.warn(`Prompt '${selectedPromptKey}' not found, using fallback:`, error);
         // Fallback to basic prompt if the structured prompt is not available
         prompt = 'Generate a professional reply for this Fiverr conversation';
         if (context) {
@@ -671,6 +1862,131 @@ class FiverrInjector {
         popup.remove();
       }
     }, 10000);
+  }
+
+  /**
+   * Show language selector popup
+   */
+  async showLanguageSelector(messageElement) {
+    return new Promise((resolve) => {
+      // Remove existing selector
+      const existingSelector = document.querySelector('.aifiverr-language-selector');
+      if (existingSelector) {
+        existingSelector.remove();
+      }
+
+      const selector = document.createElement('div');
+      selector.className = 'aifiverr-language-selector';
+
+      const languages = [
+        'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Dutch',
+        'Russian', 'Chinese', 'Japanese', 'Korean', 'Arabic', 'Hindi'
+      ];
+
+      selector.innerHTML = `
+        <div class="language-selector-backdrop"></div>
+        <div class="language-selector-modal">
+          <div class="language-selector-header">
+            <h3>Select Target Language</h3>
+            <button class="close-btn">×</button>
+          </div>
+          <div class="language-selector-content">
+            ${languages.map(lang => `
+              <div class="language-option" data-language="${lang}">
+                ${lang}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      // Style the selector
+      const selectorStyles = {
+        position: 'fixed',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        zIndex: '10002',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      };
+      Object.assign(selector.style, selectorStyles);
+
+      document.body.appendChild(selector);
+
+      // Event listeners
+      selector.querySelector('.close-btn').addEventListener('click', () => {
+        selector.remove();
+        resolve(null);
+      });
+
+      selector.querySelector('.language-selector-backdrop').addEventListener('click', () => {
+        selector.remove();
+        resolve(null);
+      });
+
+      selector.querySelectorAll('.language-option').forEach(option => {
+        option.addEventListener('click', () => {
+          const language = option.dataset.language;
+          selector.remove();
+          resolve(language);
+        });
+      });
+    });
+  }
+
+  /**
+   * Show action result popup
+   */
+  showActionResult(result, messageElement, actionKey) {
+    // Remove existing popup
+    const existingPopup = document.querySelector('.aifiverr-action-result-popup');
+    if (existingPopup) {
+      existingPopup.remove();
+    }
+
+    const popup = document.createElement('div');
+    popup.className = 'aifiverr-action-result-popup';
+    popup.innerHTML = `
+      <div class="result-header">
+        <h3>${result.title}</h3>
+        <button class="close-btn">×</button>
+      </div>
+      <div class="result-content">
+        ${result.content.replace(/\n/g, '<br>')}
+      </div>
+      <div class="result-actions">
+        <button class="copy-btn">Copy</button>
+      </div>
+    `;
+
+    // Position popup near the message
+    const rect = messageElement.getBoundingClientRect();
+    popup.style.position = 'fixed';
+    popup.style.top = `${Math.min(rect.top + window.scrollY - 10, window.innerHeight - 400)}px`;
+    popup.style.left = `${Math.min(rect.right + 10, window.innerWidth - 350)}px`;
+    popup.style.zIndex = '10000';
+
+    document.body.appendChild(popup);
+
+    // Event listeners
+    popup.querySelector('.close-btn').addEventListener('click', () => {
+      popup.remove();
+    });
+
+    popup.querySelector('.copy-btn').addEventListener('click', () => {
+      navigator.clipboard.writeText(result.content).then(() => {
+        showTooltip('Copied to clipboard!', popup.querySelector('.copy-btn'));
+        setTimeout(removeTooltip, 2000);
+      });
+    });
+
+    // Auto-close after 15 seconds
+    setTimeout(() => {
+      if (popup.parentNode) {
+        popup.remove();
+      }
+    }, 15000);
   }
 
   /**

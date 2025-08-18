@@ -102,15 +102,34 @@ class BackgroundManager {
     const keyStatus = this.keyHealthStatus.get(keyIndex);
     if (keyStatus) {
       keyStatus.errorCount++;
-      
+
       if (error?.message?.includes('quota') || error?.message?.includes('limit')) {
         keyStatus.quotaExhausted = true;
       }
-      
+
       if (keyStatus.errorCount >= 3) {
         keyStatus.isHealthy = false;
       }
-      
+
+      this.saveKeyHealthStatus();
+    }
+  }
+
+  markKeySuccess(keyIndex) {
+    const keyStatus = this.keyHealthStatus.get(keyIndex);
+    if (keyStatus) {
+      keyStatus.lastUsed = Date.now();
+
+      // Reset error count on success
+      if (keyStatus.errorCount > 0) {
+        keyStatus.errorCount = Math.max(0, keyStatus.errorCount - 1);
+      }
+
+      // Mark as healthy if it was unhealthy
+      if (!keyStatus.isHealthy && keyStatus.errorCount === 0) {
+        keyStatus.isHealthy = true;
+      }
+
       this.saveKeyHealthStatus();
     }
   }
@@ -125,6 +144,11 @@ class BackgroundManager {
 
         case 'MARK_KEY_UNHEALTHY':
           this.markKeyUnhealthy(request.keyIndex, request.error);
+          sendResponse({ success: true });
+          break;
+
+        case 'MARK_KEY_SUCCESS':
+          this.markKeySuccess(request.keyIndex);
           sendResponse({ success: true });
           break;
 

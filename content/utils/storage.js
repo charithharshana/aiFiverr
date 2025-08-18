@@ -48,8 +48,18 @@ class StorageManager {
    */
   async set(data) {
     try {
+      // Validate input
+      if (!data || typeof data !== 'object') {
+        throw new Error('Storage.set requires an object parameter');
+      }
+
+      // Check if extension context is valid
+      if (!chrome.runtime?.id) {
+        throw new Error('Extension context invalidated');
+      }
+
       await chrome.storage.local.set(data);
-      
+
       // Update cache
       Object.entries(data).forEach(([key, value]) => {
         this.cache.set(key, value);
@@ -296,10 +306,24 @@ class StorageManager {
       this.cache.clear();
       
       // Broadcast sync event to other tabs
-      chrome.runtime.sendMessage({
-        type: 'STORAGE_SYNC',
-        timestamp: Date.now()
-      });
+      try {
+        // Check if extension context is still valid
+        if (!chrome.runtime?.id) {
+          console.warn('aiFiverr: Extension context invalidated, cannot sync across tabs');
+          return;
+        }
+
+        chrome.runtime.sendMessage({
+          type: 'STORAGE_SYNC',
+          timestamp: Date.now()
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn('aiFiverr: Storage sync error:', chrome.runtime.lastError.message);
+          }
+        });
+      } catch (error) {
+        console.warn('aiFiverr: Could not send sync message:', error.message);
+      }
     } catch (error) {
       console.error('Sync error:', error);
     } finally {

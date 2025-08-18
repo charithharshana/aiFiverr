@@ -69,7 +69,6 @@ A comprehensive Chrome extension that enhances your Fiverr experience with AI-po
 
 ### Keyboard Shortcuts
 - `Ctrl+Shift+A`: Open floating AI assistant
-- `Ctrl+Shift+G`: Generate AI reply for focused input field
 
 ### Advanced Features
 

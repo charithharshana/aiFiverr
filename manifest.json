@@ -37,6 +37,7 @@
         "content/utils/helpers.js",
         "content/utils/storage.js",
         "content/utils/export-import.js",
+        "content/utils/prompt-selector.js",
         "content/fiverr/detector.js",
         "content/fiverr/extractor.js",
         "content/fiverr/injector.js",

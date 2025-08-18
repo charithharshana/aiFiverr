@@ -397,7 +397,10 @@ class PopupManager {
       const apiKeysInput = document.getElementById('apiKeysInput');
       const eyeIcon = document.getElementById('eyeIcon');
       if (apiKeysInput && eyeIcon) {
-        apiKeysInput.type = 'password';
+        // Use CSS to hide content instead of type property (textarea doesn't have type)
+        apiKeysInput.style.webkitTextSecurity = 'disc';
+        apiKeysInput.style.textSecurity = 'disc';
+        apiKeysInput.dataset.hidden = 'true';
         eyeIcon.textContent = '👁️';
         eyeIcon.parentElement.title = 'Show API keys';
       }
@@ -1305,17 +1308,21 @@ class PopupManager {
     const apiKeysInput = document.getElementById('apiKeysInput');
     const eyeIcon = document.getElementById('eyeIcon');
 
-    // Toggle between text and password type
-    const isCurrentlyHidden = apiKeysInput.type === 'password' || !apiKeysInput.type;
+    // Toggle between hidden and visible using CSS properties
+    const isCurrentlyHidden = apiKeysInput.dataset.hidden === 'true';
 
     if (isCurrentlyHidden) {
       // Show actual keys
-      apiKeysInput.type = 'text';
+      apiKeysInput.style.webkitTextSecurity = 'none';
+      apiKeysInput.style.textSecurity = 'none';
+      apiKeysInput.dataset.hidden = 'false';
       eyeIcon.textContent = '🙈'; // Hide icon when keys are visible
       eyeIcon.parentElement.title = 'Hide API keys';
     } else {
       // Hide keys
-      apiKeysInput.type = 'password';
+      apiKeysInput.style.webkitTextSecurity = 'disc';
+      apiKeysInput.style.textSecurity = 'disc';
+      apiKeysInput.dataset.hidden = 'true';
       eyeIcon.textContent = '👁️'; // Show icon when keys are hidden
       eyeIcon.parentElement.title = 'Show API keys';
     }
@@ -1795,10 +1802,17 @@ class PopupManager {
   async sendMessageToBackground(message) {
     return new Promise((resolve) => {
       try {
+        // Check if extension context is valid before sending message
+        if (!chrome.runtime?.id) {
+          resolve({ success: false, error: 'Extension context invalidated' });
+          return;
+        }
+
         chrome.runtime.sendMessage(message, (response) => {
           if (chrome.runtime.lastError) {
-            console.error('Runtime error:', chrome.runtime.lastError);
-            resolve({ success: false, error: chrome.runtime.lastError.message });
+            const errorMessage = chrome.runtime.lastError.message || 'Unknown runtime error';
+            console.warn('Runtime error:', errorMessage);
+            resolve({ success: false, error: errorMessage });
             return;
           }
           resolve(response || { success: false, error: 'No response from background script' });
@@ -1839,33 +1853,36 @@ class PopupManager {
       try {
         // Validate data before saving
         if (!data || typeof data !== 'object') {
+          console.error('Invalid data format for storage:', data);
           reject(new Error('Invalid data format for storage'));
           return;
         }
 
-        // Check for circular references
+        // Check for circular references and clean data
+        let cleanData = {};
         try {
-          JSON.stringify(data);
+          Object.keys(data).forEach(key => {
+            if (data[key] !== undefined && data[key] !== null) {
+              // Test if value can be serialized
+              JSON.stringify(data[key]);
+              cleanData[key] = data[key];
+            }
+          });
         } catch (circularError) {
+          console.error('Data contains circular references:', circularError);
           reject(new Error('Data contains circular references'));
           return;
         }
 
-        // Add timestamp to track when data was saved
-        const dataWithTimestamp = {};
-        Object.keys(data).forEach(key => {
-          dataWithTimestamp[key] = data[key];
-          dataWithTimestamp[`${key}_timestamp`] = Date.now();
-        });
-
-        chrome.storage.local.set(dataWithTimestamp, () => {
+        // Use clean data without timestamps to avoid storage issues
+        chrome.storage.local.set(cleanData, () => {
           if (chrome.runtime.lastError) {
             console.error('Storage set error:', chrome.runtime.lastError);
             reject(new Error(chrome.runtime.lastError.message));
             return;
           }
 
-          console.log('Successfully saved to storage:', Object.keys(data));
+          console.log('Successfully saved to storage:', Object.keys(cleanData));
           resolve(true);
         });
       } catch (error) {

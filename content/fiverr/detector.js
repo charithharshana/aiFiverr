@@ -123,7 +123,8 @@ class FiverrDetector {
     this.detectProposalElements();
     this.detectBriefElements();
     this.detectInputElements();
-    
+    this.detectMessageElements();
+
     // Notify about detected elements
     this.notifyDetection();
   }
@@ -133,31 +134,42 @@ class FiverrDetector {
    */
   detectChatElements() {
     const chatSelectors = [
-      // Message containers
-      '[data-testid*="message"]',
+      // Modern Fiverr message containers - more specific selectors
+      '[data-qa="message-item"]',
+      '[data-qa*="message"]',
+      '.message-item',
       '.message-bubble',
       '.chat-message',
       '.conversation-message',
-      
-      // Input areas
+
+      // Fiverr inbox specific selectors
+      '[class*="message"]',
+      '[class*="Message"]',
+      'div[role="listitem"]', // Fiverr uses this for message items
+
+      // Input areas - updated for current Fiverr
+      'textarea[placeholder*="Type a message"]',
+      'textarea[placeholder*="message"]',
+      'textarea[placeholder*="reply"]',
+      'textarea[placeholder*="Write"]',
+      '[data-qa="message-input"]',
       '[data-testid="chat-input"]',
       '[data-testid*="message-input"]',
       '.chat-input',
       '.message-input',
       '.conversation-input',
-      'textarea[placeholder*="message"]',
-      'textarea[placeholder*="reply"]',
-      
+
       // Send buttons
       '[data-testid*="send"]',
       'button[type="submit"]',
       '.send-button',
-      '.message-send'
+      '.message-send',
+      'button[aria-label*="Send"]'
     ];
 
     const elements = this.findElements(chatSelectors);
     this.detectedElements.set('chat', elements);
-    
+
     return elements;
   }
 
@@ -221,21 +233,97 @@ class FiverrDetector {
     ];
 
     const elements = this.findElements(inputSelectors);
-    
+
     // Filter out elements that are too small or hidden
     const validElements = elements.filter(el => {
       const rect = el.getBoundingClientRect();
       const style = getComputedStyle(el);
-      
-      return rect.width > 50 && 
-             rect.height > 20 && 
-             style.display !== 'none' && 
+
+      return rect.width > 50 &&
+             rect.height > 20 &&
+             style.display !== 'none' &&
              style.visibility !== 'hidden';
     });
 
     this.detectedElements.set('inputs', validElements);
-    
+
     return validElements;
+  }
+
+  /**
+   * Detect message elements - VERY CONSERVATIVE
+   */
+  detectMessageElements() {
+    // Only use very specific selectors - no generic div scanning
+    const messageSelectors = [
+      '[data-qa="message-item"]',
+      '[data-qa="message-bubble"]',
+      '[data-testid*="message-item"]',
+      '.message-item:not([data-aifiverr-processed])',
+      '.message-bubble:not([data-aifiverr-processed])'
+    ];
+
+    let messageElements = [];
+
+    // Only try specific selectors - no generic div scanning
+    messageSelectors.forEach(selector => {
+      try {
+        const elements = document.querySelectorAll(selector);
+        messageElements.push(...Array.from(elements));
+      } catch (e) {
+        // Ignore invalid selectors
+      }
+    });
+
+    // Remove duplicates and filter valid elements
+    const uniqueElements = [...new Set(messageElements)];
+    const validElements = uniqueElements.filter(el => {
+      const rect = el.getBoundingClientRect();
+      const hasGoodSize = rect.width > 200 && rect.height > 40 && rect.height < 300;
+      const hasText = el.textContent && el.textContent.trim().length > 20;
+      return hasGoodSize && hasText;
+    });
+
+    this.detectedElements.set('messages', validElements);
+    console.log('aiFiverr: Detected message elements:', validElements.length);
+    return validElements;
+  }
+
+  /**
+   * Check if an element looks like a message - VERY CONSERVATIVE
+   */
+  looksLikeMessage(element) {
+    if (!element || !element.textContent) return false;
+
+    const text = element.textContent.trim();
+
+    // Much stricter criteria
+    const hasReasonableText = text.length > 20 && text.length < 1000; // Not too short or too long
+    const hasGoodSize = element.offsetWidth > 200 && element.offsetHeight > 40 && element.offsetHeight < 300;
+    const isNotInput = !['INPUT', 'TEXTAREA', 'BUTTON', 'A', 'SPAN'].includes(element.tagName);
+    const isNotScript = !['SCRIPT', 'STYLE', 'NOSCRIPT', 'HEAD', 'META'].includes(element.tagName);
+
+    // Must be a div or similar container
+    const isContainer = ['DIV', 'P', 'ARTICLE', 'SECTION'].includes(element.tagName);
+
+    // Must have specific message-related attributes or be in message context
+    const hasMessageAttribute = element.hasAttribute('data-qa') && element.getAttribute('data-qa').includes('message');
+    const hasMessageClass = element.className && element.className.includes('message');
+
+    // Avoid common non-message elements
+    const isNotNavigation = !element.closest('nav') && !element.closest('[role="navigation"]');
+    const isNotHeader = !element.closest('header') && !element.closest('h1, h2, h3, h4, h5, h6');
+    const isNotSidebar = !element.closest('[class*="sidebar"]') && !element.closest('[class*="menu"]');
+
+    return hasReasonableText &&
+           hasGoodSize &&
+           isNotInput &&
+           isNotScript &&
+           isContainer &&
+           (hasMessageAttribute || hasMessageClass) &&
+           isNotNavigation &&
+           isNotHeader &&
+           isNotSidebar;
   }
 
   /**
@@ -280,22 +368,23 @@ class FiverrDetector {
    */
   isChatInput(element) {
     if (!element) return false;
-    
-    const chatInputSelectors = [
-      '[data-testid="chat-input"]',
-      '[data-testid*="message-input"]',
-      '.chat-input',
-      '.message-input',
-      '.conversation-input'
-    ];
 
-    return chatInputSelectors.some(selector => {
-      try {
-        return element.matches(selector);
-      } catch (e) {
-        return false;
-      }
-    });
+    // Be very specific - only textarea elements with message-related placeholders
+    if (element.tagName !== 'TEXTAREA') return false;
+
+    const placeholder = element.placeholder ? element.placeholder.toLowerCase() : '';
+    const isInInbox = window.location.href.includes('/inbox/');
+
+    // Very specific placeholder checks
+    const hasValidPlaceholder = placeholder.includes('type a message') ||
+                               placeholder.includes('write a message') ||
+                               placeholder.includes('message') && placeholder.length < 50; // Avoid long descriptions
+
+    // Additional checks to ensure it's actually a chat input
+    const hasReasonableSize = element.offsetWidth > 200 && element.offsetHeight > 30;
+    const isVisible = element.offsetParent !== null;
+
+    return isInInbox && hasValidPlaceholder && hasReasonableSize && isVisible;
   }
 
   /**
@@ -356,9 +445,8 @@ class FiverrDetector {
       elementCounts[type] = elements.length;
     });
 
-    // Send message to background script
-    chrome.runtime.sendMessage({
-      type: 'ELEMENTS_DETECTED',
+    // Just log locally - no background script communication needed
+    console.log('aiFiverr: Elements detected:', {
       pageType: this.pageType,
       elementCounts,
       url: window.location.href
