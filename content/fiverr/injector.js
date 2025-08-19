@@ -39,9 +39,7 @@ class FiverrInjector {
       case 'proposal':
         this.injectProposalUI(elements);
         break;
-      case 'brief':
-        this.injectBriefUI(elements);
-        break;
+
     }
   }
 
@@ -88,15 +86,7 @@ class FiverrInjector {
     }
   }
 
-  /**
-   * Inject brief-related UI elements
-   */
-  injectBriefUI(elements) {
-    if (elements.brief) {
-      // Inject copy brief button
-      this.injectCopyBriefButton();
-    }
-  }
+
 
   /**
    * Inject AI button for chat input - COMPACT VERSION
@@ -109,9 +99,6 @@ class FiverrInjector {
 
     container.appendChild(compactButton);
     this.insertButtonContainer(inputElement, container);
-
-    // Add refinement functionality
-    this.addRefinementFeature(inputElement);
 
     this.injectedElements.set(inputElement, container);
   }
@@ -163,29 +150,7 @@ class FiverrInjector {
     this.injectedElements.set(inputElement, container);
   }
 
-  /**
-   * Inject copy brief button
-   */
-  injectCopyBriefButton() {
-    const existingButton = document.querySelector('.aifiverr-copy-brief');
-    if (existingButton) return;
 
-    const button = this.createAIButton('Copy Brief for AI', 'brief');
-    button.classList.add('aifiverr-copy-brief');
-    
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      await this.handleBriefCopy();
-    });
-
-    // Find a good place to insert the button
-    const targetContainer = document.querySelector('.brief-header, .project-header, h1, h2');
-    if (targetContainer) {
-      targetContainer.parentNode.insertBefore(button, targetContainer.nextSibling);
-    } else {
-      document.body.appendChild(button);
-    }
-  }
 
   /**
    * Inject floating AI widget
@@ -814,126 +779,9 @@ class FiverrInjector {
     return dropdown;
   }
 
-  /**
-   * Add refinement feature to input element
-   */
-  addRefinementFeature(inputElement) {
-    let refinementIcon = null;
-    let typingTimer = null;
 
-    // Function to show refinement icon
-    const showRefinementIcon = () => {
-      if (refinementIcon) return; // Already showing
 
-      refinementIcon = this.createRefinementIcon();
 
-      // Position icon relative to input
-      const rect = inputElement.getBoundingClientRect();
-      refinementIcon.style.position = 'fixed';
-      refinementIcon.style.top = `${rect.top - 40}px`;
-      refinementIcon.style.right = `${window.innerWidth - rect.right}px`;
-      refinementIcon.style.zIndex = '1000';
-
-      document.body.appendChild(refinementIcon);
-
-      // Add click handler
-      refinementIcon.addEventListener('click', async (e) => {
-        e.preventDefault();
-        await this.handleRefinementOptions(inputElement);
-      });
-
-      // Auto-hide after 10 seconds of no typing
-      setTimeout(() => {
-        if (refinementIcon && refinementIcon.parentNode) {
-          refinementIcon.remove();
-          refinementIcon = null;
-        }
-      }, 10000);
-    };
-
-    // Function to hide refinement icon
-    const hideRefinementIcon = () => {
-      if (refinementIcon && refinementIcon.parentNode) {
-        refinementIcon.remove();
-        refinementIcon = null;
-      }
-    };
-
-    // Listen for input events
-    inputElement.addEventListener('input', () => {
-      const text = inputElement.value.trim();
-
-      // Clear existing timer
-      if (typingTimer) {
-        clearTimeout(typingTimer);
-      }
-
-      // Hide icon if input is empty
-      if (!text) {
-        hideRefinementIcon();
-        return;
-      }
-
-      // Show icon after user stops typing for 1 second
-      typingTimer = setTimeout(() => {
-        if (text.length > 10) { // Only show for meaningful text
-          showRefinementIcon();
-        }
-      }, 1000);
-    });
-
-    // Hide icon when input loses focus
-    inputElement.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!document.activeElement?.closest('.aifiverr-refinement-popup')) {
-          hideRefinementIcon();
-        }
-      }, 200);
-    });
-  }
-
-  /**
-   * Create refinement icon
-   */
-  createRefinementIcon() {
-    const icon = document.createElement('div');
-    icon.className = 'aifiverr-refinement-icon';
-    icon.innerHTML = '✨';
-    icon.title = 'aiFiverr: Refine your message';
-
-    const iconStyles = {
-      backgroundColor: '#8b5cf6',
-      color: 'white',
-      border: 'none',
-      borderRadius: '50%',
-      width: '36px',
-      height: '36px',
-      fontSize: '18px',
-      cursor: 'pointer',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      transition: 'all 0.2s ease',
-      boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      animation: 'aifiverr-pulse 2s infinite'
-    };
-
-    Object.assign(icon.style, iconStyles);
-
-    // Hover effects
-    icon.addEventListener('mouseenter', () => {
-      icon.style.backgroundColor = '#7c3aed';
-      icon.style.transform = 'scale(1.1)';
-    });
-
-    icon.addEventListener('mouseleave', () => {
-      icon.style.backgroundColor = '#8b5cf6';
-      icon.style.transform = 'scale(1)';
-    });
-
-    return icon;
-  }
 
   /**
    * Create button container
@@ -1094,230 +942,17 @@ class FiverrInjector {
     messageIcon.innerHTML = '💬';
   }
 
-  /**
-   * Handle refinement options
-   */
-  async handleRefinementOptions(inputElement) {
-    try {
-      const currentText = inputElement.value.trim();
-      if (!currentText) {
-        showTooltip('No text to refine', inputElement);
-        setTimeout(removeTooltip, 3000);
-        return;
-      }
 
-      // Show refinement popup
-      this.showRefinementPopup(inputElement, currentText);
-    } catch (error) {
-      console.error('Failed to show refinement options:', error);
-      showTooltip('Failed to show refinement options', inputElement);
-      setTimeout(removeTooltip, 3000);
-    }
-  }
 
-  /**
-   * Show refinement popup
-   */
-  showRefinementPopup(inputElement, currentText) {
-    // Remove existing popup
-    const existingPopup = document.querySelector('.aifiverr-refinement-popup');
-    if (existingPopup) {
-      existingPopup.remove();
-    }
 
-    const popup = document.createElement('div');
-    popup.className = 'aifiverr-refinement-popup';
 
-    const refinementOptions = [
-      { key: 'refine_message', label: 'Refine Message', icon: '✨', description: 'Improve clarity and professionalism' },
-      { key: 'detailed_response', label: 'Make More Detailed', icon: '📝', description: 'Generate a comprehensive response' },
-      { key: 'translate_and_refine', label: 'Translate & Refine', icon: '🌐', description: 'Refine and translate to another language' }
-    ];
 
-    popup.innerHTML = `
-      <div class="refinement-popup-backdrop"></div>
-      <div class="refinement-popup-modal">
-        <div class="refinement-popup-header">
-          <h3>Refine Your Message</h3>
-          <button class="close-btn">×</button>
-        </div>
-        <div class="refinement-popup-content">
-          <div class="original-text">
-            <h4>Original Text:</h4>
-            <div class="text-preview">${escapeHtml(currentText)}</div>
-          </div>
-          <div class="refinement-options">
-            <h4>Choose Refinement Option:</h4>
-            ${refinementOptions.map(option => `
-              <div class="refinement-option" data-key="${option.key}">
-                <div class="option-icon">${option.icon}</div>
-                <div class="option-content">
-                  <div class="option-label">${option.label}</div>
-                  <div class="option-description">${option.description}</div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    `;
 
-    // Style the popup
-    const popupStyles = {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '100%',
-      height: '100%',
-      zIndex: '10003',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
-    };
-    Object.assign(popup.style, popupStyles);
 
-    document.body.appendChild(popup);
 
-    // Event listeners
-    popup.querySelector('.close-btn').addEventListener('click', () => {
-      popup.remove();
-    });
 
-    popup.querySelector('.refinement-popup-backdrop').addEventListener('click', () => {
-      popup.remove();
-    });
 
-    popup.querySelectorAll('.refinement-option').forEach(option => {
-      option.addEventListener('click', async () => {
-        const optionKey = option.dataset.key;
-        popup.remove();
-        await this.handleRefinementAction(inputElement, currentText, optionKey);
-      });
-    });
-  }
 
-  /**
-   * Handle refinement action
-   */
-  async handleRefinementAction(inputElement, originalText, actionKey) {
-    try {
-      let result;
-
-      switch (actionKey) {
-        case 'refine_message':
-          result = await this.refineMessage(originalText);
-          break;
-        case 'detailed_response':
-          result = await this.makeDetailedResponse(originalText);
-          break;
-        case 'translate_and_refine':
-          result = await this.translateAndRefine(originalText);
-          break;
-        default:
-          console.warn('Unknown refinement action:', actionKey);
-          return;
-      }
-
-      if (result) {
-        inputElement.value = result;
-        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-        showTooltip('Message refined!', inputElement);
-        setTimeout(removeTooltip, 2000);
-      }
-    } catch (error) {
-      console.error(`Refinement action '${actionKey}' failed:`, error);
-      showTooltip('Failed to refine message', inputElement);
-      setTimeout(removeTooltip, 3000);
-    }
-  }
-
-  /**
-   * Refine message for clarity and professionalism
-   */
-  async refineMessage(originalText) {
-    showTooltip('Refining message...', document.body);
-
-    try {
-      // Get conversation context
-      const conversationData = await fiverrExtractor.extractConversation();
-      const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
-
-      // Prepare context variables
-      const contextVars = {
-        conversation: originalText,
-        message: originalText
-      };
-
-      // Process refine prompt
-      const prompt = await knowledgeBaseManager.processPrompt('refine_message', contextVars);
-      const response = await geminiClient.generateContent(prompt);
-
-      removeTooltip();
-      return removeMarkdownFormatting(response.text);
-    } catch (error) {
-      console.error('Message refinement failed:', error);
-      removeTooltip();
-      throw error;
-    }
-  }
-
-  /**
-   * Make detailed response
-   */
-  async makeDetailedResponse(originalText) {
-    showTooltip('Creating detailed response...', document.body);
-
-    try {
-      // Get conversation context
-      const conversationData = await fiverrExtractor.extractConversation();
-      const context = conversationData ? fiverrExtractor.getConversationSummary(conversationData) : '';
-
-      // Prepare context variables
-      const contextVars = {
-        message: originalText,
-        conversation: context
-      };
-
-      // Process detailed response prompt
-      const prompt = await knowledgeBaseManager.processPrompt('detailed_response', contextVars);
-      const response = await geminiClient.generateContent(prompt);
-
-      removeTooltip();
-      return removeMarkdownFormatting(response.text);
-    } catch (error) {
-      console.error('Detailed response generation failed:', error);
-      removeTooltip();
-      throw error;
-    }
-  }
-
-  /**
-   * Translate and refine message
-   */
-  async translateAndRefine(originalText) {
-    // Show language selection
-    const language = await this.showLanguageSelector(document.body);
-    if (!language) return null;
-
-    showTooltip(`Refining and translating to ${language}...`, document.body);
-
-    try {
-      // Prepare context variables
-      const contextVars = {
-        conversation: originalText,
-        language: language
-      };
-
-      // Process refine and translate prompt
-      const prompt = await knowledgeBaseManager.processPrompt('refine_and_translate', contextVars);
-      const response = await geminiClient.generateContent(prompt);
-
-      removeTooltip();
-      return removeMarkdownFormatting(response.text);
-    } catch (error) {
-      console.error('Translate and refine failed:', error);
-      removeTooltip();
-      throw error;
-    }
-  }
 
   /**
    * Handle message action (translate, summarize, analyze)
@@ -1485,44 +1120,7 @@ class FiverrInjector {
     }
   }
 
-  /**
-   * Handle brief copy
-   */
-  async handleBriefCopy() {
-    try {
-      // Check if fiverrExtractor is available
-      if (!window.fiverrExtractor || typeof window.fiverrExtractor.extractBriefDetails !== 'function') {
-        showTooltip('Brief extraction not available', document.body);
-        setTimeout(removeTooltip, 3000);
-        return;
-      }
 
-      const briefData = window.fiverrExtractor.extractBriefDetails();
-      if (!briefData) {
-        showTooltip('No brief data found on this page', document.body);
-        setTimeout(removeTooltip, 3000);
-        return;
-      }
-
-      const briefText = this.formatBriefForCopy(briefData);
-
-      // Check if copyToClipboard function is available
-      if (typeof copyToClipboard !== 'function') {
-        showTooltip('Clipboard functionality not available', document.body);
-        setTimeout(removeTooltip, 3000);
-        return;
-      }
-
-      await copyToClipboard(briefText);
-
-      showTooltip('Brief copied to clipboard!', document.body);
-      setTimeout(removeTooltip, 2000);
-    } catch (error) {
-      console.error('Brief copy failed:', error);
-      showTooltip(`Failed to copy brief: ${error.message}`, document.body);
-      setTimeout(removeTooltip, 3000);
-    }
-  }
 
   /**
    * Handle floating widget messages
@@ -1820,37 +1418,7 @@ class FiverrInjector {
     }
   }
 
-  /**
-   * Format brief data for copying
-   */
-  formatBriefForCopy(briefData) {
-    if (!briefData || typeof briefData !== 'object') {
-      return 'No brief data available';
-    }
 
-    let text = '';
-
-    if (briefData.title && typeof briefData.title === 'string') {
-      text += `Title: ${briefData.title}\n\n`;
-    }
-    if (briefData.description && typeof briefData.description === 'string') {
-      text += `Description: ${briefData.description}\n\n`;
-    }
-    if (briefData.requirements && Array.isArray(briefData.requirements) && briefData.requirements.length > 0) {
-      text += `Requirements: ${briefData.requirements.join(', ')}\n\n`;
-    }
-    if (briefData.budget && typeof briefData.budget === 'string') {
-      text += `Budget: ${briefData.budget}\n\n`;
-    }
-    if (briefData.deadline && typeof briefData.deadline === 'string') {
-      text += `Deadline: ${briefData.deadline}\n\n`;
-    }
-    if (briefData.skills && Array.isArray(briefData.skills) && briefData.skills.length > 0) {
-      text += `Skills: ${briefData.skills.join(', ')}\n\n`;
-    }
-
-    return text.trim() || 'No brief details found';
-  }
 
   /**
    * Show analysis popup
