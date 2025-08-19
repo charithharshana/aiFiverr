@@ -12,7 +12,8 @@ class TextSelector {
     this.selectedText = '';
     this.selectionRect = null;
     this.hideTimeout = null;
-    
+    this.isInteractingWithUI = false;
+
     this.init();
   }
 
@@ -33,21 +34,41 @@ class TextSelector {
     // Listen for text selection events
     document.addEventListener('mouseup', (e) => this.handleMouseUp(e));
     document.addEventListener('keyup', (e) => this.handleKeyUp(e));
-    
+
     // Hide floating icon when clicking elsewhere
     document.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-    
-    // Handle window resize
-    window.addEventListener('resize', () => this.hideFloatingIcon());
-    
-    // Handle scroll
-    document.addEventListener('scroll', () => this.hideFloatingIcon(), true);
+
+    // Handle window resize - only hide if not interacting with dropdown
+    window.addEventListener('resize', () => {
+      if (!this.contextMenu || this.contextMenu.style.display !== 'block') {
+        this.hideFloatingIcon();
+      }
+    });
+
+    // Handle scroll - only hide dropdown if scrolling outside the dropdown area
+    document.addEventListener('scroll', (e) => {
+      // Don't hide dropdown if scrolling within the dropdown itself
+      if (this.contextMenu && this.contextMenu.style.display === 'block') {
+        // Check if the scroll event is coming from within the dropdown
+        if (!this.contextMenu.contains(e.target)) {
+          this.contextMenu.style.display = 'none';
+        }
+      }
+    }, true);
   }
 
   /**
    * Handle mouse up events (end of selection)
    */
   async handleMouseUp(e) {
+    // Don't process selection if interacting with our UI elements
+    if (this.floatingIcon && this.floatingIcon.contains(e.target)) {
+      return;
+    }
+    if (this.contextMenu && this.contextMenu.contains(e.target)) {
+      return;
+    }
+
     // Small delay to ensure selection is complete
     setTimeout(async () => {
       await this.checkSelection(e);
@@ -69,12 +90,20 @@ class TextSelector {
   }
 
   /**
-   * Handle mouse down events to hide icon when clicking elsewhere
+   * Handle mouse down events - only hide dropdown, not the icon
    */
   handleMouseDown(e) {
-    if (this.floatingIcon && !this.floatingIcon.contains(e.target) && 
-        this.contextMenu && !this.contextMenu.contains(e.target)) {
-      this.hideFloatingIcon();
+    // Don't hide anything if clicking on our UI elements
+    if (this.floatingIcon && this.floatingIcon.contains(e.target)) {
+      return;
+    }
+    if (this.contextMenu && this.contextMenu.contains(e.target)) {
+      return;
+    }
+
+    // Only hide the dropdown when clicking outside, but keep the icon visible
+    if (this.contextMenu && this.contextMenu.style.display === 'block') {
+      this.contextMenu.style.display = 'none';
     }
   }
 
@@ -82,10 +111,18 @@ class TextSelector {
    * Check current text selection and handle it
    */
   async checkSelection(e) {
+    // Don't hide icon if user is interacting with our UI
+    if (this.isInteractingWithUI) {
+      return;
+    }
+
     const selection = window.getSelection();
 
     if (!selection || selection.rangeCount === 0) {
-      this.hideFloatingIcon();
+      // Only hide if not interacting with UI
+      if (!this.isInteractingWithUI) {
+        this.hideFloatingIcon();
+      }
       return;
     }
 
@@ -95,7 +132,10 @@ class TextSelector {
     // Minimum text length requirement
     if (selectedText.length < 3) {
       console.log('aiFiverr: Text too short, hiding icon');
-      this.hideFloatingIcon();
+      // Only hide if not interacting with UI
+      if (!this.isInteractingWithUI) {
+        this.hideFloatingIcon();
+      }
       return;
     }
 
@@ -104,7 +144,10 @@ class TextSelector {
     console.log('aiFiverr: Selection area valid:', isValid);
 
     if (!isValid) {
-      this.hideFloatingIcon();
+      // Only hide if not interacting with UI
+      if (!this.isInteractingWithUI) {
+        this.hideFloatingIcon();
+      }
       return;
     }
 
@@ -200,17 +243,37 @@ class TextSelector {
   }
 
   /**
-   * Create floating action icon - SAME AS CHAT ICON
+   * Create floating action icon with close button
    */
   createFloatingIcon() {
-    // Create button exactly like the chat icon
-    this.floatingIcon = document.createElement('button');
-    this.floatingIcon.className = 'aifiverr-text-selection-icon';
-    this.floatingIcon.innerHTML = '💬'; // Same icon as chat
-    this.floatingIcon.title = 'AI Text Actions';
+    // Create container for icon and close button
+    this.floatingIcon = document.createElement('div');
+    this.floatingIcon.className = 'aifiverr-text-selection-container';
 
-    // Style exactly like the chat icon - no background
+    // Create main action button
+    const actionButton = document.createElement('button');
+    actionButton.className = 'aifiverr-text-selection-icon';
+    actionButton.innerHTML = '💬'; // Same icon as chat
+    actionButton.title = 'AI Text Actions';
+
+    // Create close button
+    const closeButton = document.createElement('button');
+    closeButton.className = 'aifiverr-text-selection-close';
+    closeButton.innerHTML = '×';
+    closeButton.title = 'Close';
+
+    // Style container
     Object.assign(this.floatingIcon.style, {
+      position: 'fixed',
+      zIndex: '10000',
+      display: 'none',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: '4px'
+    });
+
+    // Style action button exactly like the chat icon
+    Object.assign(actionButton.style, {
       background: 'none',
       border: 'none',
       fontSize: '18px',
@@ -218,25 +281,52 @@ class TextSelector {
       padding: '4px',
       borderRadius: '4px',
       transition: 'all 0.2s ease',
-      opacity: '0.7',
-      position: 'fixed',
-      zIndex: '10000',
-      display: 'none'
+      opacity: '0.7'
     });
 
-    // Hover effect - exactly like chat icon
-    this.floatingIcon.addEventListener('mouseenter', () => {
-      this.floatingIcon.style.opacity = '1';
-      this.floatingIcon.style.transform = 'scale(1.1)';
+    // Style close button
+    Object.assign(closeButton.style, {
+      background: 'rgba(0, 0, 0, 0.1)',
+      border: 'none',
+      fontSize: '14px',
+      cursor: 'pointer',
+      padding: '2px 4px',
+      borderRadius: '50%',
+      transition: 'all 0.2s ease',
+      opacity: '0.6',
+      color: '#666',
+      width: '20px',
+      height: '20px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
     });
 
-    this.floatingIcon.addEventListener('mouseleave', () => {
-      this.floatingIcon.style.opacity = '0.7';
-      this.floatingIcon.style.transform = 'scale(1)';
+    // Hover effects
+    actionButton.addEventListener('mouseenter', () => {
+      actionButton.style.opacity = '1';
+      actionButton.style.transform = 'scale(1.1)';
     });
 
-    // Add click handler
-    this.floatingIcon.addEventListener('click', async (e) => {
+    actionButton.addEventListener('mouseleave', () => {
+      actionButton.style.opacity = '0.7';
+      actionButton.style.transform = 'scale(1)';
+    });
+
+    closeButton.addEventListener('mouseenter', () => {
+      closeButton.style.opacity = '1';
+      closeButton.style.background = 'rgba(255, 0, 0, 0.1)';
+      closeButton.style.color = '#ff0000';
+    });
+
+    closeButton.addEventListener('mouseleave', () => {
+      closeButton.style.opacity = '0.6';
+      closeButton.style.background = 'rgba(0, 0, 0, 0.1)';
+      closeButton.style.color = '#666';
+    });
+
+    // Add click handlers
+    actionButton.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       console.log('aiFiverr: Text selection icon clicked');
@@ -248,6 +338,26 @@ class TextSelector {
         this.showErrorMessage('Failed to show AI menu. Please try again.');
       }
     });
+
+    closeButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('aiFiverr: Close button clicked');
+      this.hideFloatingIcon();
+    });
+
+    // Track when user is interacting with floating icon
+    this.floatingIcon.addEventListener('mouseenter', () => {
+      this.isInteractingWithUI = true;
+    });
+
+    this.floatingIcon.addEventListener('mouseleave', () => {
+      this.isInteractingWithUI = false;
+    });
+
+    // Append buttons to container
+    this.floatingIcon.appendChild(actionButton);
+    this.floatingIcon.appendChild(closeButton);
 
     document.body.appendChild(this.floatingIcon);
   }
@@ -301,9 +411,9 @@ class TextSelector {
     }
 
     // Calculate position (top-right of selection)
-    const iconSize = 36;
+    const iconSize = 60; // Increased to accommodate close button
     const margin = 8;
-    
+
     let left = this.selectionRect.right + margin;
     let top = this.selectionRect.top - margin;
 
@@ -326,7 +436,7 @@ class TextSelector {
     // Position and show icon
     this.floatingIcon.style.left = `${left}px`;
     this.floatingIcon.style.top = `${top}px`;
-    this.floatingIcon.style.display = 'block';
+    this.floatingIcon.style.display = 'flex';
   }
 
   /**
@@ -428,12 +538,21 @@ class TextSelector {
 
     document.body.appendChild(this.contextMenu);
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!this.contextMenu.contains(e.target) && e.target !== this.floatingIcon) {
-        this.contextMenu.style.display = 'none';
-      }
+    // Track when user is interacting with dropdown
+    this.contextMenu.addEventListener('mouseenter', () => {
+      this.isInteractingWithUI = true;
     });
+
+    this.contextMenu.addEventListener('mouseleave', () => {
+      this.isInteractingWithUI = false;
+    });
+
+    // Prevent wheel events from bubbling up when scrolling within dropdown
+    this.contextMenu.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+    });
+
+    // Note: Click handling is now managed by handleMouseDown to avoid conflicts
   }
 
   /**
@@ -670,13 +789,17 @@ class TextSelector {
       console.log('aiFiverr: Processing text with prompt:', promptKey);
       console.log('aiFiverr: Selected text length:', selectedText.length);
 
-      // Show loading indicator
-      this.showProcessingIndicator();
+      // Show loading animation on the icon
+      this.startIconLoadingAnimation();
 
       // Get the prompt from prompt selector
-      const prompt = window.promptSelector.allPrompts[promptKey];
+      let prompt = null;
+      if (window.promptSelector && window.promptSelector.allPrompts) {
+        prompt = window.promptSelector.allPrompts[promptKey];
+      }
+
       if (!prompt) {
-        throw new Error(`Prompt not found: ${promptKey}`);
+        throw new Error(`Prompt '${promptKey}' not found`);
       }
 
       console.log('aiFiverr: Found prompt:', prompt.name || promptKey);
@@ -697,10 +820,10 @@ class TextSelector {
       console.log('aiFiverr: Got session:', session.id);
 
       // Process the prompt with the selected text
-      const promptText = prompt.prompt || prompt.description;
+      const promptText = prompt.prompt || prompt.description || prompt.text;
       console.log('aiFiverr: Processing prompt text:', promptText.substring(0, 100) + '...');
 
-      const processedPrompt = await window.knowledgeBaseManager.processPrompt(promptText, {
+      const processedPrompt = await window.knowledgeBaseManager.processPrompt(promptKey, {
         conversation: selectedText,
         username: 'User'
       });
@@ -712,15 +835,51 @@ class TextSelector {
       const response = await window.geminiClient.generateChatReply(session, processedPrompt);
       console.log('aiFiverr: Got AI response:', response.response.substring(0, 100) + '...');
 
-      // Show result modal
-      this.showResultModal(response.response, selectedText);
+      // Show result popup near the icon (like chatbox style)
+      this.showResultPopup(response.response, selectedText);
 
     } catch (error) {
       console.error('aiFiverr: Failed to process text with prompt:', error);
       this.showErrorMessage(`Failed to process text: ${error.message}. Please try again.`);
     } finally {
-      this.hideProcessingIndicator();
+      this.stopIconLoadingAnimation();
     }
+  }
+
+  /**
+   * Start loading animation on the floating icon
+   */
+  startIconLoadingAnimation() {
+    const actionButton = this.floatingIcon?.querySelector('.aifiverr-text-selection-icon');
+    if (!actionButton) return;
+
+    actionButton.classList.add('loading');
+    actionButton.innerHTML = '💬';
+
+    // Add animated dots
+    let dotCount = 0;
+    const animateIcon = () => {
+      if (!actionButton.classList.contains('loading')) return;
+
+      dotCount = (dotCount + 1) % 4;
+      const dots = '.'.repeat(dotCount);
+      actionButton.innerHTML = `💬${dots}`;
+
+      setTimeout(animateIcon, 500);
+    };
+
+    setTimeout(animateIcon, 500);
+  }
+
+  /**
+   * Stop loading animation on the floating icon
+   */
+  stopIconLoadingAnimation() {
+    const actionButton = this.floatingIcon?.querySelector('.aifiverr-text-selection-icon');
+    if (!actionButton) return;
+
+    actionButton.classList.remove('loading');
+    actionButton.innerHTML = '💬';
   }
 
   /**
@@ -819,7 +978,309 @@ class TextSelector {
   }
 
   /**
-   * Show result modal
+   * Show result popup near the floating icon (like chatbox style)
+   */
+  showResultPopup(result, originalText) {
+    // Remove existing popup with proper cleanup
+    const existingPopup = document.querySelector('.aifiverr-text-result-popup');
+    if (existingPopup) {
+      this.closeResultPopup(existingPopup);
+    }
+
+    const popup = document.createElement('div');
+    popup.className = 'aifiverr-text-result-popup';
+    popup.innerHTML = `
+      <div class="result-header draggable-handle" title="Drag to move">
+        <div class="result-title">
+          <span class="result-icon">✨</span>
+          <h3>AI Result</h3>
+          <span class="drag-indicator">⋮⋮</span>
+        </div>
+        <button class="close-btn" title="Close">×</button>
+      </div>
+      <div class="result-content">
+        <div class="result-text">${result.replace(/\n/g, '<br>')}</div>
+      </div>
+      <div class="result-actions">
+        <button class="copy-btn" title="Copy to clipboard">📋 Copy</button>
+        <button class="edit-btn" title="Edit text">✏️ Edit</button>
+        <button class="insert-btn" title="Insert into field">📝 Insert</button>
+      </div>
+    `;
+
+    // Add styles
+    this.addResultPopupStyles();
+
+    // Position popup near the floating icon
+    this.positionResultPopup(popup);
+
+    // Make popup draggable
+    this.makeDraggable(popup);
+
+    // Event listeners
+    popup.querySelector('.close-btn').addEventListener('click', () => {
+      this.closeResultPopup(popup);
+    });
+
+    popup.querySelector('.copy-btn').addEventListener('click', async () => {
+      await this.copyToClipboard(result);
+      this.showToast('Result copied to clipboard!');
+    });
+
+    popup.querySelector('.edit-btn').addEventListener('click', () => {
+      this.showResultModal(result, originalText);
+      this.closeResultPopup(popup);
+    });
+
+    popup.querySelector('.insert-btn').addEventListener('click', () => {
+      this.insertTextIntoActiveField(result);
+      this.showToast('Text inserted successfully!');
+      this.closeResultPopup(popup);
+    });
+
+    // Add click-outside-to-close functionality
+    this.addClickOutsideToClose(popup);
+
+    // Store reference to popup for potential cleanup
+    this.currentResultPopup = popup;
+  }
+
+  /**
+   * Position result popup near the floating icon with intelligent positioning
+   */
+  positionResultPopup(popup) {
+    if (!this.floatingIcon) return;
+
+    // First, add popup to DOM temporarily to get actual dimensions
+    popup.style.position = 'fixed';
+    popup.style.left = '-9999px';
+    popup.style.top = '-9999px';
+    popup.style.visibility = 'hidden';
+    document.body.appendChild(popup);
+
+    // Get actual dimensions after rendering
+    const popupRect = popup.getBoundingClientRect();
+    const popupWidth = popupRect.width;
+    const popupHeight = popupRect.height;
+
+    // Get icon and viewport dimensions
+    const iconRect = this.floatingIcon.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 12;
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+
+    // Define possible positions in order of preference
+    const positions = [
+      // Right of icon (preferred)
+      {
+        left: iconRect.right + margin,
+        top: iconRect.top,
+        name: 'right'
+      },
+      // Left of icon
+      {
+        left: iconRect.left - popupWidth - margin,
+        top: iconRect.top,
+        name: 'left'
+      },
+      // Below icon
+      {
+        left: iconRect.left,
+        top: iconRect.bottom + margin,
+        name: 'below'
+      },
+      // Above icon
+      {
+        left: iconRect.left,
+        top: iconRect.top - popupHeight - margin,
+        name: 'above'
+      },
+      // Center of viewport (fallback)
+      {
+        left: (viewportWidth - popupWidth) / 2,
+        top: (viewportHeight - popupHeight) / 2,
+        name: 'center'
+      }
+    ];
+
+    // Find the best position that fits within viewport
+    let bestPosition = null;
+    for (const pos of positions) {
+      const fitsHorizontally = pos.left >= margin && pos.left + popupWidth <= viewportWidth - margin;
+      const fitsVertically = pos.top >= margin && pos.top + popupHeight <= viewportHeight - margin;
+
+      if (fitsHorizontally && fitsVertically) {
+        bestPosition = pos;
+        break;
+      }
+    }
+
+    // If no position fits perfectly, use the center position with adjustments
+    if (!bestPosition) {
+      bestPosition = positions[positions.length - 1]; // center position
+
+      // Ensure it fits within viewport bounds
+      bestPosition.left = Math.max(margin, Math.min(bestPosition.left, viewportWidth - popupWidth - margin));
+      bestPosition.top = Math.max(margin, Math.min(bestPosition.top, viewportHeight - popupHeight - margin));
+    }
+
+    // Apply the final position
+    popup.style.left = `${bestPosition.left}px`;
+    popup.style.top = `${bestPosition.top}px`;
+    popup.style.visibility = 'visible';
+    popup.style.zIndex = '10001';
+
+    console.log(`aiFiverr: Positioned popup at ${bestPosition.name} position (${bestPosition.left}, ${bestPosition.top})`);
+  }
+
+  /**
+   * Make popup draggable
+   */
+  makeDraggable(popup) {
+    const header = popup.querySelector('.draggable-handle');
+    if (!header) return;
+
+    let isDragging = false;
+    let startX, startY, startLeft, startTop;
+
+    // Add dragging cursor style
+    header.style.cursor = 'move';
+
+    const handleMouseDown = (e) => {
+      // Don't start dragging if clicking on close button
+      if (e.target.classList.contains('close-btn')) return;
+
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const rect = popup.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+
+      // Add dragging class for visual feedback
+      popup.classList.add('dragging');
+
+      // Prevent text selection during drag
+      e.preventDefault();
+      document.body.style.userSelect = 'none';
+    };
+
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      let newLeft = startLeft + deltaX;
+      let newTop = startTop + deltaY;
+
+      // Get popup dimensions
+      const popupRect = popup.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const margin = 10;
+
+      // Constrain to viewport bounds
+      newLeft = Math.max(margin, Math.min(newLeft, viewportWidth - popupRect.width - margin));
+      newTop = Math.max(margin, Math.min(newTop, viewportHeight - popupRect.height - margin));
+
+      popup.style.left = `${newLeft}px`;
+      popup.style.top = `${newTop}px`;
+    };
+
+    const handleMouseUp = () => {
+      if (!isDragging) return;
+
+      isDragging = false;
+      popup.classList.remove('dragging');
+      document.body.style.userSelect = '';
+    };
+
+    // Add event listeners
+    header.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    // Store cleanup function
+    popup._dragCleanup = () => {
+      header.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }
+
+  /**
+   * Add click-outside-to-close functionality
+   */
+  addClickOutsideToClose(popup) {
+    const handleClickOutside = (e) => {
+      // Don't close if clicking inside the popup
+      if (popup.contains(e.target)) return;
+
+      // Don't close if clicking on the floating icon or context menu
+      if (this.floatingIcon && this.floatingIcon.contains(e.target)) return;
+      if (this.contextMenu && this.contextMenu.contains(e.target)) return;
+
+      // Close the popup
+      this.closeResultPopup(popup);
+    };
+
+    // Add click listener with a small delay to avoid immediate closure
+    setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 100);
+
+    // Store cleanup function
+    popup._clickOutsideCleanup = () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }
+
+  /**
+   * Close result popup with proper cleanup
+   */
+  closeResultPopup(popup) {
+    if (!popup || !popup.parentNode) return;
+
+    // Clean up event listeners
+    if (popup._dragCleanup) {
+      popup._dragCleanup();
+    }
+    if (popup._clickOutsideCleanup) {
+      popup._clickOutsideCleanup();
+    }
+
+    // Remove popup
+    popup.remove();
+
+    // Clear reference
+    if (this.currentResultPopup === popup) {
+      this.currentResultPopup = null;
+    }
+  }
+
+  /**
+   * Clean up all popups and UI elements
+   */
+  cleanup() {
+    // Close current result popup
+    if (this.currentResultPopup) {
+      this.closeResultPopup(this.currentResultPopup);
+    }
+
+    // Hide floating icon
+    this.hideFloatingIcon();
+
+    // Clean up any remaining popups
+    const remainingPopups = document.querySelectorAll('.aifiverr-text-result-popup');
+    remainingPopups.forEach(popup => this.closeResultPopup(popup));
+  }
+
+  /**
+   * Show result modal (for editing)
    */
   showResultModal(result, originalText) {
     if (!this.resultModal) {
@@ -827,47 +1288,60 @@ class TextSelector {
     }
 
     // Set content
-    const originalTextEl = this.resultModal.querySelector('.original-text');
-    const resultTextEl = this.resultModal.querySelector('.result-text');
+    const resultDisplay = this.resultModal.querySelector('.result-display');
+    const resultEditor = this.resultModal.querySelector('.result-editor');
 
-    originalTextEl.textContent = originalText;
-    resultTextEl.value = result;
+    // Format result text with line breaks
+    const formattedResult = result.replace(/\n/g, '<br>');
+    resultDisplay.innerHTML = formattedResult;
+    resultEditor.value = result;
+
+    // Reset to display mode
+    resultDisplay.style.display = 'block';
+    resultEditor.style.display = 'none';
+
+    // Update edit button state
+    const editBtn = this.resultModal.querySelector('.btn-edit');
+    editBtn.textContent = '✏️';
+    editBtn.title = 'Edit text';
 
     // Show modal
     this.resultModal.style.display = 'flex';
-
-    // Focus on result text for easy editing
-    setTimeout(() => {
-      resultTextEl.focus();
-      resultTextEl.select();
-    }, 100);
   }
 
   /**
-   * Create result modal
+   * Create light UI result modal
    */
   createResultModal() {
     this.resultModal = document.createElement('div');
     this.resultModal.className = 'aifiverr-result-modal';
     this.resultModal.innerHTML = `
+      <div class="modal-backdrop"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h3>AI Result</h3>
-          <button class="modal-close">×</button>
+          <div class="modal-title">
+            <span class="modal-icon">✨</span>
+            <h3>AI Result</h3>
+          </div>
+          <button class="modal-close" title="Close">×</button>
         </div>
         <div class="modal-body">
-          <div class="original-section">
-            <label>Original Text:</label>
-            <div class="original-text"></div>
-          </div>
           <div class="result-section">
-            <label>AI Generated Result:</label>
-            <textarea class="result-text" rows="8"></textarea>
+            <div class="result-header">
+              <label>Generated Text</label>
+              <div class="result-actions">
+                <button class="btn-edit" title="Edit text">✏️</button>
+                <button class="btn-copy" title="Copy to clipboard">📋</button>
+              </div>
+            </div>
+            <div class="result-content">
+              <div class="result-display"></div>
+              <textarea class="result-editor" style="display: none;"></textarea>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary modal-close">Cancel</button>
-          <button class="btn-copy">Copy to Clipboard</button>
+          <button class="btn-secondary modal-close">Close</button>
           <button class="btn-insert">Insert into Field</button>
         </div>
       </div>
@@ -893,20 +1367,46 @@ class TextSelector {
       btn.addEventListener('click', () => this.hideResultModal());
     });
 
-    // Click outside to close
-    this.resultModal.addEventListener('click', (e) => {
-      if (e.target === this.resultModal) {
-        this.hideResultModal();
-      }
-    });
+    // Click backdrop to close
+    const backdrop = this.resultModal.querySelector('.modal-backdrop');
+    backdrop.addEventListener('click', () => this.hideResultModal());
+
+    // Edit button
+    const editBtn = this.resultModal.querySelector('.btn-edit');
+    editBtn.addEventListener('click', () => this.toggleEditMode());
 
     // Copy button
     const copyBtn = this.resultModal.querySelector('.btn-copy');
-    copyBtn.addEventListener('click', () => this.copyResultToClipboard());
+    copyBtn.addEventListener('click', async () => {
+      const isEditing = this.resultModal.querySelector('.result-editor').style.display !== 'none';
+      const resultText = isEditing
+        ? this.resultModal.querySelector('.result-editor').value
+        : this.resultModal.querySelector('.result-display').textContent;
+
+      await this.copyToClipboard(resultText);
+      this.showToast('Result copied to clipboard!');
+    });
 
     // Insert button
     const insertBtn = this.resultModal.querySelector('.btn-insert');
-    insertBtn.addEventListener('click', () => this.insertResultIntoField());
+    insertBtn.addEventListener('click', () => {
+      const isEditing = this.resultModal.querySelector('.result-editor').style.display !== 'none';
+      const resultText = isEditing
+        ? this.resultModal.querySelector('.result-editor').value
+        : this.resultModal.querySelector('.result-display').textContent;
+
+      this.insertTextIntoActiveField(resultText);
+      this.hideResultModal();
+      this.showToast('Text inserted successfully!');
+    });
+
+    // Handle textarea changes in edit mode
+    const resultEditor = this.resultModal.querySelector('.result-editor');
+    resultEditor.addEventListener('input', () => {
+      // Auto-resize textarea
+      resultEditor.style.height = 'auto';
+      resultEditor.style.height = resultEditor.scrollHeight + 'px';
+    });
 
     // Escape key to close
     document.addEventListener('keydown', (e) => {
@@ -914,6 +1414,204 @@ class TextSelector {
         this.hideResultModal();
       }
     });
+  }
+
+  /**
+   * Add styles for result popup
+   */
+  addResultPopupStyles() {
+    if (document.getElementById('aifiverr-result-popup-styles')) return;
+
+    const styles = document.createElement('style');
+    styles.id = 'aifiverr-result-popup-styles';
+    styles.textContent = `
+      .aifiverr-text-result-popup {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+        width: 350px;
+        max-height: 400px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        animation: popupSlideIn 0.2s ease-out;
+      }
+
+      @keyframes popupSlideIn {
+        from {
+          opacity: 0;
+          transform: scale(0.95) translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+
+      .aifiverr-text-result-popup .result-header {
+        padding: 16px 20px 12px;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        user-select: none;
+      }
+
+      .aifiverr-text-result-popup .draggable-handle {
+        cursor: move;
+      }
+
+      .aifiverr-text-result-popup.dragging {
+        opacity: 0.9;
+        transform: scale(1.02);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.1);
+        transition: none;
+      }
+
+      .aifiverr-text-result-popup .result-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+      }
+
+      .aifiverr-text-result-popup .drag-indicator {
+        color: #94a3b8;
+        font-size: 12px;
+        margin-left: auto;
+        margin-right: 8px;
+        opacity: 0.6;
+        transition: opacity 0.2s ease;
+      }
+
+      .aifiverr-text-result-popup .draggable-handle:hover .drag-indicator {
+        opacity: 1;
+        color: #64748b;
+      }
+
+      .aifiverr-text-result-popup .result-icon {
+        font-size: 16px;
+      }
+
+      .aifiverr-text-result-popup .result-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: #1e293b;
+      }
+
+      .aifiverr-text-result-popup .close-btn {
+        background: none;
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+        color: #64748b;
+        padding: 4px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .aifiverr-text-result-popup .close-btn:hover {
+        background: rgba(248, 113, 113, 0.1);
+        color: #ef4444;
+      }
+
+      .aifiverr-text-result-popup .result-content {
+        padding: 16px 20px;
+        max-height: 250px;
+        overflow-y: auto;
+      }
+
+      .aifiverr-text-result-popup .result-text {
+        font-size: 14px;
+        line-height: 1.6;
+        color: #334155;
+        white-space: pre-wrap;
+      }
+
+      .aifiverr-text-result-popup .result-actions {
+        padding: 12px 20px 16px;
+        border-top: 1px solid #f1f5f9;
+        display: flex;
+        gap: 8px;
+        background: #fafbfc;
+      }
+
+      .aifiverr-text-result-popup .result-actions button {
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid #e2e8f0;
+        background: white;
+        color: #64748b;
+        flex: 1;
+      }
+
+      .aifiverr-text-result-popup .result-actions button:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #475569;
+        transform: translateY(-1px);
+      }
+
+      .aifiverr-text-result-popup .insert-btn {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        color: white !important;
+        border-color: transparent !important;
+      }
+
+      .aifiverr-text-result-popup .insert-btn:hover {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+        transform: translateY(-1px);
+      }
+    `;
+
+    document.head.appendChild(styles);
+  }
+
+  /**
+   * Toggle between display and edit mode
+   */
+  toggleEditMode() {
+    const resultDisplay = this.resultModal.querySelector('.result-display');
+    const resultEditor = this.resultModal.querySelector('.result-editor');
+    const editBtn = this.resultModal.querySelector('.btn-edit');
+
+    const isEditing = resultEditor.style.display !== 'none';
+
+    if (isEditing) {
+      // Switch to display mode
+      const editedText = resultEditor.value;
+      const formattedText = editedText.replace(/\n/g, '<br>');
+      resultDisplay.innerHTML = formattedText;
+
+      resultDisplay.style.display = 'block';
+      resultEditor.style.display = 'none';
+      editBtn.textContent = '✏️';
+      editBtn.title = 'Edit text';
+    } else {
+      // Switch to edit mode
+      const displayText = resultDisplay.textContent || resultDisplay.innerText;
+      resultEditor.value = displayText;
+
+      resultDisplay.style.display = 'none';
+      resultEditor.style.display = 'block';
+      editBtn.textContent = '👁️';
+      editBtn.title = 'View text';
+
+      // Auto-resize and focus
+      resultEditor.style.height = 'auto';
+      resultEditor.style.height = resultEditor.scrollHeight + 'px';
+      resultEditor.focus();
+    }
   }
 
   /**
@@ -931,158 +1629,218 @@ class TextSelector {
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.5);
         display: flex;
-        align-items: center;
         justify-content: center;
-        z-index: 10003;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        align-items: center;
+        z-index: 10002;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+
+      .aifiverr-result-modal .modal-backdrop {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(2px);
       }
 
       .aifiverr-result-modal .modal-content {
+        position: relative;
         background: white;
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05);
         width: 90%;
-        max-width: 600px;
+        max-width: 500px;
         max-height: 80vh;
         overflow: hidden;
-        animation: aifiverr-modalIn 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        animation: modalSlideIn 0.2s ease-out;
+      }
+
+      @keyframes modalSlideIn {
+        from {
+          opacity: 0;
+          transform: scale(0.95) translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
       }
 
       .aifiverr-result-modal .modal-header {
-        background: linear-gradient(135deg, #1dbf73 0%, #19a463 100%);
-        color: white;
-        padding: 16px 20px;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid #f1f5f9;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      }
+
+      .aifiverr-result-modal .modal-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .aifiverr-result-modal .modal-icon {
+        font-size: 20px;
       }
 
       .aifiverr-result-modal .modal-header h3 {
         margin: 0;
         font-size: 18px;
         font-weight: 600;
+        color: #1e293b;
       }
 
       .aifiverr-result-modal .modal-close {
         background: none;
         border: none;
-        color: white;
-        font-size: 24px;
+        font-size: 20px;
         cursor: pointer;
-        padding: 0;
-        width: 28px;
-        height: 28px;
+        color: #64748b;
+        padding: 6px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 4px;
-        transition: background 0.2s ease;
       }
 
       .aifiverr-result-modal .modal-close:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(248, 113, 113, 0.1);
+        color: #ef4444;
       }
 
       .aifiverr-result-modal .modal-body {
-        padding: 20px;
-        max-height: 60vh;
+        padding: 20px 24px;
+        flex: 1;
         overflow-y: auto;
       }
 
-      .aifiverr-result-modal .original-section,
       .aifiverr-result-modal .result-section {
-        margin-bottom: 20px;
+        margin-bottom: 0;
       }
 
-      .aifiverr-result-modal label {
-        display: block;
+      .aifiverr-result-modal .result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .aifiverr-result-modal .result-header label {
+        margin: 0;
         font-weight: 600;
-        color: #2c3e50;
-        margin-bottom: 8px;
+        color: #374151;
         font-size: 14px;
       }
 
-      .aifiverr-result-modal .original-text {
-        background: #f8f9fa;
-        border: 1px solid #e9ecef;
-        border-radius: 6px;
-        padding: 12px;
-        font-size: 14px;
-        line-height: 1.5;
-        color: #495057;
-        max-height: 120px;
-        overflow-y: auto;
-        word-wrap: break-word;
+      .aifiverr-result-modal .result-actions {
+        display: flex;
+        gap: 8px;
       }
 
-      .aifiverr-result-modal .result-text {
-        width: 100%;
-        border: 1px solid #e9ecef;
+      .aifiverr-result-modal .result-actions button {
+        background: none;
+        border: 1px solid #e2e8f0;
         border-radius: 6px;
-        padding: 12px;
+        padding: 6px 8px;
+        cursor: pointer;
         font-size: 14px;
-        line-height: 1.5;
-        font-family: inherit;
-        resize: vertical;
+        transition: all 0.2s ease;
+        color: #64748b;
+      }
+
+      .aifiverr-result-modal .result-actions button:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #475569;
+      }
+
+      .aifiverr-result-modal .result-content {
+        position: relative;
+      }
+
+      .aifiverr-result-modal .result-display {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        font-size: 14px;
+        color: #334155;
+        line-height: 1.6;
         min-height: 120px;
+        white-space: pre-wrap;
       }
 
-      .aifiverr-result-modal .result-text:focus {
+      .aifiverr-result-modal .result-editor {
+        width: 100%;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        font-size: 14px;
+        line-height: 1.6;
+        resize: none;
+        min-height: 120px;
+        font-family: inherit;
+        background: white;
+        color: #334155;
+      }
+
+      .aifiverr-result-modal .result-editor:focus {
         outline: none;
-        border-color: #1dbf73;
-        box-shadow: 0 0 0 2px rgba(29, 191, 115, 0.2);
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
       }
 
       .aifiverr-result-modal .modal-footer {
-        padding: 16px 20px;
-        border-top: 1px solid #e9ecef;
+        padding: 16px 24px 20px;
+        border-top: 1px solid #f1f5f9;
         display: flex;
         gap: 12px;
         justify-content: flex-end;
+        background: #fafbfc;
       }
 
       .aifiverr-result-modal .modal-footer button {
-        padding: 8px 16px;
-        border-radius: 6px;
+        padding: 10px 16px;
+        border-radius: 8px;
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
-        border: none;
+        border: 1px solid transparent;
       }
 
       .aifiverr-result-modal .btn-secondary {
-        background: #6c757d;
-        color: white;
+        background: white;
+        color: #64748b;
+        border-color: #e2e8f0;
       }
 
       .aifiverr-result-modal .btn-secondary:hover {
-        background: #5a6268;
-      }
-
-      .aifiverr-result-modal .btn-copy {
-        background: #17a2b8;
-        color: white;
-      }
-
-      .aifiverr-result-modal .btn-copy:hover {
-        background: #138496;
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #475569;
       }
 
       .aifiverr-result-modal .btn-insert {
-        background: linear-gradient(135deg, #1dbf73 0%, #19a463 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
         color: white;
+        box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
       }
 
       .aifiverr-result-modal .btn-insert:hover {
-        background: linear-gradient(135deg, #19a463 0%, #17935a 100%);
-      }
-
-      @keyframes aifiverr-modalIn {
-        from { opacity: 0; transform: scale(0.9); }
-        to { opacity: 1; transform: scale(1); }
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+        transform: translateY(-1px);
       }
     `;
 
@@ -1098,41 +1856,7 @@ class TextSelector {
     }
   }
 
-  /**
-   * Copy result to clipboard
-   */
-  async copyResultToClipboard() {
-    const resultText = this.resultModal.querySelector('.result-text').value;
 
-    try {
-      await this.copyToClipboard(resultText);
-      this.showSuccessMessage('Result copied to clipboard!');
-    } catch (error) {
-      console.error('Failed to copy result:', error);
-      this.showErrorMessage('Failed to copy result to clipboard');
-    }
-  }
-
-  /**
-   * Insert result into active field
-   */
-  async insertResultIntoField() {
-    const resultText = this.resultModal.querySelector('.result-text').value;
-
-    try {
-      const inserted = await this.insertTextIntoActiveField(resultText);
-      if (inserted) {
-        this.showSuccessMessage('Result inserted into field!');
-        this.hideResultModal();
-      } else {
-        this.showErrorMessage('No suitable input field found. Text copied to clipboard instead.');
-        await this.copyToClipboard(resultText);
-      }
-    } catch (error) {
-      console.error('Failed to insert result:', error);
-      this.showErrorMessage('Failed to insert result into field');
-    }
-  }
 
   /**
    * Show success message
