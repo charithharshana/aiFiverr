@@ -6,7 +6,7 @@
 class GeminiClient {
   constructor() {
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-    this.model = 'gemini-1.5-flash';
+    this.model = 'gemini-2.5-flash';
     this.requestQueue = [];
     this.isProcessing = false;
     this.init();
@@ -15,7 +15,7 @@ class GeminiClient {
   async init() {
     // Load settings
     const settings = await storageManager.getSettings();
-    this.model = settings.defaultModel || 'gemini-1.5-flash';
+    this.model = settings.defaultModel || 'gemini-2.5-flash';
     this.initialized = true;
   }
 

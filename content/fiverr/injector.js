@@ -420,16 +420,15 @@ class FiverrInjector {
       // Clear existing content
       dropdown.innerHTML = '';
 
-      // Get custom prompts from storage
-      const customPrompts = await this.getCustomPrompts();
+      // Get ALL prompts (default + custom) - always show all available prompts
+      const allPrompts = this.getDefaultPrompts();
 
-      if (!customPrompts || Object.keys(customPrompts).length === 0) {
-        // Show default prompts if no custom prompts
-        const defaultPrompts = this.getDefaultPrompts();
-        this.renderPromptItems(dropdown, defaultPrompts, inputElement);
-      } else {
-        this.renderPromptItems(dropdown, customPrompts, inputElement);
+      if (!allPrompts || Object.keys(allPrompts).length === 0) {
+        dropdown.innerHTML = '<div style="padding: 12px; color: #6b7280;">No prompts available</div>';
+        return;
       }
+
+      this.renderPromptItems(dropdown, allPrompts, inputElement);
     } catch (error) {
       console.error('Failed to populate prompt dropdown:', error);
       dropdown.innerHTML = '<div style="padding: 12px; color: #6b7280;">Failed to load prompts</div>';
@@ -545,28 +544,49 @@ class FiverrInjector {
   getDefaultPrompts() {
     // Use knowledge base manager if available
     if (window.knowledgeBaseManager) {
-      const allPrompts = window.knowledgeBaseManager.getAllCustomPrompts();
+      // Get ALL prompts (default + custom) instead of just custom prompts
+      const allPrompts = window.knowledgeBaseManager.getAllPrompts();
       if (Object.keys(allPrompts).length > 0) {
         return allPrompts;
       }
     }
 
-    // Fallback default prompts
+    // Fallback default prompts (should include all default prompts)
     return {
       'professional_initial_reply': {
-        name: 'Professional Reply',
-        title: 'Professional Reply',
-        description: 'Generate a professional initial response'
+        name: 'Professional Initial Reply',
+        title: 'Professional Initial Reply',
+        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message'
       },
       'project_summary': {
         name: 'Project Summary',
         title: 'Project Summary',
-        description: 'Create a project summary response'
+        description: 'Analyze conversation and extract key details into a structured, concise summary'
       },
       'follow_up_message': {
         name: 'Follow-up Message',
         title: 'Follow-up Message',
-        description: 'Generate a follow-up message'
+        description: 'Draft a concise and effective follow-up message to a client based on conversation history'
+      },
+      'project_proposal': {
+        name: 'Project Proposal',
+        title: 'Project Proposal',
+        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message'
+      },
+      'translate_and_explain': {
+        name: 'Translate and Explain Message',
+        title: 'Translate and Explain Message',
+        description: 'Translate text and provide a simple explanation of its content'
+      },
+      'refine_and_translate': {
+        name: 'Refine and Translate My Message',
+        title: 'Refine and Translate My Message',
+        description: 'Refine draft message for clarity and professionalism, then translate to requested language'
+      },
+      'refine_message': {
+        name: 'Refine My Message (No Translation)',
+        title: 'Refine My Message (No Translation)',
+        description: 'Refine draft message to improve quality, clarity, and impact without translation'
       }
     };
   }

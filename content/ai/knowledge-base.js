@@ -46,10 +46,8 @@ class KnowledgeBaseManager {
         this.customPrompts.set(key, prompt);
       });
 
-      // Add default prompts if none exist
-      if (this.customPrompts.size === 0) {
-        this.addDefaultPrompts();
-      }
+      // Don't automatically add default prompts as custom prompts
+      // Users should explicitly save default prompts as custom if they want to edit them
     } catch (error) {
       console.error('Failed to load custom prompts:', error);
     }
@@ -400,10 +398,175 @@ Best regards,
   }
 
   /**
+   * Get all prompts (default + custom)
+   */
+  getAllPrompts() {
+    const defaultPrompts = this.getDefaultPrompts();
+    const customPrompts = Object.fromEntries(this.customPrompts);
+    return { ...defaultPrompts, ...customPrompts };
+  }
+
+  /**
+   * Get default prompts (without saving them as custom)
+   */
+  getDefaultPrompts() {
+    return {
+      'professional_initial_reply': {
+        name: 'Professional Initial Reply',
+        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message',
+        prompt: `You are an expert freelance assistant. Your goal is to generate a professional, friendly, and concise reply to a potential client's initial message.
+
+**Analyze this context:**
+*   **Client's Message:** {conversation}
+*   **Client's Username:** {username}
+*   **My Professional Bio:** {{bio}}
+*   **My Services:** {{services}}
+*   **My Portfolio:** {{portfolio}}
+*   **Custom Information:** {{custom1}}
+
+**Generate a reply that:**
+1.  **Addresses them by name** using {username}
+2.  **Shows understanding** of their project based on {conversation}
+3.  **Demonstrates expertise** by referencing relevant experience from {{bio}}
+4.  **Highlights relevant services** from {{services}} that match their needs
+5.  **Builds credibility** with a specific example or link from {{portfolio}}
+6.  **Includes any custom context** from {{custom1}} if provided
+7.  **Ends with a clear call-to-action** (e.g., "Would you like to discuss this further?" or "I'd be happy to provide a detailed proposal")
+
+**Keep the tone:**
+- Professional yet approachable
+- Confident but not pushy
+- Personalized to their specific needs
+- Concise (aim for 3-4 short paragraphs)
+
+Use plain text only, no markdown formatting.`
+      },
+      'project_summary': {
+        name: 'Project Summary',
+        description: 'Analyze conversation and extract key details into a structured, concise summary',
+        prompt: `Analyze this Fiverr conversation and create a structured project summary: {conversation}
+
+**Extract and organize these details:**
+
+*   **Client Information:**
+    *   Username: {username}
+    *   Communication style and tone
+    *   Apparent experience level with similar projects
+
+*   **Project Overview:**
+    *   Main goal or objective
+    *   Type of work requested
+    *   Industry or niche (if mentioned)
+
+*   **Specific Requirements:**
+    *   Detailed list of what they want delivered
+    *   Technical specifications or preferences
+    *   Style, format, or quality expectations
+
+*   **Timeline & Budget:**
+    *   Mentioned deadlines or urgency level
+    *   Budget range or pricing discussions
+    *   Flexibility on timing or scope
+
+*   **Key Decisions Made:** A bulleted list of important agreements or changes confirmed.
+*   **Budget & Pricing:** Any mention of financial agreements. State "Not discussed" if absent.
+*   **Deadlines & Timeline:** Any specific dates or time frames mentioned. State "Not discussed" if absent.
+*   **Next Action Items:** What needs to be done next, and by whom.
+
+Use plain text only, no markdown formatting.`
+      },
+      'follow_up_message': {
+        name: 'Follow-up Message',
+        description: 'Draft a concise and effective follow-up message to a client based on conversation history',
+        prompt: `Write a follow-up message based on this conversation: {conversation}
+
+Purpose: {{custom1}}
+My availability: {{custom2}}
+
+Make it:
+- Friendly and professional
+- Reference something specific from our conversation
+- Include clear next steps
+- Mention availability if provided
+- No markdown formatting`
+      },
+      'project_proposal': {
+        name: 'Project Proposal',
+        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message',
+        prompt: `Create a project proposal for {username} based on:
+
+Conversation: {conversation}
+Proposal details: {proposal}
+My background: {{bio}}
+Portfolio: {{portfolio}}
+
+Structure:
+1. Personal greeting
+2. Project understanding summary
+3. Proposal details (scope, timeline, price)
+4. Why I'm the right fit
+5. Relevant portfolio example
+6. Clear next steps
+
+Use plain text, no markdown formatting.`
+      },
+      'translate_and_explain': {
+        name: 'Translate and Explain Message',
+        description: 'Translate text and provide a simple explanation of its content',
+        prompt: `Translate this message to {{language}} and explain it: {conversation}
+
+Format your response as:
+
+EXPLANATION:
+Main goal: [What they want]
+Key points: [Important details]
+Tone: [Formal/informal/urgent/etc]
+
+TRANSLATION:
+[Full translation in {{language}}]
+
+Use plain text only.`
+      },
+      'refine_and_translate': {
+        name: 'Refine and Translate My Message',
+        description: 'Refine draft message for clarity and professionalism, then translate to requested language',
+        prompt: `Improve this message and translate it to {{language}}: {conversation}
+
+Steps:
+1. Fix grammar and make it more professional
+2. Translate the improved version to {{language}}
+
+Provide only the final translated text, no explanations.`
+      },
+      'refine_message': {
+        name: 'Refine My Message (No Translation)',
+        description: 'Refine draft message to improve quality, clarity, and impact without translation',
+        prompt: `Improve this message to be {{custom1}}: {conversation}
+
+Make it:
+- Grammatically correct
+- Clear and concise
+- More {{custom1}} in tone
+- Keep the same meaning
+
+Provide only the improved message, no explanations.`
+      }
+    };
+  }
+
+  /**
    * Process prompt with variables and context
    */
   processPrompt(promptKey, context = {}) {
-    const prompt = this.getCustomPrompt(promptKey);
+    // First try to get from custom prompts
+    let prompt = this.getCustomPrompt(promptKey);
+
+    // If not found in custom, try default prompts
+    if (!prompt) {
+      const defaultPrompts = this.getDefaultPrompts();
+      prompt = defaultPrompts[promptKey];
+    }
+
     if (!prompt) {
       throw new Error(`Prompt '${promptKey}' not found`);
     }

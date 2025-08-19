@@ -38,6 +38,9 @@
         "content/utils/storage.js",
         "content/utils/export-import.js",
         "content/utils/prompt-selector.js",
+        "content/utils/markdown-renderer.js",
+        "content/utils/advanced-editor.js",
+        "content/utils/chatAssistantManager.js",
         "content/fiverr/detector.js",
         "content/fiverr/extractor.js",
         "content/fiverr/injector.js",
@@ -56,8 +59,10 @@
     {
       "resources": [
         "content/styles/*",
+        "content/utils/*",
         "icons/*",
-        "popup/*"
+        "popup/*",
+        "chat-assistant.html"
       ],
       "matches": ["https://www.fiverr.com/*", "file://*/*", "http://*/*", "https://*/*"]
     }

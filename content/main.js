@@ -31,6 +31,12 @@ class AiFiverrMain {
     try {
       console.log('aiFiverr: Initializing extension...');
 
+      // Check if extension context is valid
+      if (!chrome.runtime?.id) {
+        console.warn('aiFiverr: Extension context invalidated, cannot initialize');
+        return;
+      }
+
       // Check if we're on a Fiverr page
       if (!this.isFiverrPage()) {
         console.log('aiFiverr: Not on a Fiverr page, skipping initialization');

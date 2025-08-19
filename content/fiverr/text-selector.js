@@ -999,17 +999,26 @@ class TextSelector {
         <button class="close-btn" title="Close">×</button>
       </div>
       <div class="result-content">
-        <div class="result-text">${result.replace(/\n/g, '<br>')}</div>
+        <div class="result-display-container">
+          <div class="result-text"></div>
+        </div>
+        <div class="result-editor-container" style="display: none;">
+          <!-- Advanced editor will be inserted here -->
+        </div>
       </div>
       <div class="result-actions">
         <button class="copy-btn" title="Copy to clipboard">📋 Copy</button>
         <button class="edit-btn" title="Edit text">✏️ Edit</button>
+        <button class="view-btn" title="View formatted" style="display: none;">👁️ View</button>
         <button class="insert-btn" title="Insert into field">📝 Insert</button>
       </div>
     `;
 
     // Add styles
     this.addResultPopupStyles();
+
+    // Initialize content with markdown rendering
+    this.initializeResultContent(popup, result);
 
     // Position popup near the floating icon
     this.positionResultPopup(popup);
@@ -1023,23 +1032,24 @@ class TextSelector {
     });
 
     popup.querySelector('.copy-btn').addEventListener('click', async () => {
-      await this.copyToClipboard(result);
+      const resultText = this.getCurrentResultText(popup);
+      await this.copyToClipboard(resultText);
       this.showToast('Result copied to clipboard!');
     });
 
     popup.querySelector('.edit-btn').addEventListener('click', () => {
-      this.showResultModal(result, originalText);
-      this.closeResultPopup(popup);
+      this.toggleAdvancedEdit(popup);
+    });
+
+    popup.querySelector('.view-btn').addEventListener('click', () => {
+      this.toggleAdvancedEdit(popup);
     });
 
     popup.querySelector('.insert-btn').addEventListener('click', () => {
-      this.insertTextIntoActiveField(result);
+      const resultText = this.getCurrentResultText(popup);
+      this.insertTextIntoActiveField(resultText);
       this.showToast('Text inserted successfully!');
-      this.closeResultPopup(popup);
     });
-
-    // Add click-outside-to-close functionality
-    this.addClickOutsideToClose(popup);
 
     // Store reference to popup for potential cleanup
     this.currentResultPopup = popup;
@@ -1213,30 +1223,105 @@ class TextSelector {
   }
 
   /**
-   * Add click-outside-to-close functionality
+   * Initialize result content with markdown rendering
    */
-  addClickOutsideToClose(popup) {
-    const handleClickOutside = (e) => {
-      // Don't close if clicking inside the popup
-      if (popup.contains(e.target)) return;
+  initializeResultContent(popup, result) {
+    const resultText = popup.querySelector('.result-text');
 
-      // Don't close if clicking on the floating icon or context menu
-      if (this.floatingIcon && this.floatingIcon.contains(e.target)) return;
-      if (this.contextMenu && this.contextMenu.contains(e.target)) return;
+    // Store original markdown content
+    popup._originalContent = result;
+    popup._currentContent = result;
 
-      // Close the popup
-      this.closeResultPopup(popup);
-    };
+    // Render markdown to HTML
+    if (window.markdownRenderer) {
+      resultText.innerHTML = window.markdownRenderer.render(result);
+    } else {
+      // Fallback rendering
+      resultText.innerHTML = result.replace(/\n/g, '<br>');
+    }
+  }
 
-    // Add click listener with a small delay to avoid immediate closure
-    setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
-    }, 100);
+  /**
+   * Toggle advanced edit mode for the popup
+   */
+  toggleAdvancedEdit(popup) {
+    const displayContainer = popup.querySelector('.result-display-container');
+    const editorContainer = popup.querySelector('.result-editor-container');
+    const editBtn = popup.querySelector('.edit-btn');
+    const viewBtn = popup.querySelector('.view-btn');
 
-    // Store cleanup function
-    popup._clickOutsideCleanup = () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
+    const isEditing = editorContainer.style.display !== 'none';
+
+    if (isEditing) {
+      // Switch to display mode
+      if (popup._advancedEditor) {
+        const editedContent = popup._advancedEditor.getContent();
+        popup._currentContent = editedContent;
+
+        // Update display with rendered markdown
+        const resultText = popup.querySelector('.result-text');
+        if (window.markdownRenderer) {
+          resultText.innerHTML = window.markdownRenderer.render(editedContent);
+        } else {
+          resultText.innerHTML = editedContent.replace(/\n/g, '<br>');
+        }
+      }
+
+      displayContainer.style.display = 'block';
+      editorContainer.style.display = 'none';
+      editBtn.style.display = 'inline-block';
+      viewBtn.style.display = 'none';
+      editBtn.innerHTML = '✏️ Edit';
+      editBtn.title = 'Edit text';
+    } else {
+      // Switch to edit mode
+      if (!popup._advancedEditor) {
+        // Initialize advanced editor
+        popup._advancedEditor = new window.AdvancedEditor(editorContainer, {
+          showToolbar: true,
+          showPreview: true,
+          placeholder: 'Edit your AI result...',
+          maxHeight: 350
+        });
+
+        // Set up change handler
+        popup._advancedEditor.on('onChange', (content) => {
+          popup._currentContent = content;
+        });
+      }
+
+      // Set current content
+      popup._advancedEditor.setContent(popup._currentContent);
+
+      displayContainer.style.display = 'none';
+      editorContainer.style.display = 'block';
+      editBtn.style.display = 'none';
+      viewBtn.style.display = 'inline-block';
+      viewBtn.innerHTML = '👁️ View';
+      viewBtn.title = 'View formatted';
+    }
+  }
+
+  /**
+   * Get current result text (from either display or edit mode)
+   */
+  getCurrentResultText(popup) {
+    const editorContainer = popup.querySelector('.result-editor-container');
+    const isEditing = editorContainer.style.display !== 'none';
+
+    if (isEditing && popup._advancedEditor) {
+      return popup._advancedEditor.getContent();
+    } else {
+      return popup._currentContent || popup._originalContent || '';
+    }
+  }
+
+  /**
+   * Auto-resize textarea to fit content
+   */
+  autoResizeTextarea(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 400) + 'px';
   }
 
   /**
@@ -1244,6 +1329,12 @@ class TextSelector {
    */
   closeResultPopup(popup) {
     if (!popup || !popup.parentNode) return;
+
+    // Clean up advanced editor
+    if (popup._advancedEditor) {
+      popup._advancedEditor.destroy();
+      popup._advancedEditor = null;
+    }
 
     // Clean up event listeners
     if (popup._dragCleanup) {
@@ -1429,11 +1520,13 @@ class TextSelector {
         background: white;
         border-radius: 12px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
-        width: 350px;
-        max-height: 400px;
+        width: 600px;
+        max-height: 700px;
         overflow: hidden;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         animation: popupSlideIn 0.2s ease-out;
+        display: flex;
+        flex-direction: column;
       }
 
       @keyframes popupSlideIn {
@@ -1448,12 +1541,12 @@ class TextSelector {
       }
 
       .aifiverr-text-result-popup .result-header {
-        padding: 16px 20px 12px;
-        border-bottom: 1px solid #f1f5f9;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid #e8eaed;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
         user-select: none;
       }
 
@@ -1495,9 +1588,10 @@ class TextSelector {
 
       .aifiverr-text-result-popup .result-header h3 {
         margin: 0;
-        font-size: 16px;
-        font-weight: 600;
-        color: #1e293b;
+        font-size: 18px;
+        font-weight: 400;
+        color: #202124;
+        font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
 
       .aifiverr-text-result-popup .close-btn {
@@ -1522,55 +1616,79 @@ class TextSelector {
       }
 
       .aifiverr-text-result-popup .result-content {
-        padding: 16px 20px;
-        max-height: 250px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .aifiverr-text-result-popup .result-display-container {
+        padding: 24px;
         overflow-y: auto;
+        flex: 1;
+        background: #ffffff;
       }
 
       .aifiverr-text-result-popup .result-text {
         font-size: 14px;
-        line-height: 1.6;
-        color: #334155;
-        white-space: pre-wrap;
+        line-height: 1.7;
+        color: #202124;
+        word-wrap: break-word;
+        font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      .aifiverr-text-result-popup .result-editor-container {
+        flex: 1;
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .aifiverr-text-result-popup .result-editor-container .advanced-editor {
+        height: 100%;
+        border: none;
+        border-radius: 0;
       }
 
       .aifiverr-text-result-popup .result-actions {
-        padding: 12px 20px 16px;
-        border-top: 1px solid #f1f5f9;
+        padding: 16px 24px 20px;
+        border-top: 1px solid #e8eaed;
         display: flex;
-        gap: 8px;
-        background: #fafbfc;
+        gap: 12px;
+        background: #f8f9fa;
       }
 
       .aifiverr-text-result-popup .result-actions button {
-        padding: 8px 12px;
-        border-radius: 6px;
-        font-size: 13px;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 14px;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
-        border: 1px solid #e2e8f0;
+        border: 1px solid #dadce0;
         background: white;
-        color: #64748b;
+        color: #5f6368;
         flex: 1;
+        font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
 
       .aifiverr-text-result-popup .result-actions button:hover {
-        background: #f8fafc;
-        border-color: #cbd5e1;
-        color: #475569;
+        background: #f1f3f4;
+        border-color: #1a73e8;
+        color: #1a73e8;
         transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(26, 115, 232, 0.2);
       }
 
       .aifiverr-text-result-popup .insert-btn {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        background: linear-gradient(135deg, #1a73e8 0%, #1557b0 100%) !important;
         color: white !important;
         border-color: transparent !important;
       }
 
       .aifiverr-text-result-popup .insert-btn:hover {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+        background: linear-gradient(135deg, #1557b0 0%, #0f4c8c 100%) !important;
         transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
       }
     `;
 

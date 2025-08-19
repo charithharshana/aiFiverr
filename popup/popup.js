@@ -32,7 +32,7 @@ class PopupManager {
       await this.loadDashboardData();
     } catch (error) {
       console.error('Popup initialization failed:', error);
-      this.showToast('Failed to initialize popup', 'error');
+      // Remove popup error message - just log to console
     }
   }
 
@@ -235,17 +235,24 @@ class PopupManager {
     document.getElementById('globalSaveBtn')?.addEventListener('click', () => {
       this.saveAllSettings();
     });
+
+    // API save button
+    document.getElementById('apiSaveBtn')?.addEventListener('click', () => {
+      this.saveApiConfiguration();
+    });
   }
 
   async initializeUI() {
-    // Load settings (this includes knowledge base and prompts)
-    await this.loadSettings();
+    try {
+      // Load settings (this includes knowledge base and prompts)
+      await this.loadSettings();
 
-    // Load sessions
-    await this.loadSessions();
-
-    // Update status
-    this.updateStatus();
+      // Update status
+      this.updateStatus();
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize UI:', error);
+      this.showToast('Failed to initialize extension UI', 'error');
+    }
   }
 
   async switchTab(tabName) {
@@ -268,8 +275,8 @@ class PopupManager {
       case 'dashboard':
         this.loadDashboardData();
         break;
-      case 'sessions':
-        this.loadSessions();
+      case 'api':
+        await this.loadApiConfig();
         break;
       case 'settings':
         await this.loadSettings();
@@ -301,37 +308,73 @@ class PopupManager {
 
   async updateStats() {
     try {
-      // Get session count
-      const sessions = await this.getStorageData('sessions');
-      const sessionCount = sessions ? Object.keys(sessions).length : 0;
-      document.getElementById('totalSessions').textContent = sessionCount;
+      // Get conversation count
+      const conversations = await this.getStorageData('fiverrConversations');
+      const conversationCount = conversations ? Object.keys(conversations).length : 0;
+      document.getElementById('totalConversations').textContent = conversationCount;
 
-      // Get API key stats
-      const apiKeyStats = await this.sendMessageToBackground({ type: 'GET_API_KEY_STATS' });
-      if (apiKeyStats?.success) {
-        document.getElementById('healthyKeys').textContent = apiKeyStats.data.healthyKeys || 0;
-        document.getElementById('totalRequests').textContent = apiKeyStats.data.totalRequests || 0;
-      }
+      // Get API key count
+      const settings = await this.getStorageData('settings');
+      const apiKeyCount = settings?.apiKeys ? settings.apiKeys.length : 0;
+      document.getElementById('healthyKeys').textContent = apiKeyCount;
+
+      // Get custom prompts count
+      const customPrompts = await this.getStorageData('customPrompts');
+      const promptCount = customPrompts ? Object.keys(customPrompts).length : 0;
+      document.getElementById('totalPrompts').textContent = promptCount;
     } catch (error) {
       console.error('Failed to update stats:', error);
     }
   }
 
-  updateActivity() {
+  async updateActivity() {
     const activityList = document.getElementById('activityList');
     if (!activityList) return;
 
-    // For now, show welcome message
-    // In a real implementation, this would show recent AI interactions
-    activityList.innerHTML = `
-      <div class="activity-item">
-        <div class="activity-icon">💬</div>
-        <div class="activity-content">
-          <div class="activity-title">Welcome to aiFiverr!</div>
-          <div class="activity-time">Just now</div>
+    try {
+      // Get recent conversations
+      const conversations = await this.getStorageData('fiverrConversations');
+
+      if (conversations && Object.keys(conversations).length > 0) {
+        // Show recent conversations
+        const recentConversations = Object.entries(conversations)
+          .sort(([,a], [,b]) => (b.lastExtracted || 0) - (a.lastExtracted || 0))
+          .slice(0, 3);
+
+        activityList.innerHTML = recentConversations.map(([username, conv]) => `
+          <div class="activity-item">
+            <div class="activity-icon">💬</div>
+            <div class="activity-content">
+              <div class="activity-title">Conversation with ${username}</div>
+              <div class="activity-time">${new Date(conv.lastExtracted || 0).toLocaleDateString()}</div>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        // Show welcome message if no conversations
+        activityList.innerHTML = `
+          <div class="activity-item">
+            <div class="activity-icon">🎯</div>
+            <div class="activity-content">
+              <div class="activity-title">Ready to assist with Fiverr conversations!</div>
+              <div class="activity-time">Go to a Fiverr conversation page to get started</div>
+            </div>
+          </div>
+        `;
+      }
+    } catch (error) {
+      console.error('Failed to update activity:', error);
+      // Fallback to welcome message
+      activityList.innerHTML = `
+        <div class="activity-item">
+          <div class="activity-icon">⚠️</div>
+          <div class="activity-content">
+            <div class="activity-title">aiFiverr Extension Ready</div>
+            <div class="activity-time">Visit Fiverr to start using AI assistance</div>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
   }
 
   updateStatus() {
@@ -344,49 +387,10 @@ class PopupManager {
     }
   }
 
-  async loadSessions() {
+
+
+  async loadApiConfig() {
     try {
-      const sessions = await this.getStorageData('sessions');
-      const sessionsList = document.getElementById('sessionsList');
-      
-      if (!sessions || Object.keys(sessions).length === 0) {
-        sessionsList.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-icon">💬</div>
-            <div class="empty-title">No sessions yet</div>
-            <div class="empty-description">Start a conversation on Fiverr to create your first session</div>
-          </div>
-        `;
-        return;
-      }
-
-      // Display sessions
-      const sessionEntries = Object.entries(sessions)
-        .sort(([,a], [,b]) => (b.metadata?.lastUpdated || 0) - (a.metadata?.lastUpdated || 0));
-
-      sessionsList.innerHTML = sessionEntries.map(([key, session]) => `
-        <div class="session-item" data-session-id="${key}">
-          <div class="session-info">
-            <div class="session-title">${session.metadata?.title || 'Untitled Session'}</div>
-            <div class="session-meta">
-              ${session.metadata?.messageCount || 0} messages • 
-              ${new Date(session.metadata?.lastUpdated || 0).toLocaleDateString()}
-            </div>
-          </div>
-          <div class="session-actions">
-            <button class="btn-icon" onclick="popupManager.exportSession('${key}')">📤</button>
-            <button class="btn-icon" onclick="popupManager.deleteSession('${key}')">🗑️</button>
-          </div>
-        </div>
-      `).join('');
-    } catch (error) {
-      console.error('Failed to load sessions:', error);
-    }
-  }
-
-  async loadSettings() {
-    try {
-      // Load API keys
       const settings = await this.getStorageData('settings');
       this.currentApiKeys = settings?.apiKeys || [];
 
@@ -405,17 +409,32 @@ class PopupManager {
         eyeIcon.parentElement.title = 'Show API keys';
       }
 
+      // Load API configuration
+      if (settings) {
+        document.getElementById('defaultModel').value = settings.defaultModel || 'gemini-2.5-flash';
+        document.getElementById('keyRotation').checked = settings.keyRotation !== false;
+        document.getElementById('apiTimeout').value = settings.apiTimeout || 30;
+        document.getElementById('maxRetries').value = settings.maxRetries || 3;
+      }
+    } catch (error) {
+      console.error('Failed to load API config:', error);
+    }
+  }
+
+  async loadSettings() {
+    try {
+      const settings = await this.getStorageData('settings');
+
       // Load knowledge base
       await this.loadKnowledgeBase();
 
       // Load prompt management
       await this.loadPrompts();
 
-      // Load preferences
+      // Load preferences (removed API keys and model selection)
       if (settings) {
         document.getElementById('autoSave').checked = settings.autoSave !== false;
         document.getElementById('notifications').checked = settings.notifications !== false;
-        document.getElementById('keyRotation').checked = settings.keyRotation !== false;
         document.getElementById('maxContextLength').value = settings.maxContextLength || 10000;
       }
     } catch (error) {
@@ -493,15 +512,12 @@ class PopupManager {
       // Create default values for detected variables
       const knowledgeBase = {};
       const defaultValues = {
-        'bio': 'Your professional bio and background information',
-        'services': 'List of services you offer',
-        'portfolio': 'Links to your portfolio or previous work',
-        'custom1': 'Custom field 1 - Add any specific information like project goals, availability, or desired tone',
-        'custom2': 'Custom field 2 - Add any specific information like updates, timeline, or special requirements',
-        'availability': 'Your current availability and working hours',
-        'experience': 'Your years of experience and expertise',
-        'rates': 'Your pricing and rate information',
-        'contact': 'Your contact information and preferred communication methods'
+        'bio': 'Your professional bio and background information - include your expertise, experience, and what makes you unique',
+        'services': 'List of services you offer - be specific about what you can deliver for clients',
+        'portfolio': 'Links to your portfolio or previous work - include your best examples and case studies',
+        'custom1': 'Custom field 1 - Add any specific information like project goals, communication style, or special requirements',
+        'custom2': 'Custom field 2 - Add availability, timeline preferences, or any other relevant details',
+        'language': 'Target language for translation (e.g., Spanish, French, German, Italian, Portuguese, etc.)'
       };
 
       variables.forEach(variable => {
@@ -517,7 +533,7 @@ class PopupManager {
           // Verify the data was saved
           const verifyData = await this.getStorageData('knowledgeBase');
           if (verifyData && Object.keys(verifyData).length === Object.keys(knowledgeBase).length) {
-            this.showToast(`Auto-populated ${Object.keys(knowledgeBase).length} variables from default prompts`, 'success');
+            // Auto-population successful - no toast message needed
           } else {
             throw new Error('Data verification failed after auto-population save');
           }
@@ -847,7 +863,7 @@ Use plain text, no markdown formatting.`
       'translate_and_explain': {
         name: 'Translate and Explain Message',
         description: 'Translate text and provide a simple explanation of its content',
-        prompt: `Translate this message to {language} and explain it: {conversation}
+        prompt: `Translate this message to {{language}} and explain it: {conversation}
 
 Format your response as:
 
@@ -857,18 +873,18 @@ Key points: [Important details]
 Tone: [Formal/informal/urgent/etc]
 
 TRANSLATION:
-[Full translation in {language}]
+[Full translation in {{language}}]
 
 Use plain text only.`
       },
       'refine_and_translate': {
         name: 'Refine and Translate My Message',
         description: 'Refine draft message for clarity and professionalism, then translate to requested language',
-        prompt: `Improve this message and translate it to {language}: {conversation}
+        prompt: `Improve this message and translate it to {{language}}: {conversation}
 
 Steps:
 1. Fix grammar and make it more professional
-2. Translate the improved version to {language}
+2. Translate the improved version to {{language}}
 
 Provide only the final translated text, no explanations.`
       },
@@ -1492,6 +1508,7 @@ Provide only the improved message, no explanations.`
 
       // Preserve API keys in settings
       settings.apiKeys = this.currentApiKeys || [];
+      settings.defaultModel = document.getElementById('defaultModel').value;
       settings.autoSave = document.getElementById('autoSave').checked;
       settings.notifications = document.getElementById('notifications').checked;
       settings.keyRotation = document.getElementById('keyRotation').checked;
@@ -1502,6 +1519,29 @@ Provide only the improved message, no explanations.`
     } catch (error) {
       console.error('Failed to save preferences:', error);
       this.showToast('Failed to save preferences', 'error');
+    }
+  }
+
+  async saveApiConfiguration() {
+    try {
+      // Get current settings
+      const settings = await this.getStorageData('settings') || {};
+
+      // Save API configuration
+      settings.apiKeys = this.currentApiKeys || [];
+      settings.defaultModel = document.getElementById('defaultModel').value;
+      settings.keyRotation = document.getElementById('keyRotation').checked;
+      settings.apiTimeout = parseInt(document.getElementById('apiTimeout').value);
+      settings.maxRetries = parseInt(document.getElementById('maxRetries').value);
+
+      // Save to storage
+      await this.setStorageData({ settings });
+
+      // Show success message
+      this.showToast('API configuration saved successfully!', 'success');
+    } catch (error) {
+      console.error('Failed to save API configuration:', error);
+      this.showToast('Failed to save API configuration', 'error');
     }
   }
 
