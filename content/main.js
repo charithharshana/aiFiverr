@@ -65,8 +65,15 @@ class AiFiverrMain {
         fiverrDetector: !!window.fiverrDetector,
         fiverrInjector: !!window.fiverrInjector,
         storageManager: !!window.storageManager,
-        textSelector: !!window.textSelector
+        textSelector: !!window.textSelector,
+        chatAssistantManager: !!window.chatAssistantManager
       });
+
+      // Initialize chat assistant manager if needed
+      await this.initializeChatAssistantManager();
+
+      // Initialize AI chat if available and needed
+      await this.initializeAIChat();
 
       // Let normal detection work - don't force it automatically
       console.log('aiFiverr: Extension ready. Use Ctrl+Shift+D to manually trigger detection if needed.');
@@ -106,16 +113,13 @@ class AiFiverrMain {
       const settings = result.settings || {};
 
       // Default to restricting to Fiverr only (restrictToFiverr: true)
-      // If the setting is explicitly set to false, allow all sites
       const restrictToFiverr = settings.restrictToFiverr !== false;
 
       console.log('aiFiverr: Site restriction check:', {
         restrictToFiverr,
         currentHostname: window.location.hostname,
         isFiverrPage: this.isFiverrPage(),
-        settingsRaw: settings,
-        settingsRestrictValue: settings.restrictToFiverr,
-        willInitialize: restrictToFiverr ? this.isFiverrPage() : true
+        settingsRaw: settings
       });
 
       if (restrictToFiverr) {
@@ -134,74 +138,277 @@ class AiFiverrMain {
 
   /**
    * Wait for required dependencies to be available
+   * Note: Dependencies are now initialized by the main extension, so this is mainly for verification
    */
   async waitForDependencies() {
-    const dependencies = [
-      'storageManager',
-      'sessionManager',
-      'apiKeyManager',
-      'geminiClient',
-      'knowledgeBaseManager',
-      'fiverrDetector',
-      'fiverrExtractor',
-      'fiverrInjector',
-      'exportImportManager',
-      'promptSelector',
-      'textSelector'
-    ];
+    console.log('aiFiverr: Dependencies will be initialized by the main extension');
+    // No need to wait since we control the initialization order
+    return;
+  }
 
-    const maxWait = 10000; // 10 seconds
-    const checkInterval = 100; // 100ms
-    let waited = 0;
+  /**
+   * Initialize all managers in the correct order
+   */
+  async initializeManagers() {
+    try {
+      console.log('aiFiverr: Initializing managers...');
 
-    while (waited < maxWait) {
-      const missing = dependencies.filter(dep => !window[dep]);
-      
-      if (missing.length === 0) {
-        return; // All dependencies available
+      // Check if we should initialize based on site restrictions
+      const shouldInitialize = await this.shouldInitializeOnCurrentSite();
+      if (!shouldInitialize) {
+        console.log('aiFiverr: All managers disabled due to site restrictions');
+        return;
       }
 
-      await new Promise(resolve => setTimeout(resolve, checkInterval));
-      waited += checkInterval;
-    }
+      // Initialize core managers first (these are needed for basic functionality)
+      console.log('aiFiverr: Initializing core managers...');
+      await this.initializeStorageManager();
+      await this.initializeSessionManager();
+      await this.initializeAPIKeyManager();
+      await this.initializeGeminiClient();
+      await this.initializeKnowledgeBaseManager();
 
-    const stillMissing = dependencies.filter(dep => !window[dep]);
-    if (stillMissing.length > 0) {
-      throw new Error(`Missing dependencies: ${stillMissing.join(', ')}`);
+      // Initialize Fiverr-specific managers
+      console.log('aiFiverr: Initializing Fiverr managers...');
+      await this.initializeFiverrDetector();
+      await this.initializeFiverrExtractor();
+      await this.initializeFiverrInjector();
+      await this.initializeTextSelector();
+
+      // Initialize utility managers
+      console.log('aiFiverr: Initializing utility managers...');
+      await this.initializeExportImportManager();
+      await this.initializePromptSelector();
+
+      // Initialize chat managers last
+      console.log('aiFiverr: Initializing chat managers...');
+      await this.initializeChatAssistantManager();
+      await this.initializeAIChat();
+
+      console.log('aiFiverr: All managers initialized');
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize managers:', error);
     }
   }
 
   /**
-   * Initialize all managers
+   * Initialize Storage Manager
    */
-  async initializeManagers() {
-    // Initialize storage manager
-    if (window.storageManager && !window.storageManager.initialized) {
-      await window.storageManager.init?.();
+  async initializeStorageManager() {
+    try {
+      if (typeof window.initializeStorageManager === 'function') {
+        console.log('aiFiverr: Initializing Storage Manager...');
+        await window.initializeStorageManager();
+      } else {
+        console.log('aiFiverr: Storage Manager initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Storage Manager:', error);
     }
+  }
 
-    // Initialize knowledge base manager
-    if (window.knowledgeBaseManager && !window.knowledgeBaseManager.initialized) {
-      await window.knowledgeBaseManager.init();
-      window.knowledgeBaseManager.initialized = true;
+  /**
+   * Initialize Session Manager
+   */
+  async initializeSessionManager() {
+    try {
+      if (typeof window.initializeSessionManager === 'function') {
+        console.log('aiFiverr: Initializing Session Manager...');
+        await window.initializeSessionManager();
+      } else {
+        console.log('aiFiverr: Session Manager initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Session Manager:', error);
     }
+  }
 
-    // Initialize session manager
-    if (window.sessionManager && !window.sessionManager.initialized) {
-      await window.sessionManager.init();
+  /**
+   * Initialize API Key Manager
+   */
+  async initializeAPIKeyManager() {
+    try {
+      if (typeof window.initializeAPIKeyManager === 'function') {
+        console.log('aiFiverr: Initializing API Key Manager...');
+        await window.initializeAPIKeyManager();
+      } else {
+        console.log('aiFiverr: API Key Manager initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize API Key Manager:', error);
     }
+  }
 
-    // Initialize API key manager
-    if (window.apiKeyManager && !window.apiKeyManager.initialized) {
-      await window.apiKeyManager.init();
+  /**
+   * Initialize Gemini Client
+   */
+  async initializeGeminiClient() {
+    try {
+      if (typeof window.initializeGeminiClient === 'function') {
+        console.log('aiFiverr: Initializing Gemini Client...');
+        await window.initializeGeminiClient();
+      } else {
+        console.log('aiFiverr: Gemini Client initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Gemini Client:', error);
     }
+  }
 
-    // Initialize Gemini client
-    if (window.geminiClient && !window.geminiClient.initialized) {
-      await window.geminiClient.init();
+  /**
+   * Initialize Knowledge Base Manager
+   */
+  async initializeKnowledgeBaseManager() {
+    try {
+      if (typeof window.initializeKnowledgeBaseManager === 'function') {
+        console.log('aiFiverr: Initializing Knowledge Base Manager...');
+        await window.initializeKnowledgeBaseManager();
+      } else {
+        console.log('aiFiverr: Knowledge Base Manager initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Knowledge Base Manager:', error);
     }
+  }
 
-    console.log('aiFiverr: All managers initialized');
+  /**
+   * Initialize Fiverr Detector
+   */
+  async initializeFiverrDetector() {
+    try {
+      if (typeof window.initializeFiverrDetector === 'function') {
+        console.log('aiFiverr: Initializing Fiverr Detector...');
+        await window.initializeFiverrDetector();
+      } else {
+        console.log('aiFiverr: Fiverr Detector initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Fiverr Detector:', error);
+    }
+  }
+
+  /**
+   * Initialize Fiverr Extractor
+   */
+  async initializeFiverrExtractor() {
+    try {
+      if (typeof window.initializeFiverrExtractor === 'function') {
+        console.log('aiFiverr: Initializing Fiverr Extractor...');
+        await window.initializeFiverrExtractor();
+      } else {
+        console.log('aiFiverr: Fiverr Extractor initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Fiverr Extractor:', error);
+    }
+  }
+
+  /**
+   * Initialize Fiverr Injector
+   */
+  async initializeFiverrInjector() {
+    try {
+      if (typeof window.initializeFiverrInjector === 'function') {
+        console.log('aiFiverr: Initializing Fiverr Injector...');
+        await window.initializeFiverrInjector();
+      } else {
+        console.log('aiFiverr: Fiverr Injector initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Fiverr Injector:', error);
+    }
+  }
+
+  /**
+   * Initialize Text Selector
+   */
+  async initializeTextSelector() {
+    try {
+      if (typeof window.initializeTextSelector === 'function') {
+        console.log('aiFiverr: Initializing Text Selector...');
+        await window.initializeTextSelector();
+      } else {
+        console.log('aiFiverr: Text Selector initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Text Selector:', error);
+    }
+  }
+
+  /**
+   * Initialize Export Import Manager
+   */
+  async initializeExportImportManager() {
+    try {
+      if (typeof window.initializeExportImportManager === 'function') {
+        console.log('aiFiverr: Initializing Export Import Manager...');
+        await window.initializeExportImportManager();
+      } else {
+        console.log('aiFiverr: Export Import Manager initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Export Import Manager:', error);
+    }
+  }
+
+  /**
+   * Initialize Prompt Selector
+   */
+  async initializePromptSelector() {
+    try {
+      if (typeof window.initializePromptSelector === 'function') {
+        console.log('aiFiverr: Initializing Prompt Selector...');
+        await window.initializePromptSelector();
+      } else {
+        console.log('aiFiverr: Prompt Selector initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Prompt Selector:', error);
+    }
+  }
+
+  /**
+   * Initialize Chat Assistant Manager if site restrictions allow
+   */
+  async initializeChatAssistantManager() {
+    try {
+      // Initialize chat assistant manager if the function is available
+      if (typeof window.initializeChatAssistantManager === 'function') {
+        console.log('aiFiverr: Initializing Chat Assistant Manager...');
+        await window.initializeChatAssistantManager();
+      } else {
+        console.log('aiFiverr: Chat Assistant Manager initialization function not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Chat Assistant Manager:', error);
+    }
+  }
+
+  /**
+   * Initialize AI Chat if available and site restrictions allow
+   */
+  async initializeAIChat() {
+    try {
+      // Check if we should initialize AI chat based on site restrictions
+      const shouldInitialize = await this.shouldInitializeOnCurrentSite();
+      if (!shouldInitialize) {
+        console.log('aiFiverr: AI Chat disabled due to site restrictions');
+        return;
+      }
+
+      // Initialize AI chat if the function is available
+      if (typeof window.initializeAIAssistanceChat === 'function') {
+        console.log('aiFiverr: Initializing AI Assistance Chat...');
+        await window.initializeAIAssistanceChat();
+      } else if (typeof window.initializeUniversalChat === 'function') {
+        console.log('aiFiverr: Initializing Universal Chat...');
+        await window.initializeUniversalChat();
+      } else {
+        console.log('aiFiverr: No AI chat system available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize AI chat:', error);
+    }
   }
 
   /**

@@ -8,7 +8,54 @@ class ChatAssistantManager {
         this.chatWindow = null;
         this.isReady = false;
         this.messageQueue = [];
+        this.initialized = false;
+        // DO NOT auto-initialize - wait for explicit call
+        // this.init();
+    }
+
+    async init() {
+        // Check site restrictions first
+        const shouldInitialize = await this.shouldInitializeOnCurrentSite();
+        if (!shouldInitialize) {
+            console.log('aiFiverr: Chat Assistant Manager disabled due to site restrictions');
+            return;
+        }
+
         this.setupMessageListener();
+        this.initialized = true;
+        console.log('aiFiverr: Chat Assistant Manager initialized');
+    }
+
+    /**
+     * Check if chat assistant should initialize on current site based on settings
+     */
+    async shouldInitializeOnCurrentSite() {
+        try {
+            // Check if extension context is valid
+            if (!chrome.runtime?.id) {
+                console.warn('aiFiverr: Extension context invalidated, cannot check site restrictions');
+                return false;
+            }
+
+            // Get settings from storage
+            const result = await chrome.storage.local.get(['settings']);
+            const settings = result.settings || {};
+
+            // Default to restricting to Fiverr only (restrictToFiverr: true)
+            const restrictToFiverr = settings.restrictToFiverr !== false;
+
+            if (restrictToFiverr) {
+                // Only initialize on Fiverr pages
+                return window.location.hostname.includes('fiverr.com');
+            } else {
+                // Initialize on all sites
+                return true;
+            }
+        } catch (error) {
+            console.error('aiFiverr: Error checking site restriction settings:', error);
+            // Default to Fiverr only if there's an error
+            return window.location.hostname.includes('fiverr.com');
+        }
     }
 
     /**
@@ -52,6 +99,12 @@ class ChatAssistantManager {
      */
     async openChatAssistant(context = {}) {
         try {
+            // Check if manager is initialized (respects site restrictions)
+            if (!this.initialized) {
+                console.log('aiFiverr: Chat Assistant Manager not initialized, cannot open chat assistant');
+                return;
+            }
+
             console.log('aiFiverr: Opening chat assistant with context:', context);
 
             // Create or focus the chat window
@@ -208,6 +261,18 @@ class ChatAssistantManager {
     }
 }
 
-// Create global instance
-window.chatAssistantManager = new ChatAssistantManager();
-console.log('aiFiverr: Chat Assistant Manager initialized');
+// Create global instance - but only initialize if site restrictions allow
+async function initializeChatAssistantManager() {
+    if (!window.chatAssistantManager) {
+        window.chatAssistantManager = new ChatAssistantManager();
+        // Explicitly call init() after creating the instance
+        await window.chatAssistantManager.init();
+        console.log('aiFiverr: Chat Assistant Manager created and initialized');
+    }
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeChatAssistantManager = initializeChatAssistantManager;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the chat to load on every website
+// The chat assistant manager should only be initialized when explicitly called by main.js

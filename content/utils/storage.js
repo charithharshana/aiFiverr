@@ -7,6 +7,29 @@ class StorageManager {
   constructor() {
     this.cache = new Map();
     this.syncInProgress = false;
+    this.contextInvalidated = false;
+    this.lastContextCheck = 0;
+  }
+
+  /**
+   * Check if extension context is valid with throttling
+   */
+  isExtensionContextValid() {
+    const now = Date.now();
+    // Only check context every 5 seconds to avoid spam
+    if (now - this.lastContextCheck < 5000 && this.contextInvalidated) {
+      return false;
+    }
+
+    this.lastContextCheck = now;
+    const isValid = !!(chrome.runtime?.id);
+
+    if (!isValid && !this.contextInvalidated) {
+      this.contextInvalidated = true;
+      console.warn('aiFiverr: Extension context invalidated - storage operations will be limited');
+    }
+
+    return isValid;
   }
 
   /**
@@ -22,13 +45,17 @@ class StorageManager {
       }
 
       // Check if extension context is valid
-      if (!chrome.runtime?.id) {
-        console.warn('Extension context invalidated, cannot access storage');
+      if (!this.isExtensionContextValid()) {
+        // Return cached data if available, otherwise empty object
+        if (typeof keys === 'string') {
+          const cached = this.cache.get(keys);
+          return cached !== undefined ? { [keys]: cached } : {};
+        }
         return {};
       }
 
       const result = await chrome.storage.local.get(keys);
-      
+
       // Update cache
       if (typeof keys === 'string') {
         this.cache.set(keys, result[keys]);
@@ -44,6 +71,15 @@ class StorageManager {
 
       return result;
     } catch (error) {
+      if (error.message?.includes('Extension context invalidated')) {
+        this.contextInvalidated = true;
+        // Return cached data if available
+        if (typeof keys === 'string') {
+          const cached = this.cache.get(keys);
+          return cached !== undefined ? { [keys]: cached } : {};
+        }
+        return {};
+      }
       console.error('Storage get error:', error);
       return {};
     }
@@ -60,8 +96,12 @@ class StorageManager {
       }
 
       // Check if extension context is valid
-      if (!chrome.runtime?.id) {
-        throw new Error('Extension context invalidated');
+      if (!this.isExtensionContextValid()) {
+        // Update cache only if context is invalid
+        Object.entries(data).forEach(([key, value]) => {
+          this.cache.set(key, value);
+        });
+        return false;
       }
 
       await chrome.storage.local.set(data);
@@ -73,6 +113,14 @@ class StorageManager {
 
       return true;
     } catch (error) {
+      if (error.message?.includes('Extension context invalidated')) {
+        this.contextInvalidated = true;
+        // Update cache only
+        Object.entries(data).forEach(([key, value]) => {
+          this.cache.set(key, value);
+        });
+        return false;
+      }
       console.error('Storage set error:', error);
       return false;
     }
@@ -117,8 +165,34 @@ class StorageManager {
    */
   async getAll() {
     try {
-      return await chrome.storage.local.get(null);
+      // Check if extension context is valid
+      if (!this.isExtensionContextValid()) {
+        // Return all cached data
+        const result = {};
+        for (const [key, value] of this.cache.entries()) {
+          result[key] = value;
+        }
+        return result;
+      }
+
+      const result = await chrome.storage.local.get(null);
+
+      // Update cache with all data
+      Object.entries(result).forEach(([key, value]) => {
+        this.cache.set(key, value);
+      });
+
+      return result;
     } catch (error) {
+      if (error.message?.includes('Extension context invalidated')) {
+        this.contextInvalidated = true;
+        // Return all cached data
+        const result = {};
+        for (const [key, value] of this.cache.entries()) {
+          result[key] = value;
+        }
+        return result;
+      }
       console.error('Storage getAll error:', error);
       return {};
     }
@@ -160,16 +234,28 @@ class StorageManager {
   }
 
   async getAllSessions() {
-    const allData = await this.getAll();
-    const sessions = {};
-    
-    Object.keys(allData).forEach(key => {
-      if (key.startsWith('session_')) {
-        sessions[key] = allData[key];
+    try {
+      const allData = await this.getAll();
+      const sessions = {};
+
+      // Safely iterate through data
+      if (allData && typeof allData === 'object') {
+        Object.keys(allData).forEach(key => {
+          try {
+            if (key.startsWith('session_') && allData[key]) {
+              sessions[key] = allData[key];
+            }
+          } catch (error) {
+            console.warn(`aiFiverr: Error processing session key ${key}:`, error);
+          }
+        });
       }
-    });
-    
-    return sessions;
+
+      return sessions;
+    } catch (error) {
+      console.error('aiFiverr: Error getting all sessions:', error);
+      return {};
+    }
   }
 
   async deleteSession(sessionId) {
@@ -180,8 +266,20 @@ class StorageManager {
    * Settings storage methods
    */
   async getSettings() {
-    const result = await this.get('settings');
-    return result.settings || this.getDefaultSettings();
+    try {
+      const result = await this.get('settings');
+
+      // Validate settings data
+      if (result && result.settings && typeof result.settings === 'object') {
+        // Merge with defaults to ensure all required properties exist
+        return { ...this.getDefaultSettings(), ...result.settings };
+      }
+
+      return this.getDefaultSettings();
+    } catch (error) {
+      console.error('aiFiverr: Error getting settings:', error);
+      return this.getDefaultSettings();
+    }
   }
 
   async saveSettings(settings) {
@@ -267,37 +365,62 @@ class StorageManager {
    * Cleanup old sessions
    */
   async cleanupOldSessions() {
-    const settings = await this.getSettings();
-    const sessions = await this.getAllSessions();
-    const now = Date.now();
-    const timeout = settings.sessionTimeout;
-    
-    const sessionsToDelete = [];
-    
-    Object.entries(sessions).forEach(([key, session]) => {
-      if (session.lastUpdated && (now - session.lastUpdated) > timeout) {
-        sessionsToDelete.push(key);
+    try {
+      // Check if extension context is valid before proceeding
+      if (!this.isExtensionContextValid()) {
+        console.warn('aiFiverr: Cannot cleanup sessions - extension context invalidated');
+        return 0;
       }
-    });
 
-    // Keep only the most recent sessions if we exceed the limit
-    const sessionEntries = Object.entries(sessions)
-      .sort(([,a], [,b]) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
-    
-    if (sessionEntries.length > settings.maxSessions) {
-      const excessSessions = sessionEntries.slice(settings.maxSessions);
-      excessSessions.forEach(([key]) => {
-        if (!sessionsToDelete.includes(key)) {
-          sessionsToDelete.push(key);
+      const settings = await this.getSettings();
+      const sessions = await this.getAllSessions();
+
+      // Validate data before proceeding
+      if (!settings || !sessions || typeof sessions !== 'object') {
+        console.warn('aiFiverr: Invalid data for session cleanup');
+        return 0;
+      }
+
+      const now = Date.now();
+      const timeout = settings.sessionTimeout || (30 * 60 * 1000); // Default 30 minutes
+      const maxSessions = settings.maxSessions || 50; // Default 50 sessions
+
+      const sessionsToDelete = [];
+
+      // Safely iterate through sessions
+      Object.entries(sessions).forEach(([key, session]) => {
+        try {
+          if (session && session.lastUpdated && (now - session.lastUpdated) > timeout) {
+            sessionsToDelete.push(key);
+          }
+        } catch (error) {
+          console.warn(`aiFiverr: Error processing session ${key}:`, error);
         }
       });
-    }
 
-    if (sessionsToDelete.length > 0) {
-      await this.remove(sessionsToDelete);
-    }
+      // Keep only the most recent sessions if we exceed the limit
+      const sessionEntries = Object.entries(sessions)
+        .filter(([key, session]) => session && typeof session === 'object')
+        .sort(([,a], [,b]) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
 
-    return sessionsToDelete.length;
+      if (sessionEntries.length > maxSessions) {
+        const excessSessions = sessionEntries.slice(maxSessions);
+        excessSessions.forEach(([key]) => {
+          if (!sessionsToDelete.includes(key)) {
+            sessionsToDelete.push(key);
+          }
+        });
+      }
+
+      if (sessionsToDelete.length > 0) {
+        await this.remove(sessionsToDelete);
+      }
+
+      return sessionsToDelete.length;
+    } catch (error) {
+      console.error('aiFiverr: Session cleanup error:', error);
+      return 0;
+    }
   }
 
   /**
@@ -339,5 +462,17 @@ class StorageManager {
   }
 }
 
-// Create global storage manager instance
-window.storageManager = new StorageManager();
+// Create global storage manager - but only when explicitly called
+function initializeStorageManager() {
+  if (!window.storageManager) {
+    window.storageManager = new StorageManager();
+    console.log('aiFiverr: Storage Manager created');
+  }
+  return window.storageManager;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeStorageManager = initializeStorageManager;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the storage manager to load on every website
+// The storage manager should only be initialized when explicitly called by the main extension

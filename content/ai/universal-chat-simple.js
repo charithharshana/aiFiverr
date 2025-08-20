@@ -12,12 +12,20 @@ class AIAssistanceChat {
     this.messages = [];
     this.isStreaming = false;
     this.apiKey = null;
-    
-    this.init();
+
+    // DO NOT auto-initialize - wait for explicit call
+    // this.init();
   }
 
   async init() {
     console.log('AI Assistance: Initializing...');
+
+    // Check site restrictions first
+    const shouldInitialize = await this.shouldInitializeOnCurrentSite();
+    if (!shouldInitialize) {
+      console.log('AI Assistance: Site restriction prevents initialization on this domain');
+      return;
+    }
 
     // Get API key
     await this.loadApiKey();
@@ -32,6 +40,45 @@ class AIAssistanceChat {
     this.setupEvents();
 
     console.log('AI Assistance: Initialized successfully');
+  }
+
+  /**
+   * Check if chat assistance should initialize on current site based on settings
+   */
+  async shouldInitializeOnCurrentSite() {
+    try {
+      // Check if extension context is valid
+      if (!chrome.runtime?.id) {
+        console.warn('AI Assistance: Extension context invalidated, cannot check site restrictions');
+        return false;
+      }
+
+      // Get settings from storage
+      const result = await chrome.storage.local.get(['settings']);
+      const settings = result.settings || {};
+
+      // Default to restricting to Fiverr only (restrictToFiverr: true)
+      const restrictToFiverr = settings.restrictToFiverr !== false;
+
+      console.log('AI Assistance: Site restriction check:', {
+        restrictToFiverr,
+        currentHostname: window.location.hostname,
+        isFiverrPage: window.location.hostname.includes('fiverr.com'),
+        settingsRaw: settings
+      });
+
+      if (restrictToFiverr) {
+        // Only initialize on Fiverr pages
+        return window.location.hostname.includes('fiverr.com');
+      } else {
+        // Initialize on all sites
+        return true;
+      }
+    } catch (error) {
+      console.error('AI Assistance: Error checking site restriction settings:', error);
+      // Default to Fiverr only if there's an error
+      return window.location.hostname.includes('fiverr.com');
+    }
   }
 
   async loadApiKey() {
@@ -1189,28 +1236,22 @@ class AIAssistanceChat {
   }
 }
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    window.aiAssistanceChat = new AIAssistanceChat();
-  });
-} else {
-  window.aiAssistanceChat = new AIAssistanceChat();
-}
-
 // Export for global access
 window.AIAssistanceChat = AIAssistanceChat;
 
-// Initialize the chat system
-document.addEventListener('DOMContentLoaded', () => {
-  window.simpleUniversalChat = new AIAssistanceChat();
-});
-
-// Also initialize if DOM is already loaded
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    window.simpleUniversalChat = new AIAssistanceChat();
-  });
-} else {
-  window.simpleUniversalChat = new AIAssistanceChat();
+// Initialize single instance when DOM is ready - ONLY if explicitly called
+async function initializeAIAssistanceChat() {
+  if (!window.aiAssistanceChat) {
+    window.aiAssistanceChat = new AIAssistanceChat();
+    // Explicitly call init() after creating the instance
+    await window.aiAssistanceChat.init();
+    // Also create alias for backward compatibility
+    window.simpleUniversalChat = window.aiAssistanceChat;
+  }
 }
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeAIAssistanceChat = initializeAIAssistanceChat;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the Fiverr-only mode to not work
+// The chat should only be initialized when explicitly called by the main extension

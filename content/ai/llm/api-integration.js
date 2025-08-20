@@ -15,7 +15,8 @@ export class AIAssistanceApiKeyManager {
     this.sessionKeys = new Map();
     this.rotationEnabled = false;
     this.currentKeyIndex = 0;
-    this.init();
+    // DO NOT auto-initialize - wait for explicit call
+    // this.init();
   }
 
   async init() {
@@ -385,7 +386,7 @@ export class AIAssistanceApiKeyManager {
   }
 }
 
-// Create global instance
+// Create global instance - but do not auto-initialize
 export const aiAssistanceApiKeyManager = new AIAssistanceApiKeyManager();
 
 // Integration functions for AI Assistance

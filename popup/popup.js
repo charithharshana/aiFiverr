@@ -1552,19 +1552,34 @@ Write a well formatted reply, no explanations.`
 
       // Preserve API keys in settings
       settings.apiKeys = this.currentApiKeys || [];
-      settings.defaultModel = document.getElementById('defaultModel').value;
-      settings.restrictToFiverr = document.getElementById('restrictToFiverr').checked;
-      settings.autoSave = document.getElementById('autoSave').checked;
-      settings.notifications = document.getElementById('notifications').checked;
-      settings.keyRotation = document.getElementById('keyRotation').checked;
-      settings.maxContextLength = parseInt(document.getElementById('maxContextLength').value);
-      settings.dateFormat = document.getElementById('dateFormat').value;
 
-      await this.setStorageData({ settings });
-      this.showToast('Preferences saved');
+      // Get elements safely with null checks
+      const defaultModelEl = document.getElementById('defaultModel');
+      const restrictToFiverrEl = document.getElementById('restrictToFiverr');
+      const autoSaveEl = document.getElementById('autoSave');
+      const notificationsEl = document.getElementById('notifications');
+      const keyRotationEl = document.getElementById('keyRotation');
+      const maxContextLengthEl = document.getElementById('maxContextLength');
+
+      // Only update settings if elements exist
+      if (defaultModelEl) settings.defaultModel = defaultModelEl.value;
+      if (restrictToFiverrEl) settings.restrictToFiverr = restrictToFiverrEl.checked;
+      if (autoSaveEl) settings.autoSave = autoSaveEl.checked;
+      if (notificationsEl) settings.notifications = notificationsEl.checked;
+      if (keyRotationEl) settings.keyRotation = keyRotationEl.checked;
+      if (maxContextLengthEl) settings.maxContextLength = parseInt(maxContextLengthEl.value) || 10000;
+
+      console.log('Saving preferences:', settings);
+
+      const success = await this.setStorageData({ settings });
+      if (success) {
+        this.showToast('Preferences saved');
+      } else {
+        throw new Error('Storage operation failed');
+      }
     } catch (error) {
       console.error('Failed to save preferences:', error);
-      this.showToast('Failed to save preferences', 'error');
+      this.showToast('Failed to save preferences: ' + (error.message || 'Unknown error'), 'error');
     }
   }
 
@@ -1782,13 +1797,6 @@ Write a well formatted reply, no explanations.`
   async setStorageData(data) {
     return new Promise((resolve, reject) => {
       try {
-        // Check if extension context is valid
-        if (!chrome.runtime?.id) {
-          console.error('Extension context invalidated, cannot save to storage');
-          reject(new Error('Extension context invalidated'));
-          return;
-        }
-
         // Validate data before saving
         if (!data || typeof data !== 'object') {
           console.error('Invalid data format for storage:', data);
@@ -1809,6 +1817,13 @@ Write a well formatted reply, no explanations.`
         } catch (circularError) {
           console.error('Data contains circular references:', circularError);
           reject(new Error('Data contains circular references'));
+          return;
+        }
+
+        // Check if extension context is valid
+        if (!chrome.runtime?.id) {
+          console.error('Extension context invalidated, cannot save to storage');
+          reject(new Error('Extension context invalidated'));
           return;
         }
 

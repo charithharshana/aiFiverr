@@ -29,7 +29,8 @@ export default class AIAssistanceManager {
       position: 'bottom-right'
     };
 
-    this.init();
+    // DO NOT auto-initialize - wait for explicit call
+    // this.init();
   }
 
   async init() {
@@ -440,26 +441,27 @@ export default class AIAssistanceManager {
 // Create global instance
 let universalChatManager = null;
 
-// Initialize when DOM is ready
-function initializeUniversalChat() {
+// Initialize when DOM is ready - ONLY if explicitly called
+async function initializeUniversalChat() {
   if (!universalChatManager) {
-    universalChatManager = new UniversalChatManager();
+    universalChatManager = new AIAssistanceManager();
+    // Explicitly call init() after creating the instance
+    await universalChatManager.init();
   }
   return universalChatManager;
 }
 
-// Auto-initialize
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeUniversalChat);
-} else {
-  initializeUniversalChat();
-}
+// Export the initialization function but DO NOT auto-initialize
+window.initializeUniversalChat = initializeUniversalChat;
+
+// REMOVED AUTO-INITIALIZATION - This was causing conflicts with the main chat system
+// The universal chat should only be initialized when explicitly called
 
 // Export for global access
 if (typeof window !== 'undefined') {
-  window.UniversalChatManager = UniversalChatManager;
+  window.AIAssistanceManager = AIAssistanceManager;
   window.universalChatManager = universalChatManager;
 }
 
-export { UniversalChatManager, initializeUniversalChat };
+export { AIAssistanceManager, initializeUniversalChat };
 export default universalChatManager;

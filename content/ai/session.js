@@ -411,15 +411,33 @@ class SessionManager {
    */
   async cleanupOldSessions() {
     try {
+      // Check if storage manager is available and extension context is valid
+      if (!window.storageManager || !window.storageManager.isExtensionContextValid()) {
+        console.warn('aiFiverr: Cannot cleanup sessions - storage unavailable or context invalidated');
+        return;
+      }
+
       const deletedCount = await storageManager.cleanupOldSessions();
       if (deletedCount > 0) {
-        console.log(`Cleaned up ${deletedCount} old sessions`);
+        console.log(`aiFiverr: Cleaned up ${deletedCount} old sessions`);
       }
     } catch (error) {
-      console.error('Session cleanup error:', error);
+      console.error('aiFiverr: Session cleanup error:', error);
     }
   }
 }
 
-// Create global session manager
-window.sessionManager = new SessionManager();
+// Create global session manager - but only when explicitly called
+function initializeSessionManager() {
+  if (!window.sessionManager) {
+    window.sessionManager = new SessionManager();
+    console.log('aiFiverr: Session Manager created');
+  }
+  return window.sessionManager;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeSessionManager = initializeSessionManager;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the session manager to load on every website
+// The session manager should only be initialized when explicitly called by the main extension

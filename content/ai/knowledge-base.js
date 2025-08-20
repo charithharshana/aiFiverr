@@ -867,5 +867,17 @@ Provide only the improved message, no explanations.`
   }
 }
 
-// Create global knowledge base manager
-window.knowledgeBaseManager = new KnowledgeBaseManager();
+// Create global knowledge base manager - but only when explicitly called
+function initializeKnowledgeBaseManager() {
+  if (!window.knowledgeBaseManager) {
+    window.knowledgeBaseManager = new KnowledgeBaseManager();
+    console.log('aiFiverr: Knowledge Base Manager created');
+  }
+  return window.knowledgeBaseManager;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeKnowledgeBaseManager = initializeKnowledgeBaseManager;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the knowledge base manager to load on every website
+// The knowledge base manager should only be initialized when explicitly called by the main extension

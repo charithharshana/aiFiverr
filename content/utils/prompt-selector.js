@@ -11,7 +11,8 @@ class PromptSelector {
     this.allPrompts = {};
     this.onPromptSelected = null;
     this.storageReady = false;
-    this.init();
+    // DO NOT auto-initialize - wait for explicit call
+    // this.init();
   }
 
   async init() {
@@ -343,5 +344,19 @@ class PromptSelector {
   }
 }
 
-// Create global instance
-window.promptSelector = new PromptSelector();
+// Create global prompt selector - but only when explicitly called
+async function initializePromptSelector() {
+  if (!window.promptSelector) {
+    window.promptSelector = new PromptSelector();
+    // Explicitly call init() after creating the instance
+    await window.promptSelector.init();
+    console.log('aiFiverr: Prompt Selector created and initialized');
+  }
+  return window.promptSelector;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializePromptSelector = initializePromptSelector;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the prompt selector to load on every website
+// The prompt selector should only be initialized when explicitly called by the main extension

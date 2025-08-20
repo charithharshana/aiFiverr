@@ -1635,5 +1635,17 @@ class FiverrInjector {
   }
 }
 
-// Create global injector instance
-window.fiverrInjector = new FiverrInjector();
+// Create global injector instance - but only when explicitly called
+function initializeFiverrInjector() {
+  if (!window.fiverrInjector) {
+    window.fiverrInjector = new FiverrInjector();
+    console.log('aiFiverr: Fiverr Injector created');
+  }
+  return window.fiverrInjector;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeFiverrInjector = initializeFiverrInjector;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the Fiverr injector to load on every website
+// The Fiverr injector should only be initialized when explicitly called by the main extension

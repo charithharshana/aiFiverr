@@ -29,8 +29,9 @@ export default class AIAssistanceChatInterface {
     this.isStreaming = false;
     this.abortController = null;
     this.eventListeners = new Map();
-    
-    this.init();
+
+    // DO NOT auto-initialize - wait for explicit call
+    // this.init();
   }
 
   async init() {

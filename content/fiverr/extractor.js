@@ -1339,5 +1339,17 @@ class FiverrExtractor {
   }
 }
 
-// Create global extractor instance
-window.fiverrExtractor = new FiverrExtractor();
+// Create global extractor instance - but only when explicitly called
+function initializeFiverrExtractor() {
+  if (!window.fiverrExtractor) {
+    window.fiverrExtractor = new FiverrExtractor();
+    console.log('aiFiverr: Fiverr Extractor created');
+  }
+  return window.fiverrExtractor;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeFiverrExtractor = initializeFiverrExtractor;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the Fiverr extractor to load on every website
+// The Fiverr extractor should only be initialized when explicitly called by the main extension

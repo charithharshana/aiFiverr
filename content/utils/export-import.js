@@ -690,5 +690,17 @@ class ExportImportManager {
   }
 }
 
-// Create global export/import manager
-window.exportImportManager = new ExportImportManager();
+// Create global export/import manager - but only when explicitly called
+function initializeExportImportManager() {
+  if (!window.exportImportManager) {
+    window.exportImportManager = new ExportImportManager();
+    console.log('aiFiverr: Export/Import Manager created');
+  }
+  return window.exportImportManager;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeExportImportManager = initializeExportImportManager;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the export/import manager to load on every website
+// The export/import manager should only be initialized when explicitly called by the main extension

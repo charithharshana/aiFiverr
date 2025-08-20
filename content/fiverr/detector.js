@@ -489,5 +489,17 @@ class FiverrDetector {
   }
 }
 
-// Create global detector instance
-window.fiverrDetector = new FiverrDetector();
+// Create global detector instance - but only when explicitly called
+function initializeFiverrDetector() {
+  if (!window.fiverrDetector) {
+    window.fiverrDetector = new FiverrDetector();
+    console.log('aiFiverr: Fiverr Detector created');
+  }
+  return window.fiverrDetector;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeFiverrDetector = initializeFiverrDetector;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the Fiverr detector to load on every website
+// The Fiverr detector should only be initialized when explicitly called by the main extension

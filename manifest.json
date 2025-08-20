@@ -49,6 +49,7 @@
         "content/ai/api-manager.js",
         "content/ai/gemini-client.js",
         "content/ai/knowledge-base.js",
+        "content/ai/universal-chat-simple.js",
         "content/main.js"
       ],
       "css": ["content/styles/main.css"],
@@ -61,8 +62,7 @@
         "content/styles/*",
         "content/utils/*",
         "icons/*",
-        "popup/*",
-        "chat-assistant.html"
+        "popup/*"
       ],
       "matches": ["https://www.fiverr.com/*", "file://*/*", "http://*/*", "https://*/*"]
     }

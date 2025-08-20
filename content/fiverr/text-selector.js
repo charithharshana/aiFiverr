@@ -2215,7 +2215,19 @@ class TextSelector {
   }
 }
 
-// Initialize text selector when script loads
-if (typeof window !== 'undefined') {
-  window.textSelector = new TextSelector();
+// Create global text selector - but only when explicitly called
+function initializeTextSelector() {
+  if (!window.textSelector) {
+    window.textSelector = new TextSelector();
+    console.log('aiFiverr: Text Selector created');
+  }
+  return window.textSelector;
 }
+
+// Export the initialization function but DO NOT auto-initialize
+if (typeof window !== 'undefined') {
+  window.initializeTextSelector = initializeTextSelector;
+}
+
+// REMOVED AUTO-INITIALIZATION - This was causing the text selector to load on every website
+// The text selector should only be initialized when explicitly called by the main extension

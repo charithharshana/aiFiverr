@@ -50,14 +50,26 @@ class APIKeyManager {
    */
   async saveKeyHealth() {
     try {
+      // Check if storage manager is available and extension context is valid
+      if (!window.storageManager || !window.storageManager.isExtensionContextValid()) {
+        console.warn('aiFiverr: Cannot save key health - storage unavailable or context invalidated');
+        return;
+      }
+
       const healthData = {};
       this.keyHealth.forEach((health, index) => {
-        healthData[index] = health;
+        try {
+          if (health && typeof health === 'object') {
+            healthData[index] = health;
+          }
+        } catch (error) {
+          console.warn(`aiFiverr: Error processing key health for index ${index}:`, error);
+        }
       });
-      
+
       await storageManager.set({ keyHealth: healthData });
     } catch (error) {
-      console.error('Failed to save key health:', error);
+      console.error('aiFiverr: Failed to save key health:', error);
     }
   }
 
@@ -357,22 +369,43 @@ class APIKeyManager {
    */
   async cleanupOldSessions() {
     try {
+      // Check if storage manager is available and extension context is valid
+      if (!window.storageManager || !window.storageManager.isExtensionContextValid()) {
+        console.warn('aiFiverr: Cannot cleanup sessions - storage unavailable or context invalidated');
+        return;
+      }
+
       const allSessions = await storageManager.getAllSessions();
+
+      // Validate sessions data
+      if (!allSessions || typeof allSessions !== 'object') {
+        console.warn('aiFiverr: Invalid sessions data for cleanup');
+        return;
+      }
+
       const validSessionIds = new Set(Object.keys(allSessions));
 
       // Remove assignments for sessions that no longer exist
       const sessionsToRemove = [];
       this.sessionKeys.forEach((keyIndex, sessionId) => {
-        if (!validSessionIds.has(sessionId)) {
-          sessionsToRemove.push(sessionId);
+        try {
+          if (!validSessionIds.has(sessionId)) {
+            sessionsToRemove.push(sessionId);
+          }
+        } catch (error) {
+          console.warn(`aiFiverr: Error processing session ${sessionId}:`, error);
         }
       });
 
       sessionsToRemove.forEach(sessionId => {
-        this.sessionKeys.delete(sessionId);
+        try {
+          this.sessionKeys.delete(sessionId);
+        } catch (error) {
+          console.warn(`aiFiverr: Error removing session ${sessionId}:`, error);
+        }
       });
     } catch (error) {
-      console.error('Failed to cleanup old sessions:', error);
+      console.error('aiFiverr: Failed to cleanup old sessions:', error);
     }
   }
 
@@ -461,5 +494,17 @@ class APIKeyManager {
   }
 }
 
-// Create global API key manager
-window.apiKeyManager = new APIKeyManager();
+// Create global API key manager - but only when explicitly called
+function initializeAPIKeyManager() {
+  if (!window.apiKeyManager) {
+    window.apiKeyManager = new APIKeyManager();
+    console.log('aiFiverr: API Key Manager created');
+  }
+  return window.apiKeyManager;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeAPIKeyManager = initializeAPIKeyManager;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the API key manager to load on every website
+// The API key manager should only be initialized when explicitly called by the main extension

@@ -601,5 +601,17 @@ Please identify:
   }
 }
 
-// Create global Gemini client
-window.geminiClient = new GeminiClient();
+// Create global Gemini client - but only when explicitly called
+function initializeGeminiClient() {
+  if (!window.geminiClient) {
+    window.geminiClient = new GeminiClient();
+    console.log('aiFiverr: Gemini Client created');
+  }
+  return window.geminiClient;
+}
+
+// Export the initialization function but DO NOT auto-initialize
+window.initializeGeminiClient = initializeGeminiClient;
+
+// REMOVED AUTO-INITIALIZATION - This was causing the Gemini client to load on every website
+// The Gemini client should only be initialized when explicitly called by the main extension
