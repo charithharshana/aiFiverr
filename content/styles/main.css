@@ -113,22 +113,22 @@
 }
 
 .aifiverr-floating-widget .widget-toggle {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  opacity: 0.7;
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, #1dbf73 0%, #19a463 100%);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(29, 191, 115, 0.3);
+  transition: all 0.3s ease;
+  font-size: 24px;
 }
 
 .aifiverr-floating-widget .widget-toggle:hover {
-  opacity: 1;
   transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(29, 191, 115, 0.4);
 }
 
 .aifiverr-floating-widget .ai-icon {
