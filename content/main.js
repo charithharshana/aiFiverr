@@ -106,13 +106,16 @@ class AiFiverrMain {
       const settings = result.settings || {};
 
       // Default to restricting to Fiverr only (restrictToFiverr: true)
+      // If the setting is explicitly set to false, allow all sites
       const restrictToFiverr = settings.restrictToFiverr !== false;
 
       console.log('aiFiverr: Site restriction check:', {
         restrictToFiverr,
         currentHostname: window.location.hostname,
         isFiverrPage: this.isFiverrPage(),
-        settingsRaw: settings
+        settingsRaw: settings,
+        settingsRestrictValue: settings.restrictToFiverr,
+        willInitialize: restrictToFiverr ? this.isFiverrPage() : true
       });
 
       if (restrictToFiverr) {

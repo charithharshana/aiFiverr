@@ -1751,6 +1751,13 @@ Write a well formatted reply, no explanations.`
   async getStorageData(keys) {
     return new Promise((resolve, reject) => {
       try {
+        // Check if extension context is valid
+        if (!chrome.runtime?.id) {
+          console.error('Extension context invalidated, cannot read from storage');
+          reject(new Error('Extension context invalidated'));
+          return;
+        }
+
         chrome.storage.local.get(keys, (result) => {
           if (chrome.runtime.lastError) {
             console.error('Storage get error:', chrome.runtime.lastError);
@@ -1775,6 +1782,13 @@ Write a well formatted reply, no explanations.`
   async setStorageData(data) {
     return new Promise((resolve, reject) => {
       try {
+        // Check if extension context is valid
+        if (!chrome.runtime?.id) {
+          console.error('Extension context invalidated, cannot save to storage');
+          reject(new Error('Extension context invalidated'));
+          return;
+        }
+
         // Validate data before saving
         if (!data || typeof data !== 'object') {
           console.error('Invalid data format for storage:', data);
