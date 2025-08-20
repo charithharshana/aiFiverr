@@ -1,0 +1,23 @@
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="chatGradient16" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="16" height="16" rx="3" ry="3" fill="url(#chatGradient16)"/>
+
+  <!-- Chat bubble -->
+  <path d="M3 5C3 4.4 4.4 4 5 4L11 4C11.6 4 12 4.4 12 5V9C12 9.6 11.6 10 11 10L7 10L5 12V10H5C4.4 10 3 9.6 3 9V5Z"
+        fill="white"/>
+
+  <!-- Chat dots -->
+  <circle cx="6" cy="7" r="0.5" fill="#2563eb"/>
+  <circle cx="8" cy="7" r="0.5" fill="#2563eb"/>
+  <circle cx="10" cy="7" r="0.5" fill="#2563eb"/>
+
+  <!-- AI indicator dot -->
+  <circle cx="12" cy="4" r="1" fill="#1dbf73"/>
+</svg>

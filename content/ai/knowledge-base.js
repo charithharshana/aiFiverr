@@ -83,122 +83,116 @@ class KnowledgeBaseManager {
       'professional_initial_reply': {
         name: 'Professional Initial Reply',
         description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message',
-        prompt: `You are an expert freelance assistant. Your goal is to generate a professional, friendly, and concise reply to a potential client's initial message.
+        prompt: `Go through this initial requirement
 
-**Analyze this context:**
-*   **Client's Message:** {conversation}
-*   **Client's Username:** {username}
-*   **My Professional Bio:** {{bio}}
-*   **My Services:** {{services}}
-*   **My Portfolio:** {{portfolio}}
-*   **Custom Information:** {{custom1}}
+{conversation}
 
-**Based on the context, generate a reply that:**
-1. Greets the client by their {username}.
-2. Acknowledges and shows understanding of their core request from the {conversation}.
-3. Intelligently incorporates a relevant point from my {{bio}} or mentions a specific service from {{services}} that fits their need. Do not just list them.
-4. Suggests a clear next step (e.g., asking a key question, suggesting a call).
-5. Maintains a helpful, confident, and professional tone.
-6. Provides the reply directly, without any extra explanations.`
+Write an appropriate initial reply under 2500 characters using below information
+
+I am a freelancer who works on Fiverr
+
+Use my background: {{bio}}
+My services: {{services}}
+Additional info: {{custom1}}
+
+Portfolio: {{portfolio}}
+
+Rules:
+- Greet the client personally
+- Show you understand their request
+- Mention relevant experience or service
+- Add relevant portfolio links which match to clients requirement
+- Suggest next steps
+- Keep it friendly and professional
+- No markdown formatting, no explanations.`
       },
       'project_summary': {
         name: 'Project Summary',
         description: 'Analyze conversation and extract key details into a structured, concise summary',
-        prompt: `You are a project management assistant. Analyze the following conversation and extract the key details into a structured, concise summary.
+        prompt: `Summarize this project:
 
-**Conversation to Analyze:**
 {conversation}
 
-**Generate the summary using this exact format:**
-*   **Project Overview:** A one-sentence summary of the client's primary goal.
-*   **Key Deliverables:** A bulleted list of the specific items the client expects.
-*   **Client Preferences:** A bulleted list of specific instructions or requirements mentioned.
-*   **Key Decisions Made:** A bulleted list of important agreements or changes confirmed.
-*   **Budget & Pricing:** Any mention of financial agreements. State "Not discussed" if absent.
-*   **Deadlines & Timeline:** Any specific dates or time frames mentioned. State "Not discussed" if absent.
-*   **Next Action Items:** What needs to be done next, and by whom.`
+Extract all important information like Budget, Timeline, Next Steps etc..
+
+Need a well formatted reply under 3000 characters, no markdown formatting, no explanations.`
       },
       'follow_up_message': {
         name: 'Follow-up Message',
         description: 'Draft a concise and effective follow-up message to a client based on conversation history',
-        prompt: `You are a professional freelance communicator. Your goal is to draft a concise and effective follow-up message to a client based on our conversation history.
+        prompt: `Write a follow-up message based on this conversation:
 
-**Use this project context:**
-*   **Client:** {username}
-*   **Conversation Summary:** {conversation_summary}
-*   **Recent Message:** {conversation_last_message}
-*   **Total Messages:** {conversation_count}
-*   **Purpose of this follow-up:** {{custom1}}
-*   **My availability or updates:** {{custom2}}
+{conversation}
 
-**Draft a follow-up message that:**
-1. Is friendly and professional.
-2. Directly addresses the purpose described in {{custom1}}.
-3. Briefly references a specific part of the project from the conversation to show context.
-4. Includes a clear, simple call to action.
-5. If provided, briefly mentions my availability or updates from {{custom2}}.
-6. Provides the reply directly, without any extra explanations.`
+Purpose: {{custom1}}
+My availability: {{custom2}}
+
+Make it:
+- Friendly and professional
+- Reference something specific from our conversation
+- Include clear next steps
+- Mention availability if provided
+- No markdown formatting, no explanations.`
       },
       'project_proposal': {
         name: 'Project Proposal',
         description: 'Transform raw notes into a clear, professional, and persuasive project proposal message',
-        prompt: `You are a skilled proposal writer. Your task is to transform my raw notes into a clear, professional, and persuasive project proposal message for a client.
+        prompt: `Create a project proposal based on Conversation:
 
-**Analyze this information:**
-*   **Client's Username:** {username}
-*   **Conversation History:** {conversation}
-*   **My Proposal Notes (Scope, Timeline, Price):** {proposal}
-*   **My Professional Bio:** {{bio}}
-*   **Relevant Portfolio Links:** {{portfolio}}
+{conversation}
 
-**Generate a proposal message that follows this structure:**
-1.  **Personalized Greeting:** Start with a friendly greeting to {username}.
-2.  **Summary of Understanding:** Briefly state your understanding of their project goal, based on the {conversation}.
-3.  **The Proposal:** Clearly present the information from the {proposal} notes, using clear headings like "Scope," "Timeline," and "Investment."
-4.  **Why Me:** Subtly weave in a relevant point from your {{bio}} to build confidence.
-5.  **Proof of Work:** Naturally include a link to a relevant project from your {{portfolio}}.
-6.  **Clear Call to Action:** End with a clear next step, such as inviting them to ask questions or accept the offer.`
+I am a freelancer who works on Fiverr
+
+Use my background: {{bio}}
+My services: {{services}}
+Additional info: {{custom1}}
+
+Portfolio: {{portfolio}}
+
+Structure:
+1. Personal greeting
+2. Project understanding summary
+3. Proposal details (scope, timeline, price)
+4. Why I'm the right fit
+5. Relevant portfolio examples/links
+6. Clear next steps
+
+Need a well formatted reply under 3000 characters, no markdown formatting, no explanations.`
       },
-      'translate_and_explain': {
-        name: 'Translate and Explain Message',
-        description: 'Translate text and provide a simple explanation of its content',
-        prompt: `You are an expert multilingual assistant. Your task is to translate the given text and provide a simple explanation of its content.
+      'translate_message': {
+        name: 'Translate Message',
+        description: 'Translate message to specified language and explain it',
+        prompt: `Translate this message to {{language}} and explain it along with the original language:
 
-**Analyze this information:**
-*   **Text to Analyze:** {conversation}
-*   **Translate to Language:** {language}
+{conversation}
 
-**Provide your response in the following structured format:**
-
-**Simple Explanation (in English):**
-*   **Main Goal:** What is the sender trying to achieve?
-*   **Key Points:** What are the most important pieces of information or questions?
-*   **Tone:** Is the sender formal, informal, happy, urgent?
-
----
-
-**Full Translation (in {language}):**
-[Provide the accurate and natural-sounding translation of the entire text here]`
+Write a well formatted reply. Provide only the final translated text, no explanations.`
       },
-      'refine_and_translate': {
-        name: 'Refine and Translate My Message',
-        description: 'Refine draft message for clarity and professionalism, then translate to requested language',
-        prompt: `You are an expert multilingual editor and translator. Your task is to first refine the provided draft message for clarity, professionalism, and grammar, and then translate the improved version into the requested language.
+      'improve_and_translate': {
+        name: 'Improve and Translate Message',
+        description: 'Improve message and translate it to English',
+        prompt: `Improve this message and translate it to English:
 
-**Analyze this information:**
-*   **My Draft Message:** {conversation}
-*   **Translate to Language:** {language}
+{conversation}
 
-**Perform the following steps:**
-1.  Silently review and refine the "My Draft Message" to make it more professional and effective. Correct all spelling and grammar mistakes.
-2.  Provide a perfect translation of that REFINED message into the target {language}.
+I am a freelancer who works on Fiverr, use this as a reference and add relevant information about me:
 
-**Your output should ONLY be the final, translated text. Do not include the English version or any explanations.**`
+Use my background: {{bio}}
+My services: {{services}}
+Additional info: {{custom1}}
+
+Portfolio: {{portfolio}}
+
+Write a well formatted reply. no explanations.`
       },
-      'refine_message': {
-        name: 'Refine My Message (No Translation)',
-        description: 'Refine draft message to improve quality, clarity, and impact without translation',
-        prompt: `Improve this message to be {{custom1}}: {conversation}
+      'improve_message': {
+        name: 'Improve Message',
+        description: 'Improve message quality, clarity, and impact',
+        prompt: `Improve this message
+
+{conversation} - could i know the correct things here? (the text we copied from Fiverr)
+
+This is my history: {conversation}
 
 Make it:
 - Grammatically correct
@@ -206,7 +200,7 @@ Make it:
 - More {{custom1}} in tone
 - Keep the same meaning
 
-Provide only the improved message, no explanations.`
+Write a well formatted reply, no explanations.`
       },
       'translate_message': {
         name: 'Translate Message',

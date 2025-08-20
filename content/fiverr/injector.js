@@ -162,7 +162,14 @@ class FiverrInjector {
     widget.className = 'aifiverr-floating-widget';
     widget.innerHTML = `
       <div class="widget-toggle">
-        <span class="ai-icon">🤖</span>
+        <span class="ai-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12C2 13.54 2.36 14.99 3.01 16.28L2 22L7.72 20.99C9.01 21.64 10.46 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C10.74 20 9.54 19.75 8.46 19.3L6 20L6.7 17.54C6.25 16.46 6 15.26 6 14C6 8.48 8.48 6 12 6C15.52 6 18 8.48 18 12C18 15.52 15.52 18 12 18Z" fill="currentColor"/>
+            <circle cx="9" cy="12" r="1" fill="currentColor"/>
+            <circle cx="12" cy="12" r="1" fill="currentColor"/>
+            <circle cx="15" cy="12" r="1" fill="currentColor"/>
+          </svg>
+        </span>
       </div>
       <div class="widget-panel" style="display: none;">
         <div class="widget-header">
@@ -272,21 +279,27 @@ class FiverrInjector {
   createAIIcon() {
     const icon = document.createElement('button');
     icon.className = 'aifiverr-ai-icon';
-    icon.innerHTML = '🤖';
+    icon.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C6.48 2 2 6.48 2 12C2 13.54 2.36 14.99 3.01 16.28L2 22L7.72 20.99C9.01 21.64 10.46 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C10.74 20 9.54 19.75 8.46 19.3L6 20L6.7 17.54C6.25 16.46 6 15.26 6 14C6 8.48 8.48 6 12 6C15.52 6 18 8.48 18 12C18 15.52 15.52 18 12 18Z" fill="currentColor"/>
+        <circle cx="9" cy="12" r="1" fill="currentColor"/>
+        <circle cx="12" cy="12" r="1" fill="currentColor"/>
+        <circle cx="15" cy="12" r="1" fill="currentColor"/>
+      </svg>
+    `;
     icon.title = 'aiFiverr: Select AI Prompt';
 
     const iconStyles = {
-      backgroundColor: '#3b82f6',
+      backgroundColor: '#2563eb',
       color: 'white',
       border: 'none',
       borderRadius: '50%',
       width: '32px',
       height: '32px',
-      fontSize: '16px',
       cursor: 'pointer',
       fontFamily: 'system-ui, -apple-system, sans-serif',
       transition: 'all 0.2s ease',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)',
       marginLeft: '8px',
       display: 'flex',
       alignItems: 'center',
@@ -297,12 +310,12 @@ class FiverrInjector {
 
     // Hover effects
     icon.addEventListener('mouseenter', () => {
-      icon.style.backgroundColor = '#2563eb';
+      icon.style.backgroundColor = '#1d4ed8';
       icon.style.transform = 'translateY(-1px) scale(1.05)';
     });
 
     icon.addEventListener('mouseleave', () => {
-      icon.style.backgroundColor = '#3b82f6';
+      icon.style.backgroundColor = '#2563eb';
       icon.style.transform = 'translateY(0) scale(1)';
     });
 

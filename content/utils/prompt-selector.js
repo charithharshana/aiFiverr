@@ -110,21 +110,17 @@ class PromptSelector {
         name: 'Project Proposal',
         description: 'Transform raw notes into a clear, professional, and persuasive project proposal message'
       },
-      'translate_and_explain': {
-        name: 'Translate and Explain Message',
-        description: 'Translate text and provide a simple explanation of its content'
-      },
-      'refine_and_translate': {
-        name: 'Refine and Translate My Message',
-        description: 'Refine draft message for clarity and professionalism, then translate to requested language'
-      },
-      'refine_message': {
-        name: 'Refine My Message (No Translation)',
-        description: 'Refine draft message to improve quality, clarity, and impact without translation'
-      },
       'translate_message': {
         name: 'Translate Message',
-        description: 'Translate a message to a specified language while maintaining context and tone'
+        description: 'Translate message to specified language and explain it'
+      },
+      'improve_and_translate': {
+        name: 'Improve and Translate',
+        description: 'Improve message and translate it to English'
+      },
+      'improve_message': {
+        name: 'Improve Message',
+        description: 'Improve message quality, clarity, and impact'
       },
       'summarize_message': {
         name: 'Summarize Message',
