@@ -95,7 +95,7 @@ class AiFiverrMain {
    */
   async shouldInitializeOnCurrentSite() {
     try {
-      // Get settings from storage
+      // Get settings from storage using the same method as popup
       const result = await chrome.storage.local.get(['settings']);
       const settings = result.settings || {};
 
@@ -105,7 +105,8 @@ class AiFiverrMain {
       console.log('aiFiverr: Site restriction check:', {
         restrictToFiverr,
         currentHostname: window.location.hostname,
-        isFiverrPage: this.isFiverrPage()
+        isFiverrPage: this.isFiverrPage(),
+        settingsRaw: settings
       });
 
       if (restrictToFiverr) {

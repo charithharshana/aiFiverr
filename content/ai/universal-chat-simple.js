@@ -131,7 +131,7 @@ class AIAssistanceChat {
         box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
       ">
         <div class="chat-header" style="
-          background: #f8f9fa;
+          background: #ffffff;
           padding: 16px 20px;
           border-bottom: 1px solid #e1e5e9;
           border-radius: 16px 16px 0 0;
@@ -139,7 +139,7 @@ class AIAssistanceChat {
           justify-content: space-between;
           align-items: center;
         ">
-          <h3 style="margin: 0; color: #1a1a1a; font-size: 18px; font-weight: 600;">AI Assistance</h3>
+          <h3 style="margin: 0; color: #1dbf73; font-size: 18px; font-weight: 600;">AI Assistant</h3>
           <div style="display: flex; gap: 8px;">
             <button class="clear-btn" style="
               background: none;
@@ -195,7 +195,7 @@ class AIAssistanceChat {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h4 style="margin: 0; color: #495057; font-size: 14px; font-weight: 600;">Quick Prompts</h4>
             <button class="add-prompt-btn" style="
-              background: #007bff;
+              background: #1dbf73;
               border: none;
               border-radius: 6px;
               color: white;
@@ -275,7 +275,7 @@ class AIAssistanceChat {
               "></textarea>
             </div>
             <button class="send-btn" style="
-              background: #007bff;
+              background: #1dbf73;
               border: none;
               border-radius: 12px;
               color: white;
@@ -714,10 +714,10 @@ class AIAssistanceChat {
       padding: 16px;
       border-radius: 12px;
       ${role === 'user' ?
-        'background: #007bff; color: #fff; margin-left: 20%; border: 1px solid #0056b3;' :
+        'background: #1dbf73; color: #fff; margin-left: 20%; border: 1px solid #19a463;' :
         role === 'system' ?
-        'background: #fff3cd; color: #856404; border: 1px solid #ffeaa7;' :
-        'background: #f8f9fa; color: #495057; border: 1px solid #e9ecef;'
+        'background: #f8f9fa; color: #6c757d; border: 1px solid #e9ecef;' :
+        'background: #ffffff; color: #333; border: 1px solid #e1e5e9; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'
       }
     `;
 

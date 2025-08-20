@@ -160,24 +160,26 @@
 }
 
 .aifiverr-floating-widget .widget-header {
-  background: linear-gradient(135deg, #1dbf73 0%, #19a463 100%);
-  color: white;
+  background: #ffffff;
+  color: #333;
   padding: 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid #e1e5e9;
 }
 
 .aifiverr-floating-widget .widget-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+  color: #1dbf73;
 }
 
 .aifiverr-floating-widget .close-btn {
   background: none;
   border: none;
-  color: white;
+  color: #6c757d;
   font-size: 20px;
   cursor: pointer;
   padding: 0;
@@ -191,7 +193,8 @@
 }
 
 .aifiverr-floating-widget .close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(108, 117, 125, 0.1);
+  color: #333;
 }
 
 .aifiverr-floating-widget .widget-content {

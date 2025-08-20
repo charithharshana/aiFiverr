@@ -201,7 +201,7 @@ The extension is ready to use as-is. No build process required.
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🆘 Support
+## 🆘 Support & Contact
 
 ### Common Issues
 - **No AI responses**: Check API keys in Settings
@@ -212,6 +212,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Check the console for error messages
 - Verify API keys are valid and have quota
 - Ensure you're on a Fiverr page for full functionality
+
+### Contact & Links
+- 🌐 **Contact**: [charithharshana.com/contact](https://www.charithharshana.com/contact)
+- 📺 **YouTube Tutorials**: [@wcharithharshana](https://www.youtube.com/@wcharithharshana)
+- 📘 **Facebook**: [wcharithharshana](https://www.facebook.com/wcharithharshana)
+- 💻 **GitHub**: [charithharshana/aiFiverr](https://github.com/charithharshana/aiFiverr)
 
 ## 🔮 Roadmap
 
@@ -234,4 +240,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Made with ❤️ for the Fiverr community**
+**Made with ❤️ for the Fiverr community by [Charith Harshana](https://www.charithharshana.com/contact)**
+
+### Developer
+- **Name**: Charith Harshana
+- **Website**: [charithharshana.com](https://www.charithharshana.com/contact)
+- **YouTube**: [@wcharithharshana](https://www.youtube.com/@wcharithharshana)
+- **Facebook**: [wcharithharshana](https://www.facebook.com/wcharithharshana)
