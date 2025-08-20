@@ -45,18 +45,6 @@ class PopupManager {
     });
 
     // Dashboard actions
-    document.getElementById('extractConversation')?.addEventListener('click', () => {
-      this.extractConversation();
-    });
-
-    document.getElementById('generateReply')?.addEventListener('click', () => {
-      this.generateReply();
-    });
-
-    document.getElementById('analyzeMessage')?.addEventListener('click', () => {
-      this.analyzeMessage();
-    });
-
     document.getElementById('openFloatingWidget')?.addEventListener('click', () => {
       this.openFloatingWidget();
     });
@@ -168,39 +156,7 @@ class PopupManager {
       }
     });
 
-    // Export/Import actions
-    document.getElementById('exportAllData')?.addEventListener('click', () => {
-      this.exportData('all');
-    });
 
-    document.getElementById('exportSessions')?.addEventListener('click', () => {
-      this.exportData('sessions');
-    });
-
-    document.getElementById('exportConversations')?.addEventListener('click', () => {
-      this.exportData('conversations');
-    });
-
-    // Fiverr conversation extraction actions
-    document.getElementById('fetchContactsBtn')?.addEventListener('click', () => {
-      this.fetchFiverrContacts();
-    });
-
-    document.getElementById('extractCurrentBtn')?.addEventListener('click', () => {
-      this.extractCurrentConversation();
-    });
-
-    document.getElementById('fileDropZone')?.addEventListener('click', () => {
-      document.getElementById('importFile').click();
-    });
-
-    document.getElementById('importFile')?.addEventListener('change', (e) => {
-      this.handleFileSelect(e.target.files[0]);
-    });
-
-    document.getElementById('importData')?.addEventListener('click', () => {
-      this.importData();
-    });
 
     // Drag and drop
     const dropZone = document.getElementById('fileDropZone');
@@ -240,6 +196,64 @@ class PopupManager {
     document.getElementById('apiSaveBtn')?.addEventListener('click', () => {
       this.saveApiConfiguration();
     });
+
+    // Conversations tab event listeners
+    document.getElementById('refreshConversations')?.addEventListener('click', () => {
+      this.loadConversations();
+    });
+
+    document.getElementById('clearAllConversations')?.addEventListener('click', () => {
+      this.clearAllConversations();
+    });
+
+    document.getElementById('exportConversation')?.addEventListener('click', () => {
+      this.exportCurrentConversation();
+    });
+
+    document.getElementById('deleteConversation')?.addEventListener('click', () => {
+      this.deleteCurrentConversation();
+    });
+
+    // Modal close buttons
+    document.getElementById('closeConversationModal')?.addEventListener('click', () => {
+      this.closeConversationModal();
+    });
+
+    document.getElementById('closeConversationModalBtn')?.addEventListener('click', () => {
+      this.closeConversationModal();
+    });
+
+    document.getElementById('refreshSingleConversation')?.addEventListener('click', () => {
+      this.refreshCurrentConversation();
+    });
+
+    document.getElementById('refreshSingleConversation')?.addEventListener('click', () => {
+      this.refreshCurrentConversation();
+    });
+
+    document.getElementById('closeConversationModal')?.addEventListener('click', () => {
+      this.closeConversationModal();
+    });
+
+    document.getElementById('closeConversationModalBtn')?.addEventListener('click', () => {
+      this.closeConversationModal();
+    });
+
+    // Close conversation modal when clicking overlay
+    document.getElementById('conversationModalOverlay')?.addEventListener('click', (e) => {
+      if (e.target.id === 'conversationModalOverlay') {
+        this.closeConversationModal();
+      }
+    });
+
+    // Event delegation for conversation items
+    document.getElementById('conversationsList')?.addEventListener('click', (e) => {
+      const conversationItem = e.target.closest('.conversation-item');
+      if (conversationItem) {
+        const username = conversationItem.getAttribute('data-username');
+        this.showConversationModal(username);
+      }
+    });
   }
 
   async initializeUI() {
@@ -274,6 +288,9 @@ class PopupManager {
     switch (tabName) {
       case 'dashboard':
         this.loadDashboardData();
+        break;
+      case 'conversations':
+        await this.loadConversations();
         break;
       case 'api':
         await this.loadApiConfig();
@@ -433,6 +450,7 @@ class PopupManager {
 
       // Load preferences (removed API keys and model selection)
       if (settings) {
+        document.getElementById('restrictToFiverr').checked = settings.restrictToFiverr !== false;
         document.getElementById('autoSave').checked = settings.autoSave !== false;
         document.getElementById('notifications').checked = settings.notifications !== false;
         document.getElementById('maxContextLength').value = settings.maxContextLength || 10000;
@@ -1509,10 +1527,12 @@ Provide only the improved message, no explanations.`
       // Preserve API keys in settings
       settings.apiKeys = this.currentApiKeys || [];
       settings.defaultModel = document.getElementById('defaultModel').value;
+      settings.restrictToFiverr = document.getElementById('restrictToFiverr').checked;
       settings.autoSave = document.getElementById('autoSave').checked;
       settings.notifications = document.getElementById('notifications').checked;
       settings.keyRotation = document.getElementById('keyRotation').checked;
       settings.maxContextLength = parseInt(document.getElementById('maxContextLength').value);
+      settings.dateFormat = document.getElementById('dateFormat').value;
 
       await this.setStorageData({ settings });
       this.showToast('Preferences saved');
@@ -1608,67 +1628,7 @@ Provide only the improved message, no explanations.`
     }
   }
 
-  async extractConversation() {
-    try {
-      this.showLoading(true);
-      
-      const result = await this.sendMessageToTab({ type: 'EXTRACT_CONVERSATION' });
-      
-      if (result.success && result.data) {
-        this.showToast('Conversation extracted successfully!');
-        await this.loadDashboardData();
-      } else {
-        throw new Error('No conversation data found');
-      }
-    } catch (error) {
-      console.error('Failed to extract conversation:', error);
-      this.showToast('Failed to extract conversation', 'error');
-    } finally {
-      this.showLoading(false);
-    }
-  }
 
-  async generateReply() {
-    try {
-      this.showLoading(true);
-      
-      const result = await this.sendMessageToTab({ type: 'GENERATE_REPLY' });
-      
-      if (result.success) {
-        this.showToast('Reply generated successfully!');
-      } else {
-        throw new Error(result.error || 'Failed to generate reply');
-      }
-    } catch (error) {
-      console.error('Failed to generate reply:', error);
-      this.showToast('Failed to generate reply', 'error');
-    } finally {
-      this.showLoading(false);
-    }
-  }
-
-  async analyzeMessage() {
-    try {
-      this.showLoading(true);
-      
-      // For demo purposes, analyze the last message
-      const result = await this.sendMessageToTab({ 
-        type: 'ANALYZE_MESSAGE',
-        data: { content: 'Sample message for analysis' }
-      });
-      
-      if (result.success) {
-        this.showToast('Message analyzed successfully!');
-      } else {
-        throw new Error(result.error || 'Failed to analyze message');
-      }
-    } catch (error) {
-      console.error('Failed to analyze message:', error);
-      this.showToast('Failed to analyze message', 'error');
-    } finally {
-      this.showLoading(false);
-    }
-  }
 
   async openFloatingWidget() {
     try {
@@ -1680,103 +1640,13 @@ Provide only the improved message, no explanations.`
     }
   }
 
-  async exportData(type) {
-    try {
-      this.showLoading(true);
 
-      const format = document.getElementById('exportFormat').value;
 
-      if (type === 'conversations') {
-        // Export only Fiverr conversations
-        const result = await this.sendMessageToTab({
-          type: 'EXPORT_FIVERR_CONVERSATIONS',
-          format
-        });
 
-        if (result.success && result.data) {
-          this.downloadFile(result.data);
-          this.showToast('Conversations exported successfully!');
-        } else {
-          throw new Error('Failed to export conversations');
-        }
-      } else {
-        // Export all data or sessions
-        const result = await this.sendMessageToTab({
-          type: 'EXPORT_DATA',
-          format,
-          dataType: type
-        });
 
-        if (result.success && result.data) {
-          this.downloadFile(result.data);
-          this.showToast('Data exported successfully!');
-        } else {
-          throw new Error('Failed to export data');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to export data:', error);
-      this.showToast('Failed to export data', 'error');
-    } finally {
-      this.showLoading(false);
-    }
-  }
 
-  handleFileSelect(file) {
-    if (!file) return;
 
-    const importButton = document.getElementById('importData');
-    const dropZone = document.getElementById('fileDropZone');
-    
-    if (file.type === 'application/json' || file.name.endsWith('.json')) {
-      dropZone.querySelector('.drop-text').textContent = `Selected: ${file.name}`;
-      importButton.disabled = false;
-      importButton.dataset.file = file.name;
-      
-      // Store file for import
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        this.importFileContent = e.target.result;
-      };
-      reader.readAsText(file);
-    } else {
-      this.showToast('Please select a valid JSON export file', 'error');
-    }
-  }
 
-  async importData() {
-    try {
-      if (!this.importFileContent) {
-        this.showToast('Please select a file first', 'error');
-        return;
-      }
-
-      this.showLoading(true);
-
-      const options = {
-        importApiKeys: document.getElementById('importApiKeys').checked,
-        forceImport: document.getElementById('forceImport').checked
-      };
-
-      const result = await this.sendMessageToTab({
-        type: 'IMPORT_DATA',
-        data: this.importFileContent,
-        options
-      });
-
-      if (result.success) {
-        this.showToast('Data imported successfully!');
-        await this.initializeUI(); // Reload UI
-      } else {
-        throw new Error(result.error || 'Failed to import data');
-      }
-    } catch (error) {
-      console.error('Failed to import data:', error);
-      this.showToast('Failed to import data: ' + error.message, 'error');
-    } finally {
-      this.showLoading(false);
-    }
-  }
 
   downloadFile(exportData) {
     const blob = new Blob([exportData.content], { type: exportData.mimeType });
@@ -2116,29 +1986,7 @@ Provide only the improved message, no explanations.`
     }
   }
 
-  async exportSingleConversation(username, format = 'markdown') {
-    try {
-      this.showLoading(true);
 
-      const result = await this.sendMessageToTab({
-        type: 'EXPORT_SINGLE_CONVERSATION',
-        username,
-        format
-      });
-
-      if (result.success && result.data) {
-        this.downloadFile(result.data);
-        this.showToast(`Conversation with ${username} exported successfully!`);
-      } else {
-        throw new Error(result.error || 'Failed to export conversation');
-      }
-    } catch (error) {
-      console.error('Failed to export conversation:', error);
-      this.showToast(`Failed to export conversation with ${username}`, 'error');
-    } finally {
-      this.showLoading(false);
-    }
-  }
 
   updateFiverrStatus(indicator, text) {
     const statusIndicator = document.getElementById('fiverrStatusIndicator');
@@ -2194,12 +2042,13 @@ Provide only the improved message, no explanations.`
         </div>
         <div class="conversation-actions">
           <button class="btn-icon" onclick="popupManager.updateConversation('${conv.username}')" title="Update">🔄</button>
-          <button class="btn-icon" onclick="popupManager.exportSingleConversation('${conv.username}', 'markdown')" title="Export">📤</button>
           <button class="btn-icon" onclick="popupManager.deleteConversation('${conv.username}')" title="Delete">🗑️</button>
         </div>
       </div>
     `).join('');
   }
+
+
 
   async loadStoredContacts() {
     try {
@@ -2301,6 +2150,584 @@ Provide only the improved message, no explanations.`
         this.updateFiverrStatus('❌', request.message);
         this.showToast(request.message, 'error');
         break;
+    }
+  }
+
+  // Conversations Management Methods
+  async loadConversations() {
+    try {
+      this.showLoading(true);
+
+      // Get stored conversations from extension storage
+      const result = await chrome.storage.local.get('fiverrConversations');
+      let conversations = result.fiverrConversations || {};
+
+      // Clean up invalid conversations
+      conversations = await this.cleanupInvalidConversations(conversations);
+
+      // Update stats
+      this.updateConversationStats(conversations);
+
+      // Render conversations list
+      this.renderConversationsList(conversations);
+
+      // Also update the dashboard conversations count (using valid conversations only)
+      const validConversations = Object.entries(conversations).filter(([username, conversation]) => {
+        return this.isValidConversation(username, conversation);
+      });
+      const conversationCount = validConversations.length;
+      const totalConversationsElement = document.getElementById('totalConversations');
+      if (totalConversationsElement) {
+        totalConversationsElement.textContent = conversationCount;
+      }
+
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+      this.showToast('Failed to load conversations', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  updateConversationStats(conversations) {
+    // Filter out invalid conversations for accurate count
+    const validConversations = Object.entries(conversations).filter(([username, conversation]) => {
+      return this.isValidConversation(username, conversation);
+    });
+
+    const conversationCount = validConversations.length;
+    const storageSize = this.calculateStorageSize(conversations);
+
+    document.getElementById('totalConversationsCount').textContent = conversationCount;
+    document.getElementById('storageUsed').textContent = this.formatBytes(storageSize);
+  }
+
+  calculateStorageSize(conversations) {
+    return new Blob([JSON.stringify(conversations)]).size;
+  }
+
+  formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  renderConversationsList(conversations) {
+    const conversationsList = document.getElementById('conversationsList');
+
+    // Filter out invalid conversations using the validation method
+    const validConversations = Object.entries(conversations).filter(([username, conversation]) => {
+      return this.isValidConversation(username, conversation);
+    });
+
+    if (validConversations.length === 0) {
+      conversationsList.innerHTML = `
+        <div class="conversations-empty">
+          <div class="conversations-empty-icon">💬</div>
+          <div class="conversations-empty-text">No conversations found</div>
+          <div class="conversations-empty-subtext">Start chatting on Fiverr to see conversations here</div>
+        </div>
+      `;
+      return;
+    }
+
+    const conversationItems = validConversations
+      .sort(([,a], [,b]) => (b.lastExtracted || 0) - (a.lastExtracted || 0))
+      .map(([username, conversation]) => this.createConversationItem(username, conversation))
+      .join('');
+
+    conversationsList.innerHTML = conversationItems;
+  }
+
+  createConversationItem(username, conversation) {
+    const messageCount = conversation.messages?.length || 0;
+    const lastMessage = conversation.messages?.length > 0
+      ? conversation.messages[conversation.messages.length - 1]
+      : null;
+
+    // Format dates better
+    const lastExtractedDate = new Date(conversation.lastExtracted || conversation.extractedAt);
+    const formattedDate = this.formatRelativeDate(lastExtractedDate);
+    const fullDate = lastExtractedDate.toLocaleString();
+
+    // Create better preview
+    const preview = lastMessage
+      ? this.cleanMessagePreview(lastMessage.body)
+      : 'No messages available';
+
+    // Format username better
+    const displayUsername = this.formatUsername(username);
+
+    return `
+      <div class="conversation-item" data-username="${username}" onclick="popupManager.showConversationModal('${username}')">
+        <div class="conversation-left-column">
+          <div class="conversation-item-header">
+            <div class="conversation-username">${displayUsername}</div>
+            <div class="conversation-date" title="${fullDate}">${formattedDate}</div>
+          </div>
+          <div class="conversation-stats">
+            <span class="conversation-stat">💬 ${messageCount} messages</span>
+          </div>
+          <div class="conversation-stats">
+            <span class="conversation-stat">🕒 ${formattedDate}</span>
+          </div>
+        </div>
+        <div class="conversation-right-column">
+          <div class="conversation-preview">${preview}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Helper methods for better formatting
+  formatUsername(username) {
+    // Replace underscores with spaces and capitalize
+    return username.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  formatRelativeDate(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return date.toLocaleDateString();
+  }
+
+  cleanMessagePreview(text) {
+    if (!text) return 'No message content';
+
+    // Remove extra whitespace and newlines
+    const cleaned = text.replace(/\s+/g, ' ').trim();
+
+    // Truncate to reasonable length
+    if (cleaned.length > 120) {
+      return cleaned.substring(0, 120) + '...';
+    }
+
+    return cleaned;
+  }
+
+  // Validation and cleanup methods
+  isValidConversation(username, conversation) {
+    // Filter out fake/invalid conversations
+    if (username === 'FiverrConversations' || username === 'fiverrConversations') {
+      return false;
+    }
+
+    // Must have valid username and conversation object
+    if (!username || !conversation || typeof conversation !== 'object') {
+      return false;
+    }
+
+    // Must have messages array
+    if (!Array.isArray(conversation.messages)) {
+      return false;
+    }
+
+    // Must have at least some basic data or messages
+    if (conversation.messages.length === 0 && !conversation.lastExtracted) {
+      return false;
+    }
+
+    return true;
+  }
+
+  async cleanupInvalidConversations(conversations) {
+    const validConversations = {};
+    let hasInvalidConversations = false;
+
+    Object.entries(conversations).forEach(([username, conversation]) => {
+      if (this.isValidConversation(username, conversation)) {
+        validConversations[username] = conversation;
+      } else {
+        hasInvalidConversations = true;
+        console.log(`Removing invalid conversation: ${username}`);
+      }
+    });
+
+    // If we found invalid conversations, update storage
+    if (hasInvalidConversations) {
+      try {
+        await chrome.storage.local.set({ fiverrConversations: validConversations });
+        console.log('Cleaned up invalid conversations from storage');
+      } catch (error) {
+        console.error('Failed to cleanup invalid conversations:', error);
+      }
+    }
+
+    return validConversations;
+  }
+
+  async showConversationModal(username) {
+    try {
+      this.currentConversationUsername = username;
+
+      // Get conversation data
+      const result = await chrome.storage.local.get('fiverrConversations');
+      const conversations = result.fiverrConversations || {};
+      const conversation = conversations[username];
+
+      if (!conversation) {
+        this.showToast('Conversation not found', 'error');
+        return;
+      }
+
+      // Update modal title and meta
+      document.getElementById('conversationModalTitle').textContent = `Conversation with ${username}`;
+      document.getElementById('conversationModalMeta').textContent =
+        `${conversation.messages?.length || 0} messages • Last updated: ${new Date(conversation.lastExtracted || conversation.extractedAt).toLocaleString()}`;
+
+      // Render conversation content
+      this.renderConversationContent(conversation);
+
+      // Show modal
+      document.getElementById('conversationModalOverlay').classList.add('active');
+
+    } catch (error) {
+      console.error('Failed to show conversation modal:', error);
+      this.showToast('Failed to load conversation details', 'error');
+    }
+  }
+
+  renderConversationContent(conversation) {
+    const contentContainer = document.getElementById('conversationContent');
+
+    if (!conversation.messages || conversation.messages.length === 0) {
+      contentContainer.innerHTML = '<div class="conversations-empty">No messages in this conversation</div>';
+      return;
+    }
+
+    const messagesHtml = conversation.messages.map(message => {
+      const isUser = message.sender === conversation.username;
+      const attachmentsHtml = message.attachments && message.attachments.length > 0
+        ? `<div class="message-attachments">📎 Attachments: ${message.attachments.map(att => att.filename || 'Unknown file').join(', ')}</div>`
+        : '';
+
+      return `
+        <div class="conversation-message ${isUser ? 'user' : 'client'}">
+          <div class="message-header">
+            <div class="message-sender">${message.sender || 'Unknown'}</div>
+            <div class="message-time">${message.formattedTime || new Date(message.createdAt).toLocaleString()}</div>
+          </div>
+          <div class="message-body">${message.body || ''}</div>
+          ${attachmentsHtml}
+        </div>
+      `;
+    }).join('');
+
+    contentContainer.innerHTML = messagesHtml;
+  }
+
+  closeConversationModal() {
+    document.getElementById('conversationModalOverlay').classList.remove('active');
+    this.currentConversationUsername = null;
+  }
+
+  async exportCurrentConversation() {
+    if (!this.currentConversationUsername) {
+      this.showToast('No conversation selected', 'error');
+      return;
+    }
+
+    try {
+      const format = document.getElementById('exportFormat').value;
+
+      // Get conversation data
+      const result = await chrome.storage.local.get('fiverrConversations');
+      const conversations = result.fiverrConversations || {};
+      const conversation = conversations[this.currentConversationUsername];
+
+      if (!conversation) {
+        this.showToast('Conversation not found', 'error');
+        return;
+      }
+
+      // Generate export content based on format
+      let content, filename, mimeType;
+
+      switch (format) {
+        case 'markdown':
+          content = await this.convertToMarkdown(conversation);
+          filename = `fiverr_conversation_${this.currentConversationUsername}_${new Date().toISOString().split('T')[0]}.md`;
+          mimeType = 'text/markdown';
+          break;
+
+        case 'json':
+          content = JSON.stringify(conversation, null, 2);
+          filename = `fiverr_conversation_${this.currentConversationUsername}_${new Date().toISOString().split('T')[0]}.json`;
+          mimeType = 'application/json';
+          break;
+
+        case 'txt':
+          content = this.convertToText(conversation);
+          filename = `fiverr_conversation_${this.currentConversationUsername}_${new Date().toISOString().split('T')[0]}.txt`;
+          mimeType = 'text/plain';
+          break;
+
+        case 'csv':
+          content = this.convertToCSV(conversation);
+          filename = `fiverr_conversation_${this.currentConversationUsername}_${new Date().toISOString().split('T')[0]}.csv`;
+          mimeType = 'text/csv';
+          break;
+
+        case 'html':
+          content = this.convertToHTML(conversation);
+          filename = `fiverr_conversation_${this.currentConversationUsername}_${new Date().toISOString().split('T')[0]}.html`;
+          mimeType = 'text/html';
+          break;
+
+        default:
+          this.showToast('Unsupported export format', 'error');
+          return;
+      }
+
+      // Download the file
+      this.downloadFile({ content, filename, mimeType });
+      this.showToast(`Conversation exported as ${format.toUpperCase()}`, 'success');
+
+    } catch (error) {
+      console.error('Export failed:', error);
+      this.showToast('Failed to export conversation', 'error');
+    }
+  }
+
+  async convertToMarkdown(conversation) {
+    let markdown = `# Conversation with ${conversation.username}\n\n`;
+    markdown += `**Extracted:** ${new Date(conversation.extractedAt || conversation.lastExtracted).toLocaleString()}\n`;
+    markdown += `**Total Messages:** ${conversation.messages?.length || 0}\n\n`;
+
+    if (!conversation.messages || conversation.messages.length === 0) {
+      markdown += 'No messages in this conversation.\n';
+      return markdown;
+    }
+
+    for (const message of conversation.messages) {
+      const timestamp = message.formattedTime || new Date(message.createdAt).toLocaleString();
+      const sender = message.sender || 'Unknown';
+
+      markdown += `### ${sender} (${timestamp})\n\n`;
+
+      if (message.body) {
+        markdown += `${message.body}\n\n`;
+      }
+
+      if (message.attachments && message.attachments.length > 0) {
+        markdown += '**Attachments:**\n';
+        for (const attachment of message.attachments) {
+          const fileName = attachment.filename || 'Unnamed File';
+          const fileSize = attachment.fileSize ? this.formatBytes(attachment.fileSize) : 'size unknown';
+          markdown += `- ${fileName} (${fileSize})\n`;
+        }
+        markdown += '\n';
+      }
+
+      markdown += '---\n\n';
+    }
+
+    return markdown;
+  }
+
+  convertToText(conversation) {
+    let text = `Conversation with ${conversation.username}\n`;
+    text += `Extracted: ${new Date(conversation.extractedAt || conversation.lastExtracted).toLocaleString()}\n`;
+    text += `Total Messages: ${conversation.messages?.length || 0}\n\n`;
+
+    if (!conversation.messages || conversation.messages.length === 0) {
+      text += 'No messages in this conversation.\n';
+      return text;
+    }
+
+    conversation.messages.forEach(message => {
+      const timestamp = message.formattedTime || new Date(message.createdAt).toLocaleString();
+      const sender = message.sender || 'Unknown';
+
+      text += `${sender} (${timestamp}):\n${message.body || ''}\n\n`;
+
+      if (message.attachments && message.attachments.length > 0) {
+        text += 'Attachments:\n';
+        message.attachments.forEach(attachment => {
+          text += `- ${attachment.filename || 'Unknown file'}\n`;
+        });
+        text += '\n';
+      }
+    });
+
+    return text;
+  }
+
+  convertToCSV(conversation) {
+    let csv = 'Timestamp,Sender,Message,Attachments\n';
+
+    if (!conversation.messages || conversation.messages.length === 0) {
+      return csv;
+    }
+
+    conversation.messages.forEach(message => {
+      const timestamp = new Date(message.createdAt).toISOString();
+      const sender = (message.sender || 'Unknown').replace(/"/g, '""');
+      const body = (message.body || '').replace(/"/g, '""').replace(/\n/g, ' ');
+      const attachments = message.attachments && message.attachments.length > 0
+        ? message.attachments.map(att => att.filename || 'Unknown file').join('; ')
+        : '';
+
+      csv += `"${timestamp}","${sender}","${body}","${attachments}"\n`;
+    });
+
+    return csv;
+  }
+
+  convertToHTML(conversation) {
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Conversation with ${conversation.username}</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .message { margin-bottom: 20px; padding: 15px; border-radius: 8px; }
+        .message.user { background-color: #e3f2fd; }
+        .message.client { background-color: #f3e5f5; }
+        .message-header { font-weight: bold; margin-bottom: 5px; }
+        .message-time { font-size: 12px; color: #666; }
+        .message-body { margin-top: 10px; white-space: pre-wrap; }
+        .attachments { margin-top: 10px; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>Conversation with ${conversation.username}</h1>
+    <p><strong>Extracted:</strong> ${new Date(conversation.extractedAt || conversation.lastExtracted).toLocaleString()}</p>
+    <p><strong>Total Messages:</strong> ${conversation.messages?.length || 0}</p>
+`;
+
+    if (!conversation.messages || conversation.messages.length === 0) {
+      html += '<p>No messages in this conversation.</p>';
+    } else {
+      conversation.messages.forEach(message => {
+        const timestamp = new Date(message.createdAt).toLocaleString();
+        const sender = message.sender || 'Unknown';
+        const isUser = sender === conversation.username;
+
+        html += `    <div class="message ${isUser ? 'user' : 'client'}">
+        <div class="message-header">${sender}</div>
+        <div class="message-time">${timestamp}</div>
+        <div class="message-body">${(message.body || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+
+        if (message.attachments && message.attachments.length > 0) {
+          html += `        <div class="attachments">Attachments: ${message.attachments.map(att => att.filename || 'Unknown file').join(', ')}</div>`;
+        }
+
+        html += `    </div>\n`;
+      });
+    }
+
+    html += `</body>
+</html>`;
+
+    return html;
+  }
+
+
+
+  async deleteCurrentConversation() {
+    if (!this.currentConversationUsername) {
+      this.showToast('No conversation selected', 'error');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete the conversation with ${this.currentConversationUsername}?`)) {
+      return;
+    }
+
+    try {
+      // Get current conversations
+      const result = await chrome.storage.local.get('fiverrConversations');
+      const conversations = result.fiverrConversations || {};
+
+      // Delete the conversation
+      delete conversations[this.currentConversationUsername];
+
+      // Save back to storage
+      await chrome.storage.local.set({ fiverrConversations: conversations });
+
+      // Close modal and refresh list
+      this.closeConversationModal();
+      await this.loadConversations();
+
+      this.showToast('Conversation deleted successfully', 'success');
+
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      this.showToast('Failed to delete conversation', 'error');
+    }
+  }
+
+  async refreshCurrentConversation() {
+    if (!this.currentConversationUsername) {
+      this.showToast('No conversation selected', 'error');
+      return;
+    }
+
+    try {
+      this.showLoading(true);
+
+      // Send message to content script to refresh this specific conversation
+      const response = await this.sendMessageToTab({
+        type: 'EXTRACT_CONVERSATION',
+        username: this.currentConversationUsername,
+        forceRefresh: true
+      });
+
+      if (response && response.success) {
+        // Reload the modal with fresh data
+        await this.showConversationModal(this.currentConversationUsername);
+        await this.loadConversations();
+        this.showToast('Conversation refreshed successfully', 'success');
+      } else {
+        this.showToast('Failed to refresh conversation', 'error');
+      }
+
+    } catch (error) {
+      console.error('Failed to refresh conversation:', error);
+      this.showToast('Failed to refresh conversation', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async clearAllConversations() {
+    if (!confirm('Are you sure you want to delete ALL stored conversations? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      this.showLoading(true);
+
+      // Clear all conversations from storage
+      await chrome.storage.local.set({ fiverrConversations: {} });
+
+      // Refresh the conversations list
+      await this.loadConversations();
+
+      // Close modal if open
+      if (this.currentConversationUsername) {
+        this.closeConversationModal();
+      }
+
+      this.showToast('All conversations cleared successfully', 'success');
+
+    } catch (error) {
+      console.error('Failed to clear conversations:', error);
+      this.showToast('Failed to clear conversations', 'error');
+    } finally {
+      this.showLoading(false);
     }
   }
 }

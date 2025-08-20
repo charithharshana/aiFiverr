@@ -85,34 +85,75 @@ class ChatSession {
   }
 
   /**
-   * Get conversation context for API
+   * Get conversation context for API with intelligent optimization
    */
   getConversationContext(maxLength = 10000) {
     let context = '';
     let totalLength = 0;
-    
+
     // Start from the most recent messages and work backwards
     for (let i = this.messages.length - 1; i >= 0; i--) {
       const message = this.messages[i];
       const messageText = `${message.role}: ${message.content}\n\n`;
-      
+
       if (totalLength + messageText.length > maxLength) {
         break;
       }
-      
+
       context = messageText + context;
       totalLength += messageText.length;
     }
 
-    // Add Fiverr context if available
+    // Add Fiverr context if available and space permits
     if (this.metadata.fiverrContext) {
       const fiverrContextText = `Fiverr Context: ${this.metadata.fiverrContext}\n\n`;
       if (totalLength + fiverrContextText.length <= maxLength) {
         context = fiverrContextText + context;
+      } else {
+        // Try to add a truncated version
+        const availableSpace = maxLength - totalLength - 50; // Leave some buffer
+        if (availableSpace > 100) {
+          const truncatedContext = this.metadata.fiverrContext.substring(0, availableSpace) + '...';
+          context = `Fiverr Context (truncated): ${truncatedContext}\n\n` + context;
+        }
       }
     }
 
     return context.trim();
+  }
+
+  /**
+   * Get optimized context based on conversation analysis
+   */
+  getOptimizedContext(maxLength = 10000) {
+    // If we have Fiverr context, try to optimize it
+    if (this.metadata.fiverrContext && window.fiverrExtractor) {
+      try {
+        // Extract current conversation data
+        const username = window.fiverrExtractor.extractUsernameFromUrl();
+        if (username) {
+          const conversationData = window.fiverrExtractor.getStoredConversation(username);
+          if (conversationData) {
+            // Analyze conversation and get optimal context
+            const analysis = window.fiverrExtractor.analyzeConversation(conversationData);
+            const optimizedFiverrContext = window.fiverrExtractor.getIntelligentContext(
+              conversationData,
+              analysis.strategy,
+              Math.floor(maxLength * 0.7) // Reserve 30% for chat history
+            );
+
+            // Update metadata with optimized context
+            this.metadata.fiverrContext = optimizedFiverrContext;
+            this.metadata.contextStrategy = analysis.strategy;
+            this.metadata.contextAnalysis = analysis;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to optimize Fiverr context:', error);
+      }
+    }
+
+    return this.getConversationContext(maxLength);
   }
 
   /**

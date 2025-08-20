@@ -124,14 +124,17 @@ class KnowledgeBaseManager {
         prompt: `You are a professional freelance communicator. Your goal is to draft a concise and effective follow-up message to a client based on our conversation history.
 
 **Use this project context:**
-*   **Conversation History:** {conversation}
+*   **Client:** {username}
+*   **Conversation Summary:** {conversation_summary}
+*   **Recent Message:** {conversation_last_message}
+*   **Total Messages:** {conversation_count}
 *   **Purpose of this follow-up:** {{custom1}}
 *   **My availability or updates:** {{custom2}}
 
 **Draft a follow-up message that:**
 1. Is friendly and professional.
 2. Directly addresses the purpose described in {{custom1}}.
-3. Briefly references a specific part of the project from the {conversation} to show context.
+3. Briefly references a specific part of the project from the conversation to show context.
 4. Includes a clear, simple call to action.
 5. If provided, briefly mentions my availability or updates from {{custom2}}.
 6. Provides the reply directly, without any extra explanations.`
@@ -759,8 +762,11 @@ Provide only the improved message, no explanations.`
    */
   async processPromptWithFiverrContext(promptKey, additionalContext = {}) {
     try {
+      // Determine optimal context type based on prompt
+      const contextType = this.determineOptimalContextType(promptKey);
+
       // Extract context from current Fiverr page
-      const context = await this.extractFiverrContext();
+      const context = await this.extractFiverrContext(contextType);
 
       // Merge with additional context
       const fullContext = { ...context, ...additionalContext };
@@ -774,9 +780,26 @@ Provide only the improved message, no explanations.`
   }
 
   /**
-   * Extract context variables from current Fiverr page
+   * Determine optimal context type based on prompt key
    */
-  async extractFiverrContext() {
+  determineOptimalContextType(promptKey) {
+    const contextMapping = {
+      'project_proposal': 'project_focused',
+      'brief_analysis': 'project_focused',
+      'requirement_clarification': 'key_points',
+      'follow_up': 'recent',
+      'general_reply': 'recent',
+      'summary': 'summary',
+      'default': 'recent'
+    };
+
+    return contextMapping[promptKey] || contextMapping['default'];
+  }
+
+  /**
+   * Extract context variables from current Fiverr page with intelligent context management
+   */
+  async extractFiverrContext(contextType = 'recent', maxLength = 4000) {
     const context = {};
 
     try {
@@ -787,7 +810,18 @@ Provide only the improved message, no explanations.`
         // Extract conversation if available
         const conversationData = await window.fiverrExtractor.extractConversation();
         if (conversationData) {
-          context.conversation = window.fiverrExtractor.conversationToContext(conversationData);
+          // Use intelligent context based on use case
+          context.conversation = window.fiverrExtractor.getIntelligentContext(conversationData, contextType, maxLength);
+          context.conversation_summary = window.fiverrExtractor.getConversationSummary(conversationData, 1500);
+          context.conversation_count = conversationData.messages?.length || 0;
+          context.conversation_last_message = conversationData.messages?.length > 0
+            ? conversationData.messages[conversationData.messages.length - 1].body
+            : 'No messages';
+
+          // Add context metadata
+          context.conversation_type = contextType;
+          context.conversation_length = context.conversation.length;
+          context.is_large_conversation = conversationData.messages?.length > 50;
         }
 
         // Extract brief details if on brief page
@@ -809,6 +843,9 @@ Provide only the improved message, no explanations.`
 
       // Set default values for missing context
       if (!context.conversation) context.conversation = 'No conversation data available';
+      if (!context.conversation_summary) context.conversation_summary = 'No conversation summary available';
+      if (!context.conversation_count) context.conversation_count = 0;
+      if (!context.conversation_last_message) context.conversation_last_message = 'No recent messages';
       if (!context.username) context.username = 'Client';
       if (!context.proposal) context.proposal = 'No proposal data available';
 

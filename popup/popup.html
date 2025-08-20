@@ -23,9 +23,9 @@
     <!-- Navigation Tabs -->
     <nav class="tab-navigation">
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="conversations">Conversations</button>
       <button class="tab-btn" data-tab="api">API Config</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
-      <button class="tab-btn" data-tab="export">Export</button>
     </nav>
 
     <!-- Tab Content -->
@@ -56,27 +56,7 @@
           </div>
         </div>
 
-        <div class="quick-actions">
-          <h3>Quick Actions</h3>
-          <div class="action-buttons">
-            <button class="action-btn" id="extractConversation">
-              <span class="btn-icon">📥</span>
-              Extract Conversation
-            </button>
-            <button class="action-btn" id="generateReply">
-              <span class="btn-icon">✨</span>
-              Generate Reply
-            </button>
-            <button class="action-btn" id="analyzeMessage">
-              <span class="btn-icon">🔍</span>
-              Analyze Message
-            </button>
-            <button class="action-btn" id="openFloatingWidget">
-              <span class="btn-icon">🤖</span>
-              Open AI Assistant
-            </button>
-          </div>
-        </div>
+
 
         <div class="recent-activity">
           <h3>Recent Activity</h3>
@@ -87,6 +67,73 @@
                 <div class="activity-title">Welcome to aiFiverr!</div>
                 <div class="activity-time">Just now</div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Conversations Tab -->
+      <div class="tab-panel" id="conversations">
+        <div class="conversations-header">
+          <div class="conversations-title">
+            <h3>Extracted Conversations</h3>
+            <p class="conversations-description">View and manage Fiverr conversations extracted by the extension</p>
+          </div>
+          <div class="conversations-actions">
+            <button class="btn-secondary" id="refreshConversations">🔄 Refresh</button>
+            <button class="btn-secondary" id="clearAllConversations">🗑️ Clear All</button>
+          </div>
+        </div>
+
+        <div class="conversations-stats">
+          <div class="stat-item">
+            <span class="stat-label">Total Conversations:</span>
+            <span class="stat-value" id="totalConversationsCount">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Storage Used:</span>
+            <span class="stat-value" id="storageUsed">0 KB</span>
+          </div>
+        </div>
+
+        <div class="conversations-list-container">
+          <div class="conversations-list" id="conversationsList">
+            <!-- Conversations will be populated here -->
+          </div>
+        </div>
+
+        <!-- Conversation Detail Modal -->
+        <div class="conversation-modal-overlay" id="conversationModalOverlay">
+          <div class="conversation-modal">
+            <div class="conversation-modal-header">
+              <div class="conversation-modal-title">
+                <h4 id="conversationModalTitle">Conversation Details</h4>
+                <div class="conversation-modal-meta" id="conversationModalMeta"></div>
+              </div>
+              <div class="conversation-modal-actions">
+                <div class="export-section">
+                  <label for="exportFormat">Export as:</label>
+                  <select id="exportFormat">
+                    <option value="markdown">Markdown (.md)</option>
+                    <option value="json">JSON (.json)</option>
+                    <option value="txt">Text (.txt)</option>
+                    <option value="csv">CSV (.csv)</option>
+                    <option value="html">HTML (.html)</option>
+                  </select>
+                  <button class="btn-primary" id="exportConversation">📥 Export</button>
+                </div>
+                <button class="conversation-modal-close" id="closeConversationModal">×</button>
+              </div>
+            </div>
+            <div class="conversation-modal-body">
+              <div class="conversation-content" id="conversationContent">
+                <!-- Conversation content will be displayed here -->
+              </div>
+            </div>
+            <div class="conversation-modal-footer">
+              <button class="btn-secondary" id="deleteConversation">🗑️ Delete</button>
+              <button class="btn-secondary" id="refreshSingleConversation">🔄 Refresh</button>
+              <button class="btn-secondary" id="closeConversationModalBtn">Close</button>
             </div>
           </div>
         </div>
@@ -248,7 +295,10 @@
                   Prompt Content <span class="field-help" title="The actual prompt text. Use {{variable_name}} to reference knowledge base variables and {conversation} for Fiverr conversation data">ℹ️</span>
                 </label>
                 <textarea id="newPromptContent" placeholder="Enter your prompt content here. Use {{variable_name}} to reference knowledge base variables..." class="prompt-content-input" rows="6"></textarea>
-                <small class="field-description">Use {{variable_name}} for knowledge base variables, {conversation} for Fiverr data</small>
+                <small class="field-description">
+                  Use {{variable_name}} for knowledge base variables<br>
+                  Fiverr variables: {conversation}, {conversation_summary}, {conversation_count}, {conversation_last_message}, {username}
+                </small>
               </div>
 
               <div class="prompt-form-actions">
@@ -275,6 +325,11 @@
           <h3>Preferences</h3>
           <div class="preferences-container">
             <div class="preference-item">
+              <label for="restrictToFiverr">Fiverr only</label>
+              <input type="checkbox" id="restrictToFiverr" checked>
+              <small class="field-description">Enable on all websites when unchecked</small>
+            </div>
+            <div class="preference-item">
               <label for="autoSave">Auto-save sessions</label>
               <input type="checkbox" id="autoSave" checked>
             </div>
@@ -286,6 +341,7 @@
               <label for="maxContextLength">Max context length</label>
               <input type="number" id="maxContextLength" value="10000" min="1000" max="50000">
             </div>
+
           </div>
           <div class="global-save-section">
             <button class="btn-primary global-save-btn" id="globalSaveBtn">💾 Save All Settings</button>
@@ -294,96 +350,7 @@
         </div>
       </div>
 
-      <!-- Export Tab -->
-      <div class="tab-panel" id="export">
-        <!-- Fiverr Conversation Extraction -->
-        <div class="fiverr-section">
-          <h3>🎯 Fiverr Conversation Extraction</h3>
-          <div class="fiverr-status" id="fiverrStatus">
-            <div class="status-indicator" id="fiverrStatusIndicator">⚪</div>
-            <span id="fiverrStatusText">Ready to extract conversations</span>
-          </div>
 
-          <div class="fiverr-actions">
-            <div class="action-group">
-              <button class="btn-primary" id="fetchContactsBtn">📋 Fetch All Contacts</button>
-              <button class="btn-secondary" id="extractCurrentBtn">💬 Extract Current Conversation</button>
-            </div>
-            <div class="progress-info" id="progressInfo" style="display: none;">
-              <div class="progress-text" id="progressText"></div>
-              <div class="progress-counter" id="progressCounter"></div>
-            </div>
-          </div>
-
-          <div class="stored-conversations" id="storedConversations">
-            <h4>Stored Conversations</h4>
-            <div class="conversations-list" id="conversationsList">
-              <div class="no-conversations">No conversations stored yet</div>
-            </div>
-          </div>
-
-          <div class="contacts-section" id="contactsSection" style="display: none;">
-            <h4>Available Contacts</h4>
-            <div class="contacts-list" id="contactsList">
-              <div class="no-contacts">No contacts found</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="export-section">
-          <h3>📤 Export Data</h3>
-          <div class="export-options">
-            <div class="export-format">
-              <label>Export Format:</label>
-              <select id="exportFormat">
-                <option value="json">JSON</option>
-                <option value="csv">CSV</option>
-                <option value="markdown">Markdown</option>
-              </select>
-            </div>
-            <div class="export-actions">
-              <button class="btn-primary" id="exportAllData">Export All Data</button>
-              <button class="btn-secondary" id="exportSessions">Export Sessions Only</button>
-              <button class="btn-secondary" id="exportConversations">Export Conversations Only</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="import-section">
-          <h3>Import Data</h3>
-          <div class="import-container">
-            <div class="file-drop-zone" id="fileDropZone">
-              <div class="drop-zone-content">
-                <div class="drop-icon">📁</div>
-                <div class="drop-text">Drop your export file here or click to browse</div>
-              </div>
-              <input type="file" id="importFile" accept=".json" hidden>
-            </div>
-            <div class="import-options">
-              <div class="import-option">
-                <input type="checkbox" id="importApiKeys">
-                <label for="importApiKeys">Import API keys (use with caution)</label>
-              </div>
-              <div class="import-option">
-                <input type="checkbox" id="forceImport">
-                <label for="forceImport">Force import (ignore version compatibility)</label>
-              </div>
-            </div>
-            <button class="btn-primary" id="importData" disabled>Import Data</button>
-          </div>
-        </div>
-
-        <div class="backup-section">
-          <h3>Backup & Sync</h3>
-          <div class="backup-info">
-            <p>Regular backups help you maintain your data across browsers and devices.</p>
-            <div class="backup-actions">
-              <button class="btn-secondary" id="createBackup">Create Backup</button>
-              <button class="btn-secondary" id="scheduleBackup">Schedule Auto-Backup</button>
-            </div>
-          </div>
-        </div>
-      </div>
     </main>
 
     <!-- Footer -->

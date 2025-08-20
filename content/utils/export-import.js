@@ -243,19 +243,40 @@ class ExportImportManager {
     if (data.data?.sessions) {
       csv += 'Session Export\n';
       csv += 'Session ID,Title,Created,Last Updated,Message Count,Total Characters\n';
-      
+
       data.data.sessions.forEach(session => {
         const stats = this.calculateSessionStats(session);
         csv += `"${session.sessionId}","${session.metadata.title}","${new Date(session.metadata.created).toISOString()}","${new Date(session.metadata.lastUpdated).toISOString()}",${session.metadata.messageCount},${stats.totalCharacters}\n`;
       });
-      
+
       csv += '\n\nMessages Export\n';
       csv += 'Session ID,Role,Content,Timestamp\n';
-      
+
       data.data.sessions.forEach(session => {
         session.messages.forEach(message => {
           csv += `"${session.sessionId}","${message.role}","${message.content.replace(/"/g, '""')}","${new Date(message.timestamp).toISOString()}"\n`;
         });
+      });
+    }
+
+    // Export Fiverr conversations
+    if (data.data?.fiverrConversations) {
+      csv += '\n\nFiverr Conversations Export\n';
+      csv += 'Username,Timestamp,Sender,Message,Attachments\n';
+
+      Object.values(data.data.fiverrConversations).forEach(conversation => {
+        if (conversation.messages) {
+          conversation.messages.forEach(message => {
+            const timestamp = new Date(message.createdAt).toISOString();
+            const sender = (message.sender || 'Unknown').replace(/"/g, '""');
+            const body = (message.body || '').replace(/"/g, '""').replace(/\n/g, ' ');
+            const attachments = message.attachments && message.attachments.length > 0
+              ? message.attachments.map(att => att.filename || 'Unknown file').join('; ')
+              : '';
+
+            csv += `"${conversation.username}","${timestamp}","${sender}","${body}","${attachments}"\n`;
+          });
+        }
       });
     }
 
@@ -306,27 +327,39 @@ class ExportImportManager {
     }
 
     // Export Fiverr conversations
-    if (data.data?.fiverrConversations?.conversations?.length > 0) {
-      markdown += `## Fiverr Conversations (${data.data.fiverrConversations.count})\n\n`;
+    if (data.data?.fiverrConversations) {
+      const conversations = Object.values(data.data.fiverrConversations);
+      if (conversations.length > 0) {
+        markdown += `## Fiverr Conversations (${conversations.length})\n\n`;
 
-      data.data.fiverrConversations.conversations.forEach(conv => {
-        markdown += `### Conversation with ${conv.username}\n\n`;
-        markdown += `- **Messages:** ${conv.messageCount}\n`;
-        markdown += `- **Last Extracted:** ${new Date(conv.lastExtracted).toLocaleString()}\n`;
-        markdown += `- **Attachments:** ${conv.metadata.totalAttachments}\n`;
-        markdown += `- **Participants:** ${conv.metadata.senders.join(', ')}\n\n`;
+        conversations.forEach(conv => {
+          markdown += `### Conversation with ${conv.username}\n\n`;
+          markdown += `- **Messages:** ${conv.messages?.length || 0}\n`;
+          markdown += `- **Last Extracted:** ${new Date(conv.lastExtracted || 0).toLocaleString()}\n`;
 
-        if (conv.messages && conv.messages.length > 0) {
-          markdown += `#### Recent Messages (Last 5)\n\n`;
-          const recentMessages = conv.messages.slice(-5);
-          recentMessages.forEach(message => {
-            const time = new Date(message.createdAt).toLocaleString();
-            markdown += `**${message.sender}** (${time}):\n${message.body}\n\n`;
-          });
-        }
+          if (conv.messages && conv.messages.length > 0) {
+            const attachmentCount = conv.messages.reduce((total, msg) =>
+              total + (msg.attachments?.length || 0), 0);
+            markdown += `- **Attachments:** ${attachmentCount}\n`;
 
-        markdown += `---\n\n`;
-      });
+            const senders = [...new Set(conv.messages.map(msg => msg.sender))];
+            markdown += `- **Participants:** ${senders.join(', ')}\n\n`;
+
+            markdown += `#### Recent Messages (Last 5)\n\n`;
+            const recentMessages = conv.messages.slice(-5);
+            recentMessages.forEach(message => {
+              const time = new Date(message.createdAt).toLocaleString();
+              markdown += `**${message.sender}** (${time}):\n${message.body}\n\n`;
+
+              if (message.attachments && message.attachments.length > 0) {
+                markdown += `*Attachments: ${message.attachments.map(att => att.filename).join(', ')}*\n\n`;
+              }
+            });
+          }
+
+          markdown += `---\n\n`;
+        });
+      }
     }
 
     // Export Fiverr contacts

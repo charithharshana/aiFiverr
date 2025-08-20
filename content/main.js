@@ -37,9 +37,10 @@ class AiFiverrMain {
         return;
       }
 
-      // Check if we're on a Fiverr page
-      if (!this.isFiverrPage()) {
-        console.log('aiFiverr: Not on a Fiverr page, skipping initialization');
+      // Check site restriction settings
+      const shouldInitialize = await this.shouldInitializeOnCurrentSite();
+      if (!shouldInitialize) {
+        console.log('aiFiverr: Site restriction prevents initialization on this domain');
         return;
       }
 
@@ -87,6 +88,38 @@ class AiFiverrMain {
    */
   isFiverrPage() {
     return window.location.hostname.includes('fiverr.com');
+  }
+
+  /**
+   * Check if extension should initialize on current site based on settings
+   */
+  async shouldInitializeOnCurrentSite() {
+    try {
+      // Get settings from storage
+      const result = await chrome.storage.local.get(['settings']);
+      const settings = result.settings || {};
+
+      // Default to restricting to Fiverr only (restrictToFiverr: true)
+      const restrictToFiverr = settings.restrictToFiverr !== false;
+
+      console.log('aiFiverr: Site restriction check:', {
+        restrictToFiverr,
+        currentHostname: window.location.hostname,
+        isFiverrPage: this.isFiverrPage()
+      });
+
+      if (restrictToFiverr) {
+        // Only initialize on Fiverr pages
+        return this.isFiverrPage();
+      } else {
+        // Initialize on all sites
+        return true;
+      }
+    } catch (error) {
+      console.error('aiFiverr: Error checking site restriction settings:', error);
+      // Default to Fiverr only if there's an error
+      return this.isFiverrPage();
+    }
   }
 
   /**
@@ -296,35 +329,34 @@ class AiFiverrMain {
           sendResponse({ success: true, data: brief });
           break;
 
-        case 'GENERATE_REPLY':
-          await this.handleGenerateReply(request.data);
-          sendResponse({ success: true });
+        case 'FETCH_ALL_CONTACTS':
+          try {
+            const contacts = await window.fiverrExtractor?.fetchAllContacts();
+            sendResponse({ success: true, data: contacts });
+          } catch (error) {
+            sendResponse({ success: false, error: error.message });
+          }
           break;
 
-        case 'ANALYZE_MESSAGE':
-          const analysis = await this.handleAnalyzeMessage(request.data);
-          sendResponse({ success: true, data: analysis });
+        case 'GET_STORED_CONTACTS':
+          try {
+            const storedContacts = await window.fiverrExtractor?.getStoredContacts();
+            sendResponse({ success: true, data: storedContacts });
+          } catch (error) {
+            sendResponse({ success: false, error: error.message });
+          }
           break;
+
+
+
+
 
         case 'PROCESS_PROMPT':
           const processedPrompt = await this.handleProcessPrompt(request.data);
           sendResponse({ success: true, data: processedPrompt });
           break;
 
-        case 'EXPORT_DATA':
-          const exportData = await window.exportImportManager?.exportAllData(request.format);
-          sendResponse({ success: true, data: exportData });
-          break;
 
-        case 'EXPORT_FIVERR_CONVERSATIONS':
-          const conversationsExport = await this.handleExportFiverrConversations(request.format);
-          sendResponse({ success: true, data: conversationsExport });
-          break;
-
-        case 'IMPORT_DATA':
-          const importResult = await window.exportImportManager?.importData(request.data, request.options);
-          sendResponse({ success: true, data: importResult });
-          break;
 
         case 'FETCH_FIVERR_CONTACTS':
           const contactsResult = await this.handleFetchFiverrContacts();
@@ -349,11 +381,6 @@ class AiFiverrMain {
         case 'DELETE_CONVERSATION':
           const deleteResult = await this.handleDeleteConversation(request.username);
           sendResponse({ success: true, data: deleteResult });
-          break;
-
-        case 'EXPORT_SINGLE_CONVERSATION':
-          const singleConversationExport = await this.handleExportSingleConversation(request.username, request.format);
-          sendResponse({ success: true, data: singleConversationExport });
           break;
 
         case 'GET_STORED_CONVERSATIONS':
@@ -429,25 +456,7 @@ class AiFiverrMain {
     console.log('aiFiverr: Elements detected:', detail);
   }
 
-  /**
-   * Handle generate reply request
-   */
-  async handleGenerateReply(data) {
-    const { inputSelector, context } = data;
-    const inputElement = document.querySelector(inputSelector);
-    
-    if (inputElement) {
-      await this.generateReplyForInput(inputElement);
-    }
-  }
 
-  /**
-   * Handle analyze message request
-   */
-  async handleAnalyzeMessage(data) {
-    const { content } = data;
-    return await window.geminiClient?.analyzeMessage(content);
-  }
 
   /**
    * Handle process prompt request
@@ -521,27 +530,7 @@ class AiFiverrMain {
   }
 
   // Fiverr-specific handlers
-  async handleExportFiverrConversations(format = 'json') {
-    try {
-      if (!window.fiverrExtractor) {
-        throw new Error('Fiverr extractor not available');
-      }
 
-      const conversations = window.fiverrExtractor.getAllStoredConversations();
-
-      const exportData = {
-        version: '1.0.0',
-        timestamp: Date.now(),
-        type: 'fiverr-conversations',
-        conversations: conversations
-      };
-
-      return window.exportImportManager.formatExportData(exportData, format);
-    } catch (error) {
-      console.error('Failed to export Fiverr conversations:', error);
-      throw error;
-    }
-  }
 
   async handleFetchFiverrContacts() {
     try {
@@ -608,39 +597,7 @@ class AiFiverrMain {
     }
   }
 
-  async handleExportSingleConversation(username, format = 'markdown') {
-    try {
-      if (!window.fiverrExtractor) {
-        throw new Error('Fiverr extractor not available');
-      }
 
-      const content = await window.fiverrExtractor.exportConversation(username, format);
-
-      let mimeType, extension;
-      switch (format.toLowerCase()) {
-        case 'json':
-          mimeType = 'application/json';
-          extension = 'json';
-          break;
-        case 'txt':
-          mimeType = 'text/plain';
-          extension = 'txt';
-          break;
-        default:
-          mimeType = 'text/markdown';
-          extension = 'md';
-      }
-
-      return {
-        content,
-        filename: `fiverr-conversation-${username}-${Date.now()}.${extension}`,
-        mimeType
-      };
-    } catch (error) {
-      console.error('Failed to export single conversation:', error);
-      throw error;
-    }
-  }
 
   async handleGetStoredConversations() {
     try {

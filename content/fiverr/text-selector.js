@@ -13,6 +13,8 @@ class TextSelector {
     this.selectionRect = null;
     this.hideTimeout = null;
     this.isInteractingWithUI = false;
+    this.preservedSelection = null; // Store selection to prevent clearing
+    this.preservedRange = null; // Store range to restore selection
 
     this.init();
   }
@@ -20,11 +22,45 @@ class TextSelector {
   /**
    * Initialize text selection handler
    */
-  init() {
+  async init() {
     console.log('aiFiverr: Initializing text selector...');
+
+    // Check if we should initialize based on site restriction settings
+    const shouldInitialize = await this.shouldInitializeOnCurrentSite();
+    if (!shouldInitialize) {
+      console.log('aiFiverr: Text selector disabled due to site restrictions');
+      return;
+    }
+
     this.setupEventListeners();
     this.createFloatingIcon();
     this.isActive = true;
+  }
+
+  /**
+   * Check if text selector should initialize on current site based on settings
+   */
+  async shouldInitializeOnCurrentSite() {
+    try {
+      // Get settings from storage
+      const result = await chrome.storage.local.get(['settings']);
+      const settings = result.settings || {};
+
+      // Default to restricting to Fiverr only (restrictToFiverr: true)
+      const restrictToFiverr = settings.restrictToFiverr !== false;
+
+      if (restrictToFiverr) {
+        // Only initialize on Fiverr pages
+        return window.location.hostname.includes('fiverr.com');
+      } else {
+        // Initialize on all sites
+        return true;
+      }
+    } catch (error) {
+      console.error('aiFiverr: Error checking site restriction settings:', error);
+      // Default to Fiverr only if there's an error
+      return window.location.hostname.includes('fiverr.com');
+    }
   }
 
   /**
@@ -155,12 +191,17 @@ class TextSelector {
     this.selectedText = selectedText;
     this.currentSelection = selection;
 
+    // Preserve selection and range for later restoration
+    this.preservedSelection = selection;
+    if (selection.rangeCount > 0) {
+      this.preservedRange = selection.getRangeAt(0).cloneRange();
+    }
+
     // Copy to clipboard
     await this.copyToClipboard(selectedText);
 
-    // Get selection position
-    const range = selection.getRangeAt(0);
-    this.selectionRect = range.getBoundingClientRect();
+    // Get selection position - handle input fields differently
+    this.selectionRect = this.getSelectionRect(selection);
     console.log('aiFiverr: Selection rect:', this.selectionRect);
 
     // Show floating icon
@@ -168,7 +209,121 @@ class TextSelector {
   }
 
   /**
-   * Check if selection is in a valid area (not in input fields, etc.)
+   * Get selection rectangle - handles both regular text and input fields
+   */
+  getSelectionRect(selection) {
+    if (!selection.rangeCount) return null;
+
+    const range = selection.getRangeAt(0);
+
+    // First, try to get the actual selection bounds using range.getBoundingClientRect()
+    // This works for most cases including contentEditable elements
+    let rect = range.getBoundingClientRect();
+
+    // If the rect has valid dimensions, use it
+    if (rect.width > 0 && rect.height > 0) {
+      return rect;
+    }
+
+    // Fallback for input/textarea elements where range.getBoundingClientRect() might not work
+    const container = range.commonAncestorContainer;
+    const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+
+    // Handle different types of input elements
+    if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+      const elementRect = element.getBoundingClientRect();
+
+      // Try to get more precise position using selection properties
+      const selectionStart = element.selectionStart || 0;
+      const selectionEnd = element.selectionEnd || 0;
+
+      if (selectionEnd > selectionStart && element.value) {
+        try {
+          // Create a temporary element to measure text position more accurately
+          const tempDiv = document.createElement('div');
+          const computedStyle = window.getComputedStyle(element);
+
+          // Copy relevant styles to get accurate measurement
+          tempDiv.style.position = 'absolute';
+          tempDiv.style.visibility = 'hidden';
+          tempDiv.style.whiteSpace = 'pre-wrap';
+          tempDiv.style.wordWrap = 'break-word';
+          tempDiv.style.font = computedStyle.font;
+          tempDiv.style.fontSize = computedStyle.fontSize;
+          tempDiv.style.fontFamily = computedStyle.fontFamily;
+          tempDiv.style.lineHeight = computedStyle.lineHeight;
+          tempDiv.style.width = elementRect.width + 'px';
+          tempDiv.style.padding = computedStyle.padding;
+          tempDiv.style.border = computedStyle.border;
+
+          // Get text before selection end to calculate position
+          const textBeforeEnd = element.value.substring(0, selectionEnd);
+          tempDiv.textContent = textBeforeEnd;
+          document.body.appendChild(tempDiv);
+
+          const tempRect = tempDiv.getBoundingClientRect();
+          document.body.removeChild(tempDiv);
+
+          // Calculate position relative to the input element
+          const padding = parseInt(computedStyle.paddingLeft) || 0;
+          const estimatedX = elementRect.left + padding + (tempRect.width % elementRect.width);
+          const estimatedY = elementRect.top + (Math.floor(tempRect.width / elementRect.width) * parseInt(computedStyle.lineHeight || '20'));
+
+          return {
+            left: Math.min(estimatedX, elementRect.right - 20),
+            right: Math.min(estimatedX + 20, elementRect.right),
+            top: Math.max(estimatedY, elementRect.top),
+            bottom: Math.min(estimatedY + 20, elementRect.bottom),
+            width: 20,
+            height: 20
+          };
+        } catch (error) {
+          console.warn('aiFiverr: Error calculating precise text position:', error);
+        }
+      }
+
+      // Fallback: position near the right side of the input field
+      return {
+        left: elementRect.right - 40,
+        right: elementRect.right - 10,
+        top: elementRect.top + 5,
+        bottom: elementRect.bottom - 5,
+        width: 30,
+        height: elementRect.height - 10
+      };
+    }
+
+    // For contentEditable elements, try to use the range if available
+    if (element.contentEditable === 'true') {
+      try {
+        // For contentEditable, the range should work better
+        const rangeRect = range.getBoundingClientRect();
+        if (rangeRect.width > 0 && rangeRect.height > 0) {
+          return rangeRect;
+        }
+      } catch (error) {
+        console.warn('aiFiverr: Error getting range rect for contentEditable:', error);
+      }
+
+      // Fallback to element bounds for contentEditable
+      const elementRect = element.getBoundingClientRect();
+      return {
+        left: elementRect.right - 40,
+        right: elementRect.right - 10,
+        top: elementRect.top + 5,
+        bottom: elementRect.bottom - 5,
+        width: 30,
+        height: Math.min(30, elementRect.height - 10)
+      };
+    }
+
+    // For other elements, use element bounds
+    const elementRect = element.getBoundingClientRect();
+    return elementRect;
+  }
+
+  /**
+   * Check if selection is in a valid area (including input fields, textareas, etc.)
    */
   isValidSelectionArea(selection) {
     if (!selection.rangeCount) return false;
@@ -179,11 +334,12 @@ class TextSelector {
 
     console.log('aiFiverr: Checking selection area:', element.tagName, element.className);
 
-    // Avoid selecting from input fields, textareas, or contenteditable elements
+    // Allow selections from input fields, textareas, and contenteditable elements
+    // This is the main fix - we now ALLOW these instead of rejecting them
     if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' ||
         element.contentEditable === 'true') {
-      console.log('aiFiverr: Selection in input field, rejecting');
-      return false;
+      console.log('aiFiverr: Selection in input field, allowing');
+      return true;
     }
 
     // Check if we're in a valid content area
@@ -331,6 +487,9 @@ class TextSelector {
       e.stopPropagation();
       console.log('aiFiverr: Text selection icon clicked');
 
+      // Restore selection if it was cleared
+      this.restoreSelection();
+
       try {
         await this.showContextMenu();
       } catch (error) {
@@ -410,12 +569,30 @@ class TextSelector {
       this.hideTimeout = null;
     }
 
-    // Calculate position (top-right of selection)
+    // Calculate position based on selection type
     const iconSize = 60; // Increased to accommodate close button
     const margin = 8;
 
-    let left = this.selectionRect.right + margin;
-    let top = this.selectionRect.top - margin;
+    // Check if this is an input field selection by looking at the current selection
+    const selection = window.getSelection();
+    const isInputField = this.isInputFieldSelection(selection);
+
+    let left, top;
+
+    if (isInputField) {
+      // For input fields, position icon closer to the text, vertically centered
+      left = this.selectionRect.right + margin;
+      top = this.selectionRect.top + (this.selectionRect.height / 2) - (iconSize / 2);
+
+      // If the icon would be too far to the right, position it to the left of the selection
+      if (left + iconSize > window.innerWidth - margin) {
+        left = this.selectionRect.left - iconSize - margin;
+      }
+    } else {
+      // For regular text, position at top-right of selection
+      left = this.selectionRect.right + margin;
+      top = this.selectionRect.top - margin;
+    }
 
     // Ensure icon stays within viewport
     const viewportWidth = window.innerWidth;
@@ -440,6 +617,35 @@ class TextSelector {
   }
 
   /**
+   * Check if current selection is in an input field
+   */
+  isInputFieldSelection(selection) {
+    if (!selection.rangeCount) return false;
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+
+    return element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.contentEditable === 'true';
+  }
+
+  /**
+   * Restore previously preserved selection
+   */
+  restoreSelection() {
+    if (this.preservedRange) {
+      try {
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(this.preservedRange);
+        console.log('aiFiverr: Selection restored');
+      } catch (error) {
+        console.warn('aiFiverr: Could not restore selection:', error);
+      }
+    }
+  }
+
+  /**
    * Hide floating icon
    */
   hideFloatingIcon() {
@@ -455,6 +661,8 @@ class TextSelector {
     this.selectedText = '';
     this.currentSelection = null;
     this.selectionRect = null;
+    this.preservedSelection = null;
+    this.preservedRange = null;
   }
 
   /**
@@ -989,6 +1197,10 @@ class TextSelector {
 
     const popup = document.createElement('div');
     popup.className = 'aifiverr-text-result-popup';
+
+    // Convert markdown-like formatting to HTML
+    const formattedResult = this.formatAIResult(result);
+
     popup.innerHTML = `
       <div class="result-header draggable-handle" title="Drag to move">
         <div class="result-title">
@@ -999,17 +1211,12 @@ class TextSelector {
         <button class="close-btn" title="Close">×</button>
       </div>
       <div class="result-content">
-        <div class="result-display-container">
-          <div class="result-text"></div>
-        </div>
-        <div class="result-editor-container" style="display: none;">
-          <!-- Advanced editor will be inserted here -->
-        </div>
+        <div class="result-display">${formattedResult}</div>
+        <textarea class="result-text-editor" style="display: none;" placeholder="AI generated text...">${result}</textarea>
       </div>
       <div class="result-actions">
         <button class="copy-btn" title="Copy to clipboard">📋 Copy</button>
         <button class="edit-btn" title="Edit text">✏️ Edit</button>
-        <button class="view-btn" title="View formatted" style="display: none;">👁️ View</button>
         <button class="insert-btn" title="Insert into field">📝 Insert</button>
       </div>
     `;
@@ -1017,42 +1224,204 @@ class TextSelector {
     // Add styles
     this.addResultPopupStyles();
 
-    // Initialize content with markdown rendering
-    this.initializeResultContent(popup, result);
-
     // Position popup near the floating icon
     this.positionResultPopup(popup);
 
     // Make popup draggable
     this.makeDraggable(popup);
 
+    // Get elements
+    const resultDisplay = popup.querySelector('.result-display');
+    const textarea = popup.querySelector('.result-text-editor');
+    const editBtn = popup.querySelector('.edit-btn');
+
+    // Auto-resize textarea
+    const autoResize = () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+    };
+
     // Event listeners
     popup.querySelector('.close-btn').addEventListener('click', () => {
       this.closeResultPopup(popup);
     });
 
+    // Initialize the popup with original content
+    popup.dataset.currentText = result;
+
     popup.querySelector('.copy-btn').addEventListener('click', async () => {
-      const resultText = this.getCurrentResultText(popup);
-      await this.copyToClipboard(resultText);
+      const isEditing = textarea.style.display !== 'none';
+      const currentText = isEditing ? textarea.value : (popup.dataset.currentText || result);
+      await this.copyToClipboard(currentText);
       this.showToast('Result copied to clipboard!');
     });
 
-    popup.querySelector('.edit-btn').addEventListener('click', () => {
-      this.toggleAdvancedEdit(popup);
-    });
-
-    popup.querySelector('.view-btn').addEventListener('click', () => {
-      this.toggleAdvancedEdit(popup);
+    editBtn.addEventListener('click', () => {
+      this.toggleEditMode(popup, result);
     });
 
     popup.querySelector('.insert-btn').addEventListener('click', () => {
-      const resultText = this.getCurrentResultText(popup);
-      this.insertTextIntoActiveField(resultText);
+      const isEditing = textarea.style.display !== 'none';
+      const currentText = isEditing ? textarea.value : (popup.dataset.currentText || result);
+      this.insertTextIntoActiveField(currentText);
       this.showToast('Text inserted successfully!');
+    });
+
+    // Auto-resize on input and save changes
+    textarea.addEventListener('input', (e) => {
+      autoResize();
+      // Save the current edited content
+      popup.dataset.currentText = e.target.value;
     });
 
     // Store reference to popup for potential cleanup
     this.currentResultPopup = popup;
+  }
+
+  /**
+   * Format AI result with proper HTML formatting (Google Gemini-like)
+   */
+  formatAIResult(text) {
+    if (!text) return '';
+
+    let formatted = text;
+
+    // Process code blocks first to protect content
+    formatted = this.processCodeBlocks(formatted);
+
+    // Process headers
+    formatted = formatted.replace(/^### (.*$)/gm, '<h3 class="ai-header-3">$1</h3>');
+    formatted = formatted.replace(/^## (.*$)/gm, '<h2 class="ai-header-2">$1</h2>');
+    formatted = formatted.replace(/^# (.*$)/gm, '<h1 class="ai-header-1">$1</h1>');
+
+    // Process bold and italic (order matters)
+    formatted = formatted.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong class="ai-bold">$1</strong>');
+    formatted = formatted.replace(/\*(.*?)\*/g, '<em class="ai-italic">$1</em>');
+
+    // Process strikethrough
+    formatted = formatted.replace(/~~(.*?)~~/g, '<del class="ai-strikethrough">$1</del>');
+
+    // Process inline code
+    formatted = formatted.replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>');
+
+    // Process bullet points and numbered lists
+    const lines = formatted.split('\n');
+    const processedLines = [];
+    let inList = false;
+    let listType = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const bulletMatch = line.match(/^[\s]*[-•*]\s+(.+)$/);
+      const numberMatch = line.match(/^[\s]*(\d+)\.\s+(.+)$/);
+
+      if (bulletMatch) {
+        if (!inList || listType !== 'ul') {
+          if (inList) processedLines.push(`</${listType}>`);
+          processedLines.push('<ul class="ai-bullet-list">');
+          inList = true;
+          listType = 'ul';
+        }
+        processedLines.push(`<li class="ai-list-item">${bulletMatch[1]}</li>`);
+      } else if (numberMatch) {
+        if (!inList || listType !== 'ol') {
+          if (inList) processedLines.push(`</${listType}>`);
+          processedLines.push('<ol class="ai-numbered-list">');
+          inList = true;
+          listType = 'ol';
+        }
+        processedLines.push(`<li class="ai-list-item">${numberMatch[2]}</li>`);
+      } else {
+        if (inList) {
+          processedLines.push(`</${listType}>`);
+          inList = false;
+          listType = null;
+        }
+        if (line.trim()) {
+          processedLines.push(line);
+        } else {
+          processedLines.push('<br>');
+        }
+      }
+    }
+
+    if (inList) {
+      processedLines.push(`</${listType}>`);
+    }
+
+    formatted = processedLines.join('\n');
+
+    // Convert remaining line breaks to <br>
+    formatted = formatted.replace(/\n/g, '<br>');
+
+    // Clean up multiple <br> tags
+    formatted = formatted.replace(/(<br>\s*){3,}/g, '<br><br>');
+
+    return formatted;
+  }
+
+  /**
+   * Process code blocks
+   */
+  processCodeBlocks(text) {
+    // Multi-line code blocks
+    text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+      const language = lang || 'text';
+      return `<pre class="ai-code-block"><code class="language-${language}">${this.escapeHtml(code.trim())}</code></pre>`;
+    });
+
+    return text;
+  }
+
+  /**
+   * Escape HTML characters
+   */
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Toggle between display and edit mode
+   */
+  toggleEditMode(popup, originalText) {
+    const resultDisplay = popup.querySelector('.result-display');
+    const textarea = popup.querySelector('.result-text-editor');
+    const editBtn = popup.querySelector('.edit-btn');
+
+    const isEditing = textarea.style.display !== 'none';
+
+    if (isEditing) {
+      // Switch to display mode - save the edited content
+      const editedText = textarea.value;
+
+      // Store the edited content back to the popup for future use
+      popup.dataset.currentText = editedText;
+
+      const formattedText = this.formatAIResult(editedText);
+      resultDisplay.innerHTML = formattedText;
+
+      resultDisplay.style.display = 'block';
+      textarea.style.display = 'none';
+      editBtn.innerHTML = '✏️ Edit';
+      editBtn.title = 'Edit text';
+    } else {
+      // Switch to edit mode - use current content (edited or original)
+      const currentText = popup.dataset.currentText || originalText;
+      textarea.value = currentText;
+
+      resultDisplay.style.display = 'none';
+      textarea.style.display = 'block';
+      editBtn.innerHTML = '👁️ View';
+      editBtn.title = 'View formatted text';
+
+      // Auto-resize and focus
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+      setTimeout(() => textarea.focus(), 10);
+    }
   }
 
   /**
@@ -1222,107 +1591,7 @@ class TextSelector {
     };
   }
 
-  /**
-   * Initialize result content with markdown rendering
-   */
-  initializeResultContent(popup, result) {
-    const resultText = popup.querySelector('.result-text');
 
-    // Store original markdown content
-    popup._originalContent = result;
-    popup._currentContent = result;
-
-    // Render markdown to HTML
-    if (window.markdownRenderer) {
-      resultText.innerHTML = window.markdownRenderer.render(result);
-    } else {
-      // Fallback rendering
-      resultText.innerHTML = result.replace(/\n/g, '<br>');
-    }
-  }
-
-  /**
-   * Toggle advanced edit mode for the popup
-   */
-  toggleAdvancedEdit(popup) {
-    const displayContainer = popup.querySelector('.result-display-container');
-    const editorContainer = popup.querySelector('.result-editor-container');
-    const editBtn = popup.querySelector('.edit-btn');
-    const viewBtn = popup.querySelector('.view-btn');
-
-    const isEditing = editorContainer.style.display !== 'none';
-
-    if (isEditing) {
-      // Switch to display mode
-      if (popup._advancedEditor) {
-        const editedContent = popup._advancedEditor.getContent();
-        popup._currentContent = editedContent;
-
-        // Update display with rendered markdown
-        const resultText = popup.querySelector('.result-text');
-        if (window.markdownRenderer) {
-          resultText.innerHTML = window.markdownRenderer.render(editedContent);
-        } else {
-          resultText.innerHTML = editedContent.replace(/\n/g, '<br>');
-        }
-      }
-
-      displayContainer.style.display = 'block';
-      editorContainer.style.display = 'none';
-      editBtn.style.display = 'inline-block';
-      viewBtn.style.display = 'none';
-      editBtn.innerHTML = '✏️ Edit';
-      editBtn.title = 'Edit text';
-    } else {
-      // Switch to edit mode
-      if (!popup._advancedEditor) {
-        // Initialize advanced editor
-        popup._advancedEditor = new window.AdvancedEditor(editorContainer, {
-          showToolbar: true,
-          showPreview: true,
-          placeholder: 'Edit your AI result...',
-          maxHeight: 350
-        });
-
-        // Set up change handler
-        popup._advancedEditor.on('onChange', (content) => {
-          popup._currentContent = content;
-        });
-      }
-
-      // Set current content
-      popup._advancedEditor.setContent(popup._currentContent);
-
-      displayContainer.style.display = 'none';
-      editorContainer.style.display = 'block';
-      editBtn.style.display = 'none';
-      viewBtn.style.display = 'inline-block';
-      viewBtn.innerHTML = '👁️ View';
-      viewBtn.title = 'View formatted';
-    }
-  }
-
-  /**
-   * Get current result text (from either display or edit mode)
-   */
-  getCurrentResultText(popup) {
-    const editorContainer = popup.querySelector('.result-editor-container');
-    const isEditing = editorContainer.style.display !== 'none';
-
-    if (isEditing && popup._advancedEditor) {
-      return popup._advancedEditor.getContent();
-    } else {
-      return popup._currentContent || popup._originalContent || '';
-    }
-  }
-
-  /**
-   * Auto-resize textarea to fit content
-   */
-  autoResizeTextarea(textarea) {
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 400) + 'px';
-  }
 
   /**
    * Close result popup with proper cleanup
@@ -1330,18 +1599,9 @@ class TextSelector {
   closeResultPopup(popup) {
     if (!popup || !popup.parentNode) return;
 
-    // Clean up advanced editor
-    if (popup._advancedEditor) {
-      popup._advancedEditor.destroy();
-      popup._advancedEditor = null;
-    }
-
     // Clean up event listeners
     if (popup._dragCleanup) {
       popup._dragCleanup();
-    }
-    if (popup._clickOutsideCleanup) {
-      popup._clickOutsideCleanup();
     }
 
     // Remove popup
@@ -1370,142 +1630,11 @@ class TextSelector {
     remainingPopups.forEach(popup => this.closeResultPopup(popup));
   }
 
-  /**
-   * Show result modal (for editing)
-   */
-  showResultModal(result, originalText) {
-    if (!this.resultModal) {
-      this.createResultModal();
-    }
 
-    // Set content
-    const resultDisplay = this.resultModal.querySelector('.result-display');
-    const resultEditor = this.resultModal.querySelector('.result-editor');
 
-    // Format result text with line breaks
-    const formattedResult = result.replace(/\n/g, '<br>');
-    resultDisplay.innerHTML = formattedResult;
-    resultEditor.value = result;
 
-    // Reset to display mode
-    resultDisplay.style.display = 'block';
-    resultEditor.style.display = 'none';
 
-    // Update edit button state
-    const editBtn = this.resultModal.querySelector('.btn-edit');
-    editBtn.textContent = '✏️';
-    editBtn.title = 'Edit text';
 
-    // Show modal
-    this.resultModal.style.display = 'flex';
-  }
-
-  /**
-   * Create light UI result modal
-   */
-  createResultModal() {
-    this.resultModal = document.createElement('div');
-    this.resultModal.className = 'aifiverr-result-modal';
-    this.resultModal.innerHTML = `
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <div class="modal-title">
-            <span class="modal-icon">✨</span>
-            <h3>AI Result</h3>
-          </div>
-          <button class="modal-close" title="Close">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="result-section">
-            <div class="result-header">
-              <label>Generated Text</label>
-              <div class="result-actions">
-                <button class="btn-edit" title="Edit text">✏️</button>
-                <button class="btn-copy" title="Copy to clipboard">📋</button>
-              </div>
-            </div>
-            <div class="result-content">
-              <div class="result-display"></div>
-              <textarea class="result-editor" style="display: none;"></textarea>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary modal-close">Close</button>
-          <button class="btn-insert">Insert into Field</button>
-        </div>
-      </div>
-    `;
-
-    // Add event handlers
-    this.setupResultModalHandlers();
-
-    // Add styles
-    this.addResultModalStyles();
-
-    document.body.appendChild(this.resultModal);
-    this.resultModal.style.display = 'none';
-  }
-
-  /**
-   * Setup result modal event handlers
-   */
-  setupResultModalHandlers() {
-    // Close handlers
-    const closeButtons = this.resultModal.querySelectorAll('.modal-close');
-    closeButtons.forEach(btn => {
-      btn.addEventListener('click', () => this.hideResultModal());
-    });
-
-    // Click backdrop to close
-    const backdrop = this.resultModal.querySelector('.modal-backdrop');
-    backdrop.addEventListener('click', () => this.hideResultModal());
-
-    // Edit button
-    const editBtn = this.resultModal.querySelector('.btn-edit');
-    editBtn.addEventListener('click', () => this.toggleEditMode());
-
-    // Copy button
-    const copyBtn = this.resultModal.querySelector('.btn-copy');
-    copyBtn.addEventListener('click', async () => {
-      const isEditing = this.resultModal.querySelector('.result-editor').style.display !== 'none';
-      const resultText = isEditing
-        ? this.resultModal.querySelector('.result-editor').value
-        : this.resultModal.querySelector('.result-display').textContent;
-
-      await this.copyToClipboard(resultText);
-      this.showToast('Result copied to clipboard!');
-    });
-
-    // Insert button
-    const insertBtn = this.resultModal.querySelector('.btn-insert');
-    insertBtn.addEventListener('click', () => {
-      const isEditing = this.resultModal.querySelector('.result-editor').style.display !== 'none';
-      const resultText = isEditing
-        ? this.resultModal.querySelector('.result-editor').value
-        : this.resultModal.querySelector('.result-display').textContent;
-
-      this.insertTextIntoActiveField(resultText);
-      this.hideResultModal();
-      this.showToast('Text inserted successfully!');
-    });
-
-    // Handle textarea changes in edit mode
-    const resultEditor = this.resultModal.querySelector('.result-editor');
-    resultEditor.addEventListener('input', () => {
-      // Auto-resize textarea
-      resultEditor.style.height = 'auto';
-      resultEditor.style.height = resultEditor.scrollHeight + 'px';
-    });
-
-    // Escape key to close
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.resultModal.style.display === 'flex') {
-        this.hideResultModal();
-      }
-    });
-  }
 
   /**
    * Add styles for result popup
@@ -1520,8 +1649,8 @@ class TextSelector {
         background: white;
         border-radius: 12px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
-        width: 600px;
-        max-height: 700px;
+        width: 455px;
+        max-height: 520px;
         overflow: hidden;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         animation: popupSlideIn 0.2s ease-out;
@@ -1541,12 +1670,12 @@ class TextSelector {
       }
 
       .aifiverr-text-result-popup .result-header {
-        padding: 20px 24px 16px;
-        border-bottom: 1px solid #e8eaed;
+        padding: 16px 20px 12px;
+        border-bottom: 1px solid #f1f5f9;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
         user-select: none;
       }
 
@@ -1588,10 +1717,9 @@ class TextSelector {
 
       .aifiverr-text-result-popup .result-header h3 {
         margin: 0;
-        font-size: 18px;
-        font-weight: 400;
-        color: #202124;
-        font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        color: #1e293b;
       }
 
       .aifiverr-text-result-popup .close-btn {
@@ -1616,348 +1744,207 @@ class TextSelector {
       }
 
       .aifiverr-text-result-popup .result-content {
+        padding: 16px 20px;
         flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
-
-      .aifiverr-text-result-popup .result-display-container {
-        padding: 24px;
         overflow-y: auto;
-        flex: 1;
-        background: #ffffff;
+        min-height: 0;
       }
 
-      .aifiverr-text-result-popup .result-text {
+      .aifiverr-text-result-popup .result-display {
+        min-height: 156px;
+        max-height: 325px;
         font-size: 14px;
-        line-height: 1.7;
-        color: #202124;
-        word-wrap: break-word;
+        line-height: 1.6;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 12px;
+        background: #fafbfc;
+        overflow-y: auto;
+        white-space: pre-wrap;
         font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
 
-      .aifiverr-text-result-popup .result-editor-container {
-        flex: 1;
-        padding: 16px;
-        overflow: hidden;
-      }
-
-      .aifiverr-text-result-popup .result-editor-container .advanced-editor {
-        height: 100%;
-        border: none;
-        border-radius: 0;
-      }
-
-      .aifiverr-text-result-popup .result-actions {
-        padding: 16px 24px 20px;
-        border-top: 1px solid #e8eaed;
-        display: flex;
-        gap: 12px;
-        background: #f8f9fa;
-      }
-
-      .aifiverr-text-result-popup .result-actions button {
-        padding: 10px 16px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        border: 1px solid #dadce0;
-        background: white;
-        color: #5f6368;
-        flex: 1;
-        font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      }
-
-      .aifiverr-text-result-popup .result-actions button:hover {
-        background: #f1f3f4;
-        border-color: #1a73e8;
+      /* Enhanced formatting styles */
+      .aifiverr-text-result-popup .result-display .ai-header-1 {
+        font-size: 1.5em;
+        font-weight: 600;
         color: #1a73e8;
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(26, 115, 232, 0.2);
+        margin: 1.2em 0 0.6em 0;
+        border-bottom: 2px solid #e8eaed;
+        padding-bottom: 0.3em;
       }
 
-      .aifiverr-text-result-popup .insert-btn {
-        background: linear-gradient(135deg, #1a73e8 0%, #1557b0 100%) !important;
-        color: white !important;
-        border-color: transparent !important;
+      .aifiverr-text-result-popup .result-display .ai-header-2 {
+        font-size: 1.3em;
+        font-weight: 600;
+        color: #202124;
+        margin: 1em 0 0.5em 0;
       }
 
-      .aifiverr-text-result-popup .insert-btn:hover {
-        background: linear-gradient(135deg, #1557b0 0%, #0f4c8c 100%) !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
-      }
-    `;
-
-    document.head.appendChild(styles);
-  }
-
-  /**
-   * Toggle between display and edit mode
-   */
-  toggleEditMode() {
-    const resultDisplay = this.resultModal.querySelector('.result-display');
-    const resultEditor = this.resultModal.querySelector('.result-editor');
-    const editBtn = this.resultModal.querySelector('.btn-edit');
-
-    const isEditing = resultEditor.style.display !== 'none';
-
-    if (isEditing) {
-      // Switch to display mode
-      const editedText = resultEditor.value;
-      const formattedText = editedText.replace(/\n/g, '<br>');
-      resultDisplay.innerHTML = formattedText;
-
-      resultDisplay.style.display = 'block';
-      resultEditor.style.display = 'none';
-      editBtn.textContent = '✏️';
-      editBtn.title = 'Edit text';
-    } else {
-      // Switch to edit mode
-      const displayText = resultDisplay.textContent || resultDisplay.innerText;
-      resultEditor.value = displayText;
-
-      resultDisplay.style.display = 'none';
-      resultEditor.style.display = 'block';
-      editBtn.textContent = '👁️';
-      editBtn.title = 'View text';
-
-      // Auto-resize and focus
-      resultEditor.style.height = 'auto';
-      resultEditor.style.height = resultEditor.scrollHeight + 'px';
-      resultEditor.focus();
-    }
-  }
-
-  /**
-   * Add styles for result modal
-   */
-  addResultModalStyles() {
-    if (document.getElementById('aifiverr-result-modal-styles')) return;
-
-    const styles = document.createElement('style');
-    styles.id = 'aifiverr-result-modal-styles';
-    styles.textContent = `
-      .aifiverr-result-modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10002;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      .aifiverr-text-result-popup .result-display .ai-header-3 {
+        font-size: 1.1em;
+        font-weight: 600;
+        color: #5f6368;
+        margin: 0.8em 0 0.4em 0;
       }
 
-      .aifiverr-result-modal .modal-backdrop {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(2px);
-      }
-
-      .aifiverr-result-modal .modal-content {
-        position: relative;
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05);
-        width: 90%;
-        max-width: 500px;
-        max-height: 80vh;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        animation: modalSlideIn 0.2s ease-out;
-      }
-
-      @keyframes modalSlideIn {
-        from {
-          opacity: 0;
-          transform: scale(0.95) translateY(-10px);
-        }
-        to {
-          opacity: 1;
-          transform: scale(1) translateY(0);
-        }
-      }
-
-      .aifiverr-result-modal .modal-header {
-        padding: 20px 24px 16px;
-        border-bottom: 1px solid #f1f5f9;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-      }
-
-      .aifiverr-result-modal .modal-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .aifiverr-result-modal .modal-icon {
-        font-size: 20px;
-      }
-
-      .aifiverr-result-modal .modal-header h3 {
-        margin: 0;
-        font-size: 18px;
+      .aifiverr-text-result-popup .result-display .ai-bold {
         font-weight: 600;
         color: #1e293b;
       }
 
-      .aifiverr-result-modal .modal-close {
-        background: none;
-        border: none;
-        font-size: 20px;
-        cursor: pointer;
-        color: #64748b;
-        padding: 6px;
-        border-radius: 6px;
-        transition: all 0.2s ease;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .aifiverr-result-modal .modal-close:hover {
-        background: rgba(248, 113, 113, 0.1);
-        color: #ef4444;
-      }
-
-      .aifiverr-result-modal .modal-body {
-        padding: 20px 24px;
-        flex: 1;
-        overflow-y: auto;
-      }
-
-      .aifiverr-result-modal .result-section {
-        margin-bottom: 0;
-      }
-
-      .aifiverr-result-modal .result-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-      }
-
-      .aifiverr-result-modal .result-header label {
-        margin: 0;
-        font-weight: 600;
-        color: #374151;
-        font-size: 14px;
-      }
-
-      .aifiverr-result-modal .result-actions {
-        display: flex;
-        gap: 8px;
-      }
-
-      .aifiverr-result-modal .result-actions button {
-        background: none;
-        border: 1px solid #e2e8f0;
-        border-radius: 6px;
-        padding: 6px 8px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: all 0.2s ease;
-        color: #64748b;
-      }
-
-      .aifiverr-result-modal .result-actions button:hover {
-        background: #f8fafc;
-        border-color: #cbd5e1;
+      .aifiverr-text-result-popup .result-display .ai-italic {
+        font-style: italic;
         color: #475569;
       }
 
-      .aifiverr-result-modal .result-content {
-        position: relative;
+      .aifiverr-text-result-popup .result-display .ai-strikethrough {
+        text-decoration: line-through;
+        color: #64748b;
       }
 
-      .aifiverr-result-modal .result-display {
+      .aifiverr-text-result-popup .result-display .ai-inline-code {
+        background: #f1f5f9;
+        color: #e11d48;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 0.9em;
+        border: 1px solid #e2e8f0;
+      }
+
+      .aifiverr-text-result-popup .result-display .ai-code-block {
         background: #f8fafc;
         border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 16px;
-        font-size: 14px;
-        color: #334155;
-        line-height: 1.6;
-        min-height: 120px;
-        white-space: pre-wrap;
+        border-radius: 6px;
+        padding: 12px;
+        margin: 12px 0;
+        overflow-x: auto;
       }
 
-      .aifiverr-result-modal .result-editor {
+      .aifiverr-text-result-popup .result-display .ai-code-block code {
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 0.9em;
+        color: #334155;
+        line-height: 1.5;
+      }
+
+      .aifiverr-text-result-popup .result-display .ai-bullet-list,
+      .aifiverr-text-result-popup .result-display .ai-numbered-list {
+        margin: 12px 0;
+        padding-left: 24px;
+      }
+
+      .aifiverr-text-result-popup .result-display .ai-bullet-list {
+        list-style-type: disc;
+      }
+
+      .aifiverr-text-result-popup .result-display .ai-numbered-list {
+        list-style-type: decimal;
+      }
+
+      .aifiverr-text-result-popup .result-display .ai-list-item {
+        margin: 6px 0;
+        line-height: 1.5;
+        color: #334155;
+      }
+
+      /* Legacy support */
+      .aifiverr-text-result-popup .result-display strong {
+        font-weight: 600;
+        color: #1e293b;
+      }
+
+      .aifiverr-text-result-popup .result-display em {
+        font-style: italic;
+        color: #475569;
+      }
+
+      .aifiverr-text-result-popup .result-display ul {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .aifiverr-text-result-popup .result-display li {
+        margin: 4px 0;
+        list-style-type: disc;
+      }
+
+      .aifiverr-text-result-popup .result-display li[data-number] {
+        list-style-type: decimal;
+      }
+
+      .aifiverr-text-result-popup .result-text-editor {
         width: 100%;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 16px;
+        min-height: 156px;
+        max-height: 325px;
         font-size: 14px;
         line-height: 1.6;
-        resize: none;
-        min-height: 120px;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 12px;
+        resize: vertical;
         font-family: inherit;
         background: white;
-        color: #334155;
+        transition: border-color 0.2s ease;
       }
 
-      .aifiverr-result-modal .result-editor:focus {
+      .aifiverr-text-result-popup .result-text-editor:focus {
         outline: none;
         border-color: #3b82f6;
         box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
       }
 
-      .aifiverr-result-modal .modal-footer {
-        padding: 16px 24px 20px;
+      .aifiverr-text-result-popup .result-actions {
+        padding: 12px 20px 16px;
         border-top: 1px solid #f1f5f9;
         display: flex;
-        gap: 12px;
-        justify-content: flex-end;
+        gap: 8px;
         background: #fafbfc;
+        flex-shrink: 0;
       }
 
-      .aifiverr-result-modal .modal-footer button {
-        padding: 10px 16px;
-        border-radius: 8px;
-        font-size: 14px;
+      .aifiverr-text-result-popup .result-actions button {
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 13px;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
-        border: 1px solid transparent;
-      }
-
-      .aifiverr-result-modal .btn-secondary {
+        border: 1px solid #e2e8f0;
         background: white;
         color: #64748b;
-        border-color: #e2e8f0;
+        flex: 1;
       }
 
-      .aifiverr-result-modal .btn-secondary:hover {
+      .aifiverr-text-result-popup .result-actions button:hover {
         background: #f8fafc;
         border-color: #cbd5e1;
         color: #475569;
+        transform: translateY(-1px);
       }
 
-      .aifiverr-result-modal .btn-insert {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-        color: white;
-        box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+      .aifiverr-text-result-popup .edit-btn {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        color: white !important;
+        border-color: transparent !important;
       }
 
-      .aifiverr-result-modal .btn-insert:hover {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-        box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+      .aifiverr-text-result-popup .edit-btn:hover {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+        transform: translateY(-1px);
+      }
+
+      .aifiverr-text-result-popup .insert-btn {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        color: white !important;
+        border-color: transparent !important;
+      }
+
+      .aifiverr-text-result-popup .insert-btn:hover {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
         transform: translateY(-1px);
       }
     `;
@@ -1965,14 +1952,11 @@ class TextSelector {
     document.head.appendChild(styles);
   }
 
-  /**
-   * Hide result modal
-   */
-  hideResultModal() {
-    if (this.resultModal) {
-      this.resultModal.style.display = 'none';
-    }
-  }
+
+
+
+
+
 
 
 

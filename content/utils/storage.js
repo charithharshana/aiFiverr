@@ -14,15 +14,6 @@ class StorageManager {
    */
   async get(keys) {
     try {
-      // Check if extension context is valid
-      if (!chrome.runtime?.id) {
-        console.warn('aiFiverr: Extension context invalidated, using cache');
-        if (typeof keys === 'string' && this.cache.has(keys)) {
-          return { [keys]: this.cache.get(keys) };
-        }
-        return {};
-      }
-
       // Check cache first
       if (typeof keys === 'string') {
         if (this.cache.has(keys)) {
@@ -31,7 +22,7 @@ class StorageManager {
       }
 
       const result = await chrome.storage.local.get(keys);
-
+      
       // Update cache
       if (typeof keys === 'string') {
         this.cache.set(keys, result[keys]);
@@ -47,11 +38,7 @@ class StorageManager {
 
       return result;
     } catch (error) {
-      console.error('aiFiverr: Storage get error:', error);
-      // Return cached data if available
-      if (typeof keys === 'string' && this.cache.has(keys)) {
-        return { [keys]: this.cache.get(keys) };
-      }
+      console.error('Storage get error:', error);
       return {};
     }
   }
@@ -124,15 +111,9 @@ class StorageManager {
    */
   async getAll() {
     try {
-      // Check if extension context is valid
-      if (!chrome.runtime?.id) {
-        console.warn('aiFiverr: Extension context invalidated, cannot get all storage');
-        return {};
-      }
-
       return await chrome.storage.local.get(null);
     } catch (error) {
-      console.error('aiFiverr: Storage getAll error:', error);
+      console.error('Storage getAll error:', error);
       return {};
     }
   }
@@ -204,7 +185,7 @@ class StorageManager {
   getDefaultSettings() {
     return {
       apiKeys: [],
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: 'gemini-1.5-flash',
       autoSave: true,
       sessionTimeout: 30 * 60 * 1000, // 30 minutes
       maxSessions: 50,
@@ -213,7 +194,8 @@ class StorageManager {
       notifications: true,
       keyRotation: true,
       conversationContext: true,
-      maxContextLength: 10000
+      maxContextLength: 10000,
+      restrictToFiverr: true // New setting: true = Fiverr only, false = all sites
     };
   }
 

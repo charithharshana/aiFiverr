@@ -523,7 +523,7 @@ class FiverrExtractor {
   }
 
   /**
-   * Get conversation summary for AI context
+   * Get conversation summary for AI context with intelligent context management
    */
   getConversationSummary(conversationData, maxLength = 2000) {
     const fullContext = this.conversationToContext(conversationData);
@@ -549,6 +549,162 @@ class FiverrExtractor {
     }
 
     return summary;
+  }
+
+  /**
+   * Get intelligent conversation context based on use case
+   */
+  getIntelligentContext(conversationData, contextType = 'recent', maxLength = 4000) {
+    if (!conversationData || !conversationData.messages) {
+      return '';
+    }
+
+    switch (contextType) {
+      case 'recent':
+        return this.getRecentContext(conversationData, maxLength);
+      case 'summary':
+        return this.getConversationSummary(conversationData, maxLength);
+      case 'key_points':
+        return this.getKeyPointsContext(conversationData, maxLength);
+      case 'project_focused':
+        return this.getProjectFocusedContext(conversationData, maxLength);
+      default:
+        return this.getRecentContext(conversationData, maxLength);
+    }
+  }
+
+  /**
+   * Get recent messages with smart truncation
+   */
+  getRecentContext(conversationData, maxLength = 4000) {
+    const messages = conversationData.messages;
+    if (!messages || messages.length === 0) return '';
+
+    let context = `Recent conversation with ${conversationData.username}:\n\n`;
+    let currentLength = context.length;
+    let includedMessages = 0;
+
+    // Start from most recent and work backwards
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      const messageText = `${message.sender} (${message.formattedTime}):\n${message.body}\n\n`;
+
+      if (currentLength + messageText.length > maxLength) {
+        break;
+      }
+
+      context = context + messageText;
+      currentLength += messageText.length;
+      includedMessages++;
+    }
+
+    // Add summary info if we truncated
+    if (includedMessages < messages.length) {
+      const truncatedCount = messages.length - includedMessages;
+      context = `[Showing ${includedMessages} most recent messages. ${truncatedCount} earlier messages truncated]\n\n` + context;
+    }
+
+    return context;
+  }
+
+  /**
+   * Extract key points and important messages
+   */
+  getKeyPointsContext(conversationData, maxLength = 4000) {
+    const messages = conversationData.messages;
+    if (!messages || messages.length === 0) return '';
+
+    // Keywords that indicate important content
+    const importantKeywords = [
+      'requirement', 'deadline', 'budget', 'price', 'cost', 'timeline',
+      'deliverable', 'milestone', 'revision', 'feedback', 'approval',
+      'project', 'brief', 'specification', 'scope', 'feature'
+    ];
+
+    let context = `Key points from conversation with ${conversationData.username}:\n\n`;
+    let currentLength = context.length;
+    let keyMessages = [];
+
+    // Find messages with important keywords
+    messages.forEach((message, index) => {
+      const messageBody = message.body.toLowerCase();
+      const hasImportantContent = importantKeywords.some(keyword =>
+        messageBody.includes(keyword)
+      );
+
+      if (hasImportantContent || message.attachments?.length > 0) {
+        keyMessages.push({ ...message, index });
+      }
+    });
+
+    // If no key messages found, fall back to recent messages
+    if (keyMessages.length === 0) {
+      return this.getRecentContext(conversationData, maxLength);
+    }
+
+    // Add key messages
+    for (const message of keyMessages) {
+      const messageText = `${message.sender} (${message.formattedTime}):\n${message.body}\n\n`;
+
+      if (currentLength + messageText.length > maxLength) {
+        break;
+      }
+
+      context += messageText;
+      currentLength += messageText.length;
+    }
+
+    return context;
+  }
+
+  /**
+   * Get project-focused context (requirements, brief, etc.)
+   */
+  getProjectFocusedContext(conversationData, maxLength = 4000) {
+    const messages = conversationData.messages;
+    if (!messages || messages.length === 0) return '';
+
+    // Project-related keywords
+    const projectKeywords = [
+      'brief', 'requirement', 'specification', 'scope', 'feature',
+      'design', 'development', 'deliverable', 'milestone', 'timeline'
+    ];
+
+    let context = `Project details from conversation with ${conversationData.username}:\n\n`;
+    let currentLength = context.length;
+
+    // Find first few messages (usually contain project brief)
+    const initialMessages = messages.slice(0, Math.min(5, messages.length));
+
+    for (const message of initialMessages) {
+      const messageText = `${message.sender} (${message.formattedTime}):\n${message.body}\n\n`;
+
+      if (currentLength + messageText.length > maxLength) {
+        break;
+      }
+
+      context += messageText;
+      currentLength += messageText.length;
+    }
+
+    // Add recent messages if space allows
+    if (currentLength < maxLength * 0.7) {
+      const recentMessages = messages.slice(-3);
+      context += '\n--- Recent Messages ---\n\n';
+
+      for (const message of recentMessages) {
+        const messageText = `${message.sender}: ${message.body}\n\n`;
+
+        if (currentLength + messageText.length > maxLength) {
+          break;
+        }
+
+        context += messageText;
+        currentLength += messageText.length;
+      }
+    }
+
+    return context;
   }
 
   /**
@@ -807,9 +963,87 @@ class FiverrExtractor {
         return JSON.stringify(conversation, null, 2);
       case 'txt':
         return this.conversationToContext(conversation);
+      case 'csv':
+        return this.convertToCSV(conversation);
+      case 'html':
+        return this.convertToHTML(conversation);
       default:
         throw new Error(`Unsupported export format: ${format}`);
     }
+  }
+
+  /**
+   * Convert conversation to CSV format
+   */
+  convertToCSV(conversationData) {
+    if (!conversationData || !conversationData.messages) {
+      return '';
+    }
+
+    let csv = 'Timestamp,Sender,Message,Attachments\n';
+
+    conversationData.messages.forEach(message => {
+      const timestamp = new Date(message.createdAt).toISOString();
+      const sender = (message.sender || 'Unknown').replace(/"/g, '""');
+      const body = (message.body || '').replace(/"/g, '""').replace(/\n/g, ' ');
+      const attachments = message.attachments && message.attachments.length > 0
+        ? message.attachments.map(att => att.filename || 'Unknown file').join('; ')
+        : '';
+
+      csv += `"${timestamp}","${sender}","${body}","${attachments}"\n`;
+    });
+
+    return csv;
+  }
+
+  /**
+   * Convert conversation to HTML format
+   */
+  convertToHTML(conversationData) {
+    if (!conversationData || !conversationData.messages) {
+      return '';
+    }
+
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Conversation with ${conversationData.username}</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .message { margin-bottom: 20px; padding: 15px; border-radius: 8px; }
+        .message.sender { background-color: #e3f2fd; }
+        .message.recipient { background-color: #f3e5f5; }
+        .message-header { font-weight: bold; margin-bottom: 5px; }
+        .message-time { font-size: 12px; color: #666; }
+        .message-body { margin-top: 10px; white-space: pre-wrap; }
+        .attachments { margin-top: 10px; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>Conversation with ${conversationData.username}</h1>
+`;
+
+    conversationData.messages.forEach(message => {
+      const timestamp = new Date(message.createdAt).toLocaleString();
+      const sender = message.sender || 'Unknown';
+      const isCurrentUser = sender === conversationData.username;
+
+      html += `    <div class="message ${isCurrentUser ? 'sender' : 'recipient'}">
+        <div class="message-header">${sender}</div>
+        <div class="message-time">${timestamp}</div>
+        <div class="message-body">${(message.body || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+
+      if (message.attachments && message.attachments.length > 0) {
+        html += `        <div class="attachments">Attachments: ${message.attachments.map(att => att.filename || 'Unknown file').join(', ')}</div>`;
+      }
+
+      html += `    </div>\n`;
+    });
+
+    html += `</body>
+</html>`;
+
+    return html;
   }
 
   /**
@@ -825,7 +1059,7 @@ class FiverrExtractor {
     markdown += `**Total Messages:** ${conversationData.messages.length}\n\n`;
 
     for (const message of conversationData.messages) {
-      const timestamp = this.formatDate(message.createdAt);
+      const timestamp = await this.formatDate(message.createdAt);
       const sender = message.sender || 'Unknown';
 
       markdown += `### ${sender} (${timestamp})\n\n`;
@@ -833,7 +1067,7 @@ class FiverrExtractor {
       // Show replied-to message if exists
       if (message.repliedToMessage) {
         const repliedMsg = message.repliedToMessage;
-        const repliedTime = this.formatDate(repliedMsg.createdAt);
+        const repliedTime = await this.formatDate(repliedMsg.createdAt);
         markdown += `> Replying to ${repliedMsg.sender} (${repliedTime}):\n`;
         markdown += `> ${repliedMsg.body.replace(/\n/g, '\n> ')}\n\n`;
       }
@@ -883,7 +1117,102 @@ class FiverrExtractor {
    */
   formatDate(timestamp) {
     const date = new Date(parseInt(timestamp));
-    return date.toLocaleString();
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const time = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+
+    // Use fixed DD/MM/YYYY format
+    const dateStr = `${day}/${month}/${year}`;
+    return `${dateStr}, ${time}`;
+  }
+
+  /**
+   * Fetch all contacts with pagination
+   */
+  async fetchAllContacts() {
+    let allContacts = [];
+    let oldestTimestamp = null;
+    let batchNumber = 1;
+
+    this.notifyProgress('CONTACTS_PROGRESS', 'Starting contact fetch...');
+
+    try {
+      while (true) {
+        this.notifyProgress('CONTACTS_PROGRESS', `Fetching batch ${batchNumber}...`);
+
+        const url = oldestTimestamp
+          ? `https://www.fiverr.com/inbox/contacts?older_than=${oldestTimestamp}`
+          : 'https://www.fiverr.com/inbox/contacts';
+
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch contacts: ${response.status} ${response.statusText}`);
+        }
+
+        const contacts = await response.json();
+
+        if (!contacts || contacts.length === 0) {
+          this.notifyProgress('CONTACTS_PROGRESS', 'No more contacts found.');
+          break;
+        }
+
+        // Add contacts to our collection
+        allContacts = [...allContacts, ...contacts];
+
+        // Find the oldest timestamp
+        const timestamps = contacts.map(c => c.recentMessageDate);
+        oldestTimestamp = Math.min(...timestamps);
+
+        this.notifyProgress('CONTACTS_PROGRESS',
+          `Batch ${batchNumber}: Found ${contacts.length} contacts (Total: ${allContacts.length})`,
+          { totalContacts: allContacts.length }
+        );
+
+        batchNumber++;
+
+        // Add delay to prevent rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Save contacts to storage
+      await storageManager.set('fiverrContacts', {
+        contacts: allContacts,
+        lastFetched: Date.now(),
+        totalCount: allContacts.length
+      });
+
+      this.notifyProgress('CONTACTS_FETCHED',
+        `Completed! Total contacts found: ${allContacts.length}`,
+        { contacts: allContacts }
+      );
+
+      return allContacts;
+    } catch (error) {
+      console.error('Failed to fetch contacts:', error);
+      this.notifyProgress('CONTACTS_ERROR', `Error fetching contacts: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get stored contacts
+   */
+  async getStoredContacts() {
+    const result = await storageManager.get('fiverrContacts');
+    return result.fiverrContacts?.contacts || [];
   }
 
   /**
@@ -891,6 +1220,122 @@ class FiverrExtractor {
    */
   clearCache() {
     this.conversationCache.clear();
+  }
+
+  /**
+   * Analyze conversation to determine optimal context strategy
+   */
+  analyzeConversation(conversationData) {
+    if (!conversationData || !conversationData.messages) {
+      return { strategy: 'recent', reason: 'No conversation data' };
+    }
+
+    const messages = conversationData.messages;
+    const messageCount = messages.length;
+    const totalLength = this.conversationToContext(conversationData).length;
+
+    // Analyze conversation characteristics
+    const analysis = {
+      messageCount,
+      totalLength,
+      averageMessageLength: totalLength / messageCount,
+      hasAttachments: messages.some(m => m.attachments?.length > 0),
+      hasLongMessages: messages.some(m => m.body.length > 500),
+      timeSpan: this.getConversationTimeSpan(messages),
+      keywordDensity: this.calculateKeywordDensity(messages)
+    };
+
+    // Determine optimal strategy
+    let strategy = 'recent';
+    let reason = 'Default strategy';
+
+    if (totalLength > 10000) {
+      if (analysis.keywordDensity.project > 0.3) {
+        strategy = 'project_focused';
+        reason = 'Large conversation with high project keyword density';
+      } else if (analysis.keywordDensity.important > 0.2) {
+        strategy = 'key_points';
+        reason = 'Large conversation with important keywords';
+      } else {
+        strategy = 'summary';
+        reason = 'Large conversation, using summary';
+      }
+    } else if (totalLength > 5000) {
+      strategy = 'key_points';
+      reason = 'Medium conversation, focusing on key points';
+    } else {
+      strategy = 'recent';
+      reason = 'Small conversation, using recent messages';
+    }
+
+    return {
+      strategy,
+      reason,
+      analysis,
+      recommendation: this.getContextRecommendation(analysis)
+    };
+  }
+
+  /**
+   * Calculate keyword density in conversation
+   */
+  calculateKeywordDensity(messages) {
+    const projectKeywords = ['brief', 'requirement', 'specification', 'scope', 'feature', 'design', 'development'];
+    const importantKeywords = ['deadline', 'budget', 'price', 'cost', 'timeline', 'deliverable', 'milestone'];
+
+    const totalWords = messages.reduce((sum, m) => sum + m.body.split(' ').length, 0);
+
+    let projectMatches = 0;
+    let importantMatches = 0;
+
+    messages.forEach(message => {
+      const words = message.body.toLowerCase().split(' ');
+      projectMatches += words.filter(word => projectKeywords.includes(word)).length;
+      importantMatches += words.filter(word => importantKeywords.includes(word)).length;
+    });
+
+    return {
+      project: projectMatches / totalWords,
+      important: importantMatches / totalWords,
+      total: (projectMatches + importantMatches) / totalWords
+    };
+  }
+
+  /**
+   * Get conversation time span in hours
+   */
+  getConversationTimeSpan(messages) {
+    if (messages.length < 2) return 0;
+
+    const firstMessage = messages[0];
+    const lastMessage = messages[messages.length - 1];
+
+    return (lastMessage.createdAt - firstMessage.createdAt) / (1000 * 60 * 60);
+  }
+
+  /**
+   * Get context recommendation based on analysis
+   */
+  getContextRecommendation(analysis) {
+    const recommendations = [];
+
+    if (analysis.totalLength > 8000) {
+      recommendations.push('Consider using conversation summary for better performance');
+    }
+
+    if (analysis.keywordDensity.project > 0.3) {
+      recommendations.push('High project content detected - use project_focused context');
+    }
+
+    if (analysis.hasAttachments) {
+      recommendations.push('Conversation contains attachments - ensure they are referenced in context');
+    }
+
+    if (analysis.timeSpan > 168) { // More than a week
+      recommendations.push('Long conversation span - consider focusing on recent messages');
+    }
+
+    return recommendations;
   }
 }
 
