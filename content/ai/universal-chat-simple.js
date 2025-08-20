@@ -291,26 +291,35 @@ class AIAssistanceChat {
       </div>
     `;
 
-    // Create trigger button
+    // Create trigger button - styled like message box icon
     this.triggerButton = document.createElement('button');
-    this.triggerButton.innerHTML = '🧠';
+    this.triggerButton.innerHTML = '💬';
     this.triggerButton.title = 'AI Assistance';
     this.triggerButton.style.cssText = `
       position: fixed;
       bottom: 20px;
       right: 20px;
-      width: 60px;
-      height: 60px;
-      background: #007bff;
+      background: none;
       border: none;
-      border-radius: 50%;
-      color: white;
+      font-size: 18px;
       cursor: pointer;
-      font-size: 28px;
-      box-shadow: 0 6px 20px rgba(0, 123, 255, 0.3);
+      padding: 4px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      opacity: 0.7;
       z-index: 9999;
-      transition: all 0.3s ease;
     `;
+
+    // Add hover effects for trigger button
+    this.triggerButton.addEventListener('mouseenter', () => {
+      this.triggerButton.style.opacity = '1';
+      this.triggerButton.style.transform = 'scale(1.1)';
+    });
+
+    this.triggerButton.addEventListener('mouseleave', () => {
+      this.triggerButton.style.opacity = '0.7';
+      this.triggerButton.style.transform = 'scale(1)';
+    });
 
     document.body.appendChild(this.container);
     document.body.appendChild(this.triggerButton);

@@ -194,7 +194,7 @@ class StorageManager {
       notifications: true,
       keyRotation: true,
       conversationContext: true,
-      maxContextLength: 10000,
+      maxContextLength: 1000000, // 1M tokens - Gemini 2.5 Flash default context window
       restrictToFiverr: true // New setting: true = Fiverr only, false = all sites
     };
   }

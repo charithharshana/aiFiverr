@@ -254,6 +254,27 @@ class PopupManager {
         this.showConversationModal(username);
       }
     });
+
+    // Footer links
+    document.getElementById('helpLink')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: 'https://www.charithharshana.com/contact' });
+    });
+
+    document.getElementById('feedbackLink')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: 'https://www.facebook.com/wcharithharshana' });
+    });
+
+    document.getElementById('aboutLink')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: 'https://www.youtube.com/@wcharithharshana' });
+    });
+
+    document.getElementById('downloadLink')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: 'https://github.com/charithharshana/aiFiverr' });
+    });
   }
 
   async initializeUI() {
