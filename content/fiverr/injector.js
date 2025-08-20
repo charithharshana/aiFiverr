@@ -162,14 +162,7 @@ class FiverrInjector {
     widget.className = 'aifiverr-floating-widget';
     widget.innerHTML = `
       <div class="widget-toggle">
-        <span class="ai-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2C6.48 2 2 6.48 2 12C2 13.54 2.36 14.99 3.01 16.28L2 22L7.72 20.99C9.01 21.64 10.46 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C10.74 20 9.54 19.75 8.46 19.3L6 20L6.7 17.54C6.25 16.46 6 15.26 6 14C6 8.48 8.48 6 12 6C15.52 6 18 8.48 18 12C18 15.52 15.52 18 12 18Z" fill="currentColor"/>
-            <circle cx="9" cy="12" r="1" fill="currentColor"/>
-            <circle cx="12" cy="12" r="1" fill="currentColor"/>
-            <circle cx="15" cy="12" r="1" fill="currentColor"/>
-          </svg>
-        </span>
+        💬
       </div>
       <div class="widget-panel" style="display: none;">
         <div class="widget-header">

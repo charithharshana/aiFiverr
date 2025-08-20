@@ -21,6 +21,12 @@ class StorageManager {
         }
       }
 
+      // Check if extension context is valid
+      if (!chrome.runtime?.id) {
+        console.warn('Extension context invalidated, cannot access storage');
+        return {};
+      }
+
       const result = await chrome.storage.local.get(keys);
       
       // Update cache

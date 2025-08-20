@@ -13,10 +13,24 @@ class GeminiClient {
   }
 
   async init() {
-    // Load settings
-    const settings = await storageManager.getSettings();
-    this.model = settings.defaultModel || 'gemini-2.5-flash';
-    this.initialized = true;
+    try {
+      // Check if extension context is valid
+      if (!chrome.runtime?.id) {
+        console.warn('Gemini client: Extension context invalidated, using defaults');
+        this.model = 'gemini-2.5-flash';
+        this.initialized = true;
+        return;
+      }
+
+      // Load settings
+      const settings = await storageManager.getSettings();
+      this.model = settings.defaultModel || 'gemini-2.5-flash';
+      this.initialized = true;
+    } catch (error) {
+      console.error('Gemini client init error:', error);
+      this.model = 'gemini-2.5-flash';
+      this.initialized = true;
+    }
   }
 
   /**

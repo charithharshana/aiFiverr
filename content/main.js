@@ -95,6 +95,12 @@ class AiFiverrMain {
    */
   async shouldInitializeOnCurrentSite() {
     try {
+      // Check if extension context is valid first
+      if (!chrome.runtime?.id) {
+        console.warn('aiFiverr: Extension context invalidated, cannot check site restrictions');
+        return false;
+      }
+
       // Get settings from storage using the same method as popup
       const result = await chrome.storage.local.get(['settings']);
       const settings = result.settings || {};
