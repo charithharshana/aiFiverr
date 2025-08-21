@@ -279,6 +279,9 @@ class PopupManager {
 
   async initializeUI() {
     try {
+      // Initialize authentication
+      await this.initializeAuthentication();
+
       // Load settings (this includes knowledge base and prompts)
       await this.loadSettings();
 
@@ -2783,6 +2786,542 @@ Write a well formatted reply, no explanations.`
       this.showToast('Failed to clear conversations', 'error');
     } finally {
       this.showLoading(false);
+    }
+  }
+
+  // Authentication Methods
+  async initializeAuthentication() {
+    try {
+      // Check browser compatibility first
+      this.checkBrowserCompatibility();
+
+      // Set up authentication event listeners
+      this.setupAuthEventListeners();
+
+      // Check authentication status
+      await this.checkAuthStatus();
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize authentication:', error);
+      this.showAuthError('Failed to initialize authentication');
+    }
+  }
+
+  checkBrowserCompatibility() {
+    const userAgent = navigator.userAgent;
+    const isEdge = userAgent.includes('Edg/') || userAgent.includes('Edge/');
+
+    if (isEdge) {
+      // Add a subtle warning banner for Edge users
+      const authSection = document.querySelector('.auth-section');
+      if (authSection) {
+        const warningBanner = document.createElement('div');
+        warningBanner.className = 'browser-warning';
+        warningBanner.innerHTML = `
+          <div class="warning-content">
+            <span class="warning-icon">⚠️</span>
+            <span class="warning-text">Limited features in Edge. <a href="#" class="edge-info-link">Learn more</a></span>
+          </div>
+        `;
+
+        // Add click handler for the learn more link
+        warningBanner.querySelector('.edge-info-link').addEventListener('click', (e) => {
+          e.preventDefault();
+          this.showEdgeCompatibilityDialog('Edge compatibility information');
+        });
+
+        // Add warning styles
+        const style = document.createElement('style');
+        style.textContent = `
+          .browser-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+          }
+
+          .warning-content {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+
+          .warning-icon {
+            font-size: 14px;
+          }
+
+          .warning-text {
+            color: #856404;
+            flex: 1;
+          }
+
+          .warning-text a {
+            color: #856404;
+            text-decoration: underline;
+            cursor: pointer;
+          }
+
+          .warning-text a:hover {
+            color: #533f03;
+          }
+        `;
+
+        document.head.appendChild(style);
+        authSection.insertBefore(warningBanner, authSection.firstChild);
+      }
+    }
+  }
+
+  setupAuthEventListeners() {
+    // Sign in button
+    const signInBtn = document.getElementById('signInBtn');
+    if (signInBtn) {
+      signInBtn.addEventListener('click', () => this.handleSignIn());
+    }
+
+    // Sign out button
+    const signOutBtn = document.getElementById('signOutBtn');
+    if (signOutBtn) {
+      signOutBtn.addEventListener('click', () => this.handleSignOut());
+    }
+
+    // Test connection button
+    const testConnectionBtn = document.getElementById('testConnectionBtn');
+    if (testConnectionBtn) {
+      testConnectionBtn.addEventListener('click', () => this.handleTestConnection());
+    }
+  }
+
+  async checkAuthStatus() {
+    try {
+      // Send message to background script to check auth status
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_STATUS'
+      });
+
+      if (response && response.success) {
+        this.updateAuthUI({
+          isAuthenticated: response.isAuthenticated,
+          user: response.user
+        });
+      } else {
+        this.updateAuthUI({ isAuthenticated: false });
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to check auth status:', error);
+      this.updateAuthUI({ isAuthenticated: false });
+    }
+  }
+
+  updateAuthUI(authStatus) {
+    const authStatusEl = document.getElementById('authStatus');
+    const notAuthenticatedEl = document.getElementById('authNotAuthenticated');
+    const authenticatedEl = document.getElementById('authAuthenticated');
+
+    // Hide loading
+    if (authStatusEl) {
+      authStatusEl.style.display = 'none';
+    }
+
+    if (authStatus.isAuthenticated && authStatus.user) {
+      // Show authenticated state
+      if (notAuthenticatedEl) notAuthenticatedEl.style.display = 'none';
+      if (authenticatedEl) authenticatedEl.style.display = 'block';
+
+      // Update user info
+      this.updateUserInfo(authStatus.user);
+
+      // Load and display stats
+      this.loadAuthStats();
+
+    } else {
+      // Show not authenticated state
+      if (authenticatedEl) authenticatedEl.style.display = 'none';
+      if (notAuthenticatedEl) notAuthenticatedEl.style.display = 'block';
+    }
+  }
+
+  updateUserInfo(user) {
+    const userAvatar = document.getElementById('userAvatar');
+    const userName = document.getElementById('userName');
+    const userEmail = document.getElementById('userEmail');
+
+    if (userAvatar && user.picture) {
+      userAvatar.src = user.picture;
+      userAvatar.alt = user.name || user.email;
+    }
+
+    if (userName && user.name) {
+      userName.textContent = user.name;
+    }
+
+    if (userEmail && user.email) {
+      userEmail.textContent = user.email;
+    }
+  }
+
+  async loadAuthStats() {
+    try {
+      // For now, show basic stats - we can enhance this later
+      const stats = {
+        sheetsConnected: true,
+        driveConnected: true,
+        knowledgeBaseFiles: 0,
+        lastSync: Date.now()
+      };
+
+      this.displayAuthStats(stats);
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to load auth stats:', error);
+    }
+  }
+
+  displayAuthStats(stats) {
+    const authStatsEl = document.getElementById('authStats');
+    if (!authStatsEl) return;
+
+    authStatsEl.innerHTML = `
+      <h4>Account Statistics</h4>
+      <div class="auth-stat-item">
+        <span>Google Sheets:</span>
+        <span class="auth-stat-value">${stats.sheetsConnected ? 'Connected' : 'Not Connected'}</span>
+      </div>
+      <div class="auth-stat-item">
+        <span>Google Drive:</span>
+        <span class="auth-stat-value">${stats.driveConnected ? 'Connected' : 'Not Connected'}</span>
+      </div>
+      <div class="auth-stat-item">
+        <span>Knowledge Base Files:</span>
+        <span class="auth-stat-value">${stats.knowledgeBaseFiles || 0}</span>
+      </div>
+      <div class="auth-stat-item">
+        <span>Last Sync:</span>
+        <span class="auth-stat-value">${stats.lastSync ? new Date(stats.lastSync).toLocaleDateString() : 'Never'}</span>
+      </div>
+    `;
+  }
+
+  async handleSignIn() {
+    try {
+      this.showLoading(true);
+
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_START'
+      });
+
+      if (response && response.success) {
+        this.showToast('Successfully signed in!', 'success');
+        await this.checkAuthStatus();
+      } else {
+        // Check if this is an Edge compatibility issue
+        if (response?.isEdgeCompatibilityIssue) {
+          this.showEdgeCompatibilityDialog(response.error);
+        } else {
+          throw new Error(response?.error || 'Sign in failed');
+        }
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Sign in failed:', error);
+      this.showToast(`Sign in failed: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async handleSignOut() {
+    try {
+      this.showLoading(true);
+
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_SIGNOUT'
+      });
+
+      if (response && response.success) {
+        this.showToast('Successfully signed out', 'success');
+        await this.checkAuthStatus();
+      } else {
+        throw new Error(response?.error || 'Sign out failed');
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Sign out failed:', error);
+      this.showToast(`Sign out failed: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async handleTestConnection() {
+    try {
+      this.showLoading(true);
+
+      // Test by getting a valid token from background script
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_TOKEN'
+      });
+
+      if (response && response.success && response.token) {
+        this.showToast('Connection test successful!', 'success');
+        await this.loadAuthStats();
+      } else {
+        throw new Error('No valid authentication token available');
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Connection test failed:', error);
+      this.showToast(`Connection test failed: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  showEdgeCompatibilityDialog(message) {
+    // Create a modal dialog for Edge compatibility
+    const modal = document.createElement('div');
+    modal.className = 'edge-compatibility-modal';
+    modal.innerHTML = `
+      <div class="modal-overlay">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Browser Compatibility Notice</h3>
+            <button class="modal-close" onclick="this.closest('.edge-compatibility-modal').remove()">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="browser-icons">
+              <div class="browser-item">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjQiIGN5PSIyNCIgcj0iMjQiIGZpbGw9IiM0Mjg1RjQiLz4KPHBhdGggZD0iTTM2IDI0QzM2IDMwLjYyNzQgMzAuNjI3NCAzNiAyNCAzNkMxNy4zNzI2IDM2IDEyIDMwLjYyNzQgMTIgMjRDMTIgMTcuMzcyNiAxNy4zNzI2IDEyIDI0IDEyQzMwLjYyNzQgMTIgMzYgMTcuMzcyNiAzNiAyNCIgZmlsbD0iI0ZGRkZGRiIvPgo8L3N2Zz4K" alt="Chrome">
+                <span>Chrome</span>
+                <span class="recommended">Recommended</span>
+              </div>
+              <div class="browser-item disabled">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjQiIGN5PSIyNCIgcj0iMjQiIGZpbGw9IiMwMDc4RDQiLz4KPHBhdGggZD0iTTM2IDI0QzM2IDMwLjYyNzQgMzAuNjI3NCAzNiAyNCAzNkMxNy4zNzI2IDM2IDEyIDMwLjYyNzQgMTIgMjRDMTIgMTcuMzcyNiAxNy4zNzI2IDEyIDI0IDEyQzMwLjYyNzQgMTIgMzYgMTcuMzcyNiAzNiAyNCIgZmlsbD0iI0ZGRkZGRiIvPgo8L3N2Zz4K" alt="Edge">
+                <span>Edge</span>
+                <span class="limited">Limited Support</span>
+              </div>
+            </div>
+            <div class="message">
+              <p><strong>Microsoft Edge has limited support for Google authentication in extensions.</strong></p>
+              <p>For the best experience with aiFiverr, please use Google Chrome which supports all features including:</p>
+              <ul>
+                <li>✅ Google authentication & data sync</li>
+                <li>✅ Google Drive integration</li>
+                <li>✅ Knowledge base file uploads</li>
+                <li>✅ Cross-device settings sync</li>
+              </ul>
+              <p><strong>In Edge, you can still use:</strong></p>
+              <ul>
+                <li>✅ Basic AI chat functionality</li>
+                <li>✅ Text processing features</li>
+                <li>✅ Local settings (not synced)</li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" onclick="this.closest('.edge-compatibility-modal').remove()">
+              Continue without authentication
+            </button>
+            <button class="btn-primary" onclick="window.open('https://www.google.com/chrome/', '_blank')">
+              Download Chrome
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add styles for the modal
+    const style = document.createElement('style');
+    style.textContent = `
+      .edge-compatibility-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10000;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      .modal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      }
+
+      .modal-header {
+        padding: 20px 20px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .modal-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+      }
+
+      .modal-close:hover {
+        background: #f0f0f0;
+      }
+
+      .modal-body {
+        padding: 20px;
+      }
+
+      .browser-icons {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+        justify-content: center;
+      }
+
+      .browser-item {
+        text-align: center;
+        padding: 15px;
+        border-radius: 8px;
+        border: 2px solid #e0e0e0;
+        min-width: 100px;
+      }
+
+      .browser-item img {
+        width: 32px;
+        height: 32px;
+        margin-bottom: 8px;
+      }
+
+      .browser-item span {
+        display: block;
+        font-size: 14px;
+        color: #333;
+        font-weight: 500;
+      }
+
+      .browser-item .recommended {
+        background: #4CAF50;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      .browser-item .limited {
+        background: #FF9800;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      .browser-item.disabled {
+        opacity: 0.6;
+        border-color: #ccc;
+      }
+
+      .message p {
+        margin: 0 0 12px;
+        color: #333;
+        line-height: 1.5;
+      }
+
+      .message ul {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .message li {
+        margin: 4px 0;
+        color: #555;
+      }
+
+      .modal-footer {
+        padding: 0 20px 20px;
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+      }
+
+      .btn-primary, .btn-secondary {
+        padding: 10px 20px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+
+      .btn-primary {
+        background: #4285F4;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #3367D6;
+      }
+
+      .btn-secondary {
+        background: #f8f9fa;
+        color: #333;
+        border: 1px solid #dadce0;
+      }
+
+      .btn-secondary:hover {
+        background: #e8eaed;
+      }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+  }
+
+  showAuthError(message) {
+    const authStatusEl = document.getElementById('authStatus');
+    if (authStatusEl) {
+      authStatusEl.innerHTML = `
+        <div class="auth-error">
+          <span style="color: #dc3545;">⚠️ ${message}</span>
+        </div>
+      `;
     }
   }
 }

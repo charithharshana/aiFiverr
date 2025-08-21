@@ -865,6 +865,201 @@ Provide only the improved message, no explanations.`
       totalItems: this.variables.size + this.customPrompts.size + this.templates.size
     };
   }
+
+  // Google Drive Integration Methods
+  async uploadFileToGoogleDrive(file, fileName, description = '') {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        throw new Error('Google authentication required');
+      }
+
+      if (!window.googleDriveClient) {
+        throw new Error('Google Drive client not available');
+      }
+
+      console.log('aiFiverr KB: Uploading file to Google Drive:', fileName);
+
+      const result = await window.googleDriveClient.uploadFile(file, fileName, description);
+
+      if (result.success) {
+        // Store file reference in local knowledge base
+        await this.addFileReference(result.fileId, {
+          name: fileName,
+          size: result.size,
+          mimeType: result.mimeType,
+          driveFileId: result.fileId,
+          webViewLink: result.webViewLink,
+          uploadedAt: new Date().toISOString(),
+          source: 'google_drive'
+        });
+
+        console.log('aiFiverr KB: File uploaded successfully:', result.fileId);
+        return result;
+      } else {
+        throw new Error('Upload failed');
+      }
+
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to upload file to Google Drive:', error);
+      throw error;
+    }
+  }
+
+  async listGoogleDriveFiles() {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        return [];
+      }
+
+      if (!window.googleDriveClient) {
+        return [];
+      }
+
+      const files = await window.googleDriveClient.listKnowledgeBaseFiles();
+
+      // Update local file references
+      for (const file of files) {
+        await this.addFileReference(file.id, {
+          name: file.name,
+          size: file.size,
+          mimeType: file.mimeType,
+          driveFileId: file.id,
+          webViewLink: file.webViewLink,
+          createdTime: file.createdTime,
+          modifiedTime: file.modifiedTime,
+          source: 'google_drive'
+        });
+      }
+
+      return files;
+
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to list Google Drive files:', error);
+      return [];
+    }
+  }
+
+  async downloadFileFromGoogleDrive(fileId) {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        throw new Error('Google authentication required');
+      }
+
+      if (!window.googleDriveClient) {
+        throw new Error('Google Drive client not available');
+      }
+
+      const blob = await window.googleDriveClient.downloadFile(fileId);
+      return blob;
+
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to download file from Google Drive:', error);
+      throw error;
+    }
+  }
+
+  async deleteFileFromGoogleDrive(fileId) {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        throw new Error('Google authentication required');
+      }
+
+      if (!window.googleDriveClient) {
+        throw new Error('Google Drive client not available');
+      }
+
+      await window.googleDriveClient.deleteFile(fileId);
+
+      // Remove from local file references
+      await this.removeFileReference(fileId);
+
+      console.log('aiFiverr KB: File deleted from Google Drive:', fileId);
+      return { success: true };
+
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to delete file from Google Drive:', error);
+      throw error;
+    }
+  }
+
+  async addFileReference(fileId, fileInfo) {
+    try {
+      const fileReferences = await storageManager.get('knowledgeBaseFiles') || {};
+      fileReferences[fileId] = fileInfo;
+      await storageManager.set({ knowledgeBaseFiles: fileReferences });
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to add file reference:', error);
+    }
+  }
+
+  async removeFileReference(fileId) {
+    try {
+      const result = await storageManager.get('knowledgeBaseFiles');
+      const fileReferences = result.knowledgeBaseFiles || {};
+      delete fileReferences[fileId];
+      await storageManager.set({ knowledgeBaseFiles: fileReferences });
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to remove file reference:', error);
+    }
+  }
+
+  async getFileReferences() {
+    try {
+      const result = await storageManager.get('knowledgeBaseFiles');
+      return result.knowledgeBaseFiles || {};
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to get file references:', error);
+      return {};
+    }
+  }
+
+  async syncWithGoogleDrive() {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        console.log('aiFiverr KB: Not authenticated, skipping Google Drive sync');
+        return { success: false, reason: 'not_authenticated' };
+      }
+
+      console.log('aiFiverr KB: Syncing with Google Drive...');
+
+      // Get files from Google Drive
+      const driveFiles = await this.listGoogleDriveFiles();
+
+      // Get local file references
+      const localFiles = await this.getFileReferences();
+
+      // Find files that exist in Drive but not locally
+      const newFiles = driveFiles.filter(driveFile => !localFiles[driveFile.id]);
+
+      // Find files that exist locally but not in Drive (deleted)
+      const deletedFiles = Object.keys(localFiles).filter(fileId =>
+        localFiles[fileId].source === 'google_drive' &&
+        !driveFiles.find(driveFile => driveFile.id === fileId)
+      );
+
+      // Remove references to deleted files
+      for (const fileId of deletedFiles) {
+        await this.removeFileReference(fileId);
+      }
+
+      console.log('aiFiverr KB: Sync complete', {
+        totalDriveFiles: driveFiles.length,
+        newFiles: newFiles.length,
+        deletedFiles: deletedFiles.length
+      });
+
+      return {
+        success: true,
+        totalFiles: driveFiles.length,
+        newFiles: newFiles.length,
+        deletedFiles: deletedFiles.length
+      };
+
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to sync with Google Drive:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Create global knowledge base manager - but only when explicitly called

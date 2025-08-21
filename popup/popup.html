@@ -205,6 +205,53 @@
 
       <!-- Settings Tab -->
       <div class="tab-panel" id="settings">
+        <!-- Authentication Section -->
+        <div class="settings-section">
+          <h3>Google Authentication</h3>
+          <div class="auth-container">
+            <div class="auth-status" id="authStatus">
+              <div class="auth-status-loading">
+                <span class="loading-spinner"></span>
+                <span>Checking authentication status...</span>
+              </div>
+            </div>
+
+            <!-- Not Authenticated State -->
+            <div class="auth-not-authenticated" id="authNotAuthenticated" style="display: none;">
+              <div class="auth-info">
+                <p>Sign in with your Google account to:</p>
+                <ul>
+                  <li>Save your data to Google Sheets</li>
+                  <li>Upload knowledge base files to Google Drive</li>
+                  <li>Sync settings across devices</li>
+                </ul>
+              </div>
+              <button class="btn-primary auth-btn" id="signInBtn">
+                <span class="google-icon">G</span>
+                Sign in with Google
+              </button>
+            </div>
+
+            <!-- Authenticated State -->
+            <div class="auth-authenticated" id="authAuthenticated" style="display: none;">
+              <div class="auth-user-info">
+                <img class="auth-user-avatar" id="userAvatar" src="" alt="User Avatar">
+                <div class="auth-user-details">
+                  <div class="auth-user-name" id="userName"></div>
+                  <div class="auth-user-email" id="userEmail"></div>
+                </div>
+              </div>
+              <div class="auth-actions">
+                <button class="btn-secondary" id="testConnectionBtn">Test Connection</button>
+                <button class="btn-danger" id="signOutBtn">Sign Out</button>
+              </div>
+              <div class="auth-stats" id="authStats">
+                <!-- Stats will be populated here -->
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="settings-section">
           <h3>Knowledge Base</h3>
           <div class="knowledge-base-container">

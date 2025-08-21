@@ -1,0 +1,27 @@
+<script>
+window.onload = function() {
+  // Call the server-side function to get the user status
+  google.script.run.withSuccessHandler(function(userStatus) {
+    if (!userStatus.loggedIn) {
+      // User is not logged in, load the login page
+      google.script.run.withSuccessHandler(function(html) {
+        document.getElementById('appContent').innerHTML = html;
+      }).getLoginPage();
+    } else if (!userStatus.authorized) {
+      // User is not authorized, load the not-authorized page
+      google.script.run.withSuccessHandler(function(html) {
+        document.getElementById('appContent').innerHTML = html;
+      }).getNotAuthorizedPage();
+    } else {
+      // User is logged in and authorized, load the dashboard page
+      google.script.run.withSuccessHandler(function(html) {
+        document.getElementById('appContent').innerHTML = html;
+
+        // Insert the user's email into the dashboard
+        document.getElementById('userEmail').textContent = userStatus.email;
+      }).getDashboardPage();
+    }
+  }).getUserStatus();
+};
+
+</script>

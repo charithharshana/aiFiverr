@@ -619,6 +619,32 @@ class AiFiverrMain {
           sendResponse({ success: true });
           break;
 
+        // Authentication handlers
+        case 'CHECK_AUTH_STATUS':
+          const authStatus = await this.handleCheckAuthStatus();
+          sendResponse({ success: true, authStatus });
+          break;
+
+        case 'GOOGLE_SIGN_IN':
+          const signInResult = await this.handleGoogleSignIn();
+          sendResponse(signInResult);
+          break;
+
+        case 'GOOGLE_SIGN_OUT':
+          const signOutResult = await this.handleGoogleSignOut();
+          sendResponse(signOutResult);
+          break;
+
+        case 'TEST_GOOGLE_CONNECTION':
+          const connectionResult = await this.handleTestGoogleConnection();
+          sendResponse(connectionResult);
+          break;
+
+        case 'GET_AUTH_STATS':
+          const authStats = await this.handleGetAuthStats();
+          sendResponse({ success: true, stats: authStats });
+          break;
+
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
       }
@@ -839,6 +865,155 @@ class AiFiverrMain {
     } catch (error) {
       console.error('Failed to get stored contacts:', error);
       return { contacts: [], totalCount: 0, lastFetched: 0 };
+    }
+  }
+
+  // Authentication Handler Methods
+  async handleCheckAuthStatus() {
+    try {
+      if (!window.googleAuthService) {
+        return { isAuthenticated: false };
+      }
+
+      const isAuthenticated = window.googleAuthService.isUserAuthenticated();
+      const user = window.googleAuthService.getCurrentUser();
+
+      return {
+        isAuthenticated,
+        user: isAuthenticated ? user : null
+      };
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to check auth status:', error);
+      return { isAuthenticated: false };
+    }
+  }
+
+  async handleGoogleSignIn() {
+    try {
+      if (!window.googleAuthService) {
+        throw new Error('Google Auth Service not available');
+      }
+
+      const result = await window.googleAuthService.authenticate();
+      return result;
+
+    } catch (error) {
+      console.error('aiFiverr: Google sign in failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleGoogleSignOut() {
+    try {
+      if (!window.googleAuthService) {
+        throw new Error('Google Auth Service not available');
+      }
+
+      const result = await window.googleAuthService.signOut();
+      return result;
+
+    } catch (error) {
+      console.error('aiFiverr: Google sign out failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleTestGoogleConnection() {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        throw new Error('Not authenticated');
+      }
+
+      // Test Google Sheets connection
+      let sheetsConnected = false;
+      try {
+        if (window.googleClient) {
+          const sheetsTest = await window.googleClient.testConnection();
+          sheetsConnected = sheetsTest.success;
+        }
+      } catch (error) {
+        console.warn('Sheets connection test failed:', error);
+      }
+
+      // Test Google Drive connection
+      let driveConnected = false;
+      try {
+        if (window.googleDriveClient) {
+          const driveTest = await window.googleDriveClient.testConnection();
+          driveConnected = driveTest.success;
+        }
+      } catch (error) {
+        console.warn('Drive connection test failed:', error);
+      }
+
+      return {
+        success: true,
+        sheetsConnected,
+        driveConnected
+      };
+
+    } catch (error) {
+      console.error('aiFiverr: Connection test failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleGetAuthStats() {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        return {
+          sheetsConnected: false,
+          driveConnected: false,
+          knowledgeBaseFiles: 0,
+          lastSync: null
+        };
+      }
+
+      // Get Google Sheets stats
+      let sheetsConnected = false;
+      try {
+        if (window.googleClient) {
+          const sheetsStats = await window.googleClient.getStats();
+          sheetsConnected = !sheetsStats.error;
+        }
+      } catch (error) {
+        console.warn('Failed to get sheets stats:', error);
+      }
+
+      // Get Google Drive stats
+      let driveConnected = false;
+      let knowledgeBaseFiles = 0;
+      try {
+        if (window.googleDriveClient) {
+          const driveTest = await window.googleDriveClient.testConnection();
+          driveConnected = driveTest.success;
+
+          if (driveConnected) {
+            const files = await window.googleDriveClient.listKnowledgeBaseFiles();
+            knowledgeBaseFiles = files.length;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to get drive stats:', error);
+      }
+
+      return {
+        sheetsConnected,
+        driveConnected,
+        knowledgeBaseFiles,
+        lastSync: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to get auth stats:', error);
+      return {
+        sheetsConnected: false,
+        driveConnected: false,
+        knowledgeBaseFiles: 0,
+        lastSync: null,
+        error: error.message
+      };
     }
   }
 

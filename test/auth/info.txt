@@ -1,0 +1,27 @@
+Explaining the Code: How This Google Apps Script Web App with Authentication Works
+This Google Apps Script web app provides a login and authorization system that verifies users based on their Google account email, dynamically displaying different HTML pages depending on the user’s login and authorization status. Here’s how it works, with the relevant files highlighted:
+
+Authentication and User Check (Code.gs): When the web app is accessed, the doGet() function in Code.gs renders the main HTML page (Index.html). Once the page loads, the client-side script in JavaScript.html calls the server-side function getUserStatus() from Code.gs. This function retrieves the active user’s email using Session.getActiveUser().getEmail().
+User Authorization (Code.gs): In Code.gs, the checkUserAuthorization() function verifies if the user’s email exists in the specified range of a Google Sheet (Users sheet). The function fetches the emails listed in a specific column (RNG_USER_EMAILS) and checks if the logged-in user’s email is included.
+Dynamic Page Loading (JavaScript.html): Based on the result of the login and authorization check from getUserStatus(), the script in JavaScript.html dynamically loads the appropriate HTML content into the main content area:
+If the user is not logged in, the getLoginPage() function from Code.gs is called to load Login.html.
+If the user is not authorized, the getNotAuthorizedPage() function from Code.gs loads NotAuthorized.html.
+If the user is logged in and authorized, the getDashboardPage() function from Code.gs loads Dashboard.html, and the user’s email is displayed within the dashboard.
+Client-Side and Styling (Css.html and JavaScript.html): The app uses JavaScript.html to handle the client-side logic, which communicates with the server to load different pages. Optionally, custom CSS can be included in Css.html to style the app’s interface.
+Step 3: Deploying the Web App
+Once your script is ready, you can deploy it as a web app:
+
+Click on the Deploy button in the top-right corner.
+Select New Deployments> Select type: Web app.
+Select your email for Execute as field.
+Set “Who has access” to “Anyone”.
+Click Deploy.
+Copy the web app URL provided after deployment.
+You can try this URL on your browser to see how it works.
+
+Wrapping Up
+In this guide, we demonstrated how to set up user authentication in Google Apps Script by using Google Account sign-in and verifying users against a list of authorized Gmail addresses in a Google Sheet. This approach ensures that only specific users can access your web app securely.
+
+By utilizing user authentication in Google Apps Script, you can manage access for internal or private apps efficiently, with dynamic content served based on the user’s login and authorization status. This method is easy to implement and adaptable for various project needs.
+
+Feel free to customize and expand the code to suit your app’s requirements. Happy coding!
