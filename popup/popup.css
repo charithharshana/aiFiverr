@@ -9,20 +9,64 @@
   box-sizing: border-box;
 }
 
+/* Border consistency reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Ensure no unwanted borders or outlines */
+html, body, div, span, button, input, textarea, select {
+  border: none;
+  outline: none;
+}
+
+/* Reset for popup container to prevent border issues */
+html {
+  border: none;
+  margin: 0;
+  padding: 0;
+  background: #f8f9fa;
+}
+
+/* Specific border resets for common elements */
+button:focus,
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: #1dbf73;
+  box-shadow: 0 0 0 2px rgba(29, 191, 115, 0.2);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   background: #f8f9fa;
   color: #2c3e50;
   line-height: 1.4;
   width: 400px;
-  min-height: 600px;
+  height: 600px;
+  max-height: 600px;
+  border: none;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .popup-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   max-height: 600px;
+  border: none;
+  margin: 0;
+  padding: 0;
+  background: #f8f9fa;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
 }
 
 /* Header */
@@ -66,20 +110,24 @@ body {
   border-bottom: 1px solid #e9ecef;
   display: flex;
   overflow-x: auto;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .tab-btn {
   background: none;
   border: none;
+  border-bottom: 2px solid transparent;
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 500;
   color: #6c757d;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
   white-space: nowrap;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .tab-btn:hover {
@@ -96,11 +144,18 @@ body {
 .tab-content {
   flex: 1;
   overflow-y: auto;
+  background: #f8f9fa;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .tab-panel {
   display: none;
   padding: 20px;
+  background: #f8f9fa;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .tab-panel.active {
@@ -124,6 +179,8 @@ body {
   gap: 12px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   border: 1px solid #e9ecef;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .stat-icon {
@@ -165,6 +222,8 @@ body {
   border-radius: 8px;
   border: 1px solid #e9ecef;
   overflow: hidden;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .activity-item {
@@ -173,6 +232,8 @@ body {
   gap: 12px;
   padding: 12px 16px;
   border-bottom: 1px solid #f8f9fa;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .activity-item:last-child {
@@ -461,6 +522,10 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  border: none;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .kb-form-overlay.active {
@@ -476,6 +541,9 @@ body {
   overflow: hidden;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
   animation: modalSlideIn 0.3s ease-out;
+  border: none;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 @keyframes modalSlideIn {
@@ -1450,6 +1518,16 @@ body {
   background: #e9ecef;
 }
 
+.btn-danger {
+  background: #dc3545;
+  color: white;
+  border: none;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+}
+
 /* Footer */
 .popup-footer {
   background: white;
@@ -1458,17 +1536,24 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin: 0;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .footer-links {
   display: flex;
   gap: 16px;
+  margin: 0;
+  padding: 0;
 }
 
 .footer-links a {
   font-size: 12px;
   color: #6c757d;
   text-decoration: none;
+  border: none;
+  outline: none;
 }
 
 .footer-links a:hover {
@@ -1478,6 +1563,8 @@ body {
 .version-info {
   font-size: 11px;
   color: #adb5bd;
+  margin: 0;
+  padding: 0;
 }
 
 /* Loading Overlay */
@@ -1492,6 +1579,10 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  border: none;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .loading-spinner {
@@ -2000,8 +2091,8 @@ body {
 
 .export-section .btn-primary {
   padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   border-radius: 6px;
   background: #1dbf73;
   color: white;
@@ -2165,8 +2256,8 @@ body {
 }
 
 .conversation-modal-footer .btn-secondary {
-  padding: 10px 20px;
-  font-size: 14px;
+  padding: 8px 16px;
+  font-size: 13px;
   font-weight: 500;
   border-radius: 6px;
   transition: all 0.2s ease;
@@ -2244,15 +2335,15 @@ body {
 .auth-btn {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
   width: 100%;
-  padding: 12px 16px;
+  padding: 8px 12px;
   background: #4285f4;
   color: white;
   border: none;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: 4px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -2265,14 +2356,14 @@ body {
 .google-icon {
   background: white;
   color: #4285f4;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .auth-authenticated {
@@ -2315,7 +2406,7 @@ body {
 
 .auth-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
 }
 
 .auth-actions button {
@@ -2638,19 +2729,33 @@ body {
 }
 
 .file-action-btn {
-  padding: 4px 6px;
+  padding: 4px;
   background: none;
-  border: 1px solid #dee2e6;
-  border-radius: 3px;
+  border: none;
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 14px;
   color: #6c757d;
   transition: all 0.2s ease;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 2px;
 }
 
 .file-action-btn:hover {
   background: #f8f9fa;
   color: #2c3e50;
+  transform: scale(1.1);
+}
+
+.file-action-btn.file-action-delete:hover {
+  background: #dc3545;
+  color: white;
 }
 
 .file-status {
@@ -2999,4 +3104,55 @@ body {
 .kb-files-empty p {
   font-size: 13px;
   line-height: 1.4;
+}
+
+/* Final border consistency fixes */
+/* Ensure all modal overlays have consistent borders */
+.conversation-modal-overlay,
+.kb-file-modal-overlay,
+.file-selection-modal-overlay,
+.kb-form-overlay {
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Ensure all modal containers have consistent borders */
+.conversation-modal,
+.kb-file-modal,
+.file-selection-modal,
+.kb-form-modal {
+  border: none !important;
+  box-sizing: border-box !important;
+}
+
+/* Ensure toast container has no border issues */
+.toast-container {
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Fix any remaining border inconsistencies in main containers */
+.popup-container > * {
+  box-sizing: border-box;
+}
+
+/* Ensure no unwanted borders on main sections */
+.popup-header,
+.tab-navigation,
+.tab-content,
+.popup-footer {
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* Remove any potential border artifacts */
+.popup-container::before,
+.popup-container::after,
+.tab-content::before,
+.tab-content::after {
+  display: none !important;
 }

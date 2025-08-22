@@ -19,12 +19,22 @@ class KnowledgeBaseManager {
     await this.loadTemplates();
     await this.loadKnowledgeBaseFiles();
 
-    // Sync with Gemini Files API to ensure we have up-to-date geminiUri data
-    try {
-      await this.syncWithGeminiFiles();
-    } catch (error) {
-      console.warn('aiFiverr KB: Failed to sync with Gemini Files API during init:', error);
-    }
+    // Sync with Gemini Files API in background to avoid blocking initialization
+    this.syncWithGeminiFilesInBackground();
+  }
+
+  /**
+   * Sync with Gemini Files API in background without blocking initialization
+   */
+  syncWithGeminiFilesInBackground() {
+    setTimeout(async () => {
+      try {
+        await this.syncWithGeminiFiles();
+        console.log('aiFiverr KB: Background sync with Gemini Files completed');
+      } catch (error) {
+        console.warn('aiFiverr KB: Background sync with Gemini Files failed:', error);
+      }
+    }, 2000); // Wait 2 seconds after initialization
   }
 
   /**
@@ -272,11 +282,17 @@ Best regards,
    * Format file size in human readable format
    */
   formatFileSize(bytes) {
-    if (!bytes) return '0 B';
+    // Handle undefined, null, or non-numeric values
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 B';
 
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+
+    // Ensure i is within bounds
+    const sizeIndex = Math.min(i, sizes.length - 1);
+    const size = Math.round(bytes / Math.pow(1024, sizeIndex) * 100) / 100;
+
+    return size + ' ' + sizes[sizeIndex];
   }
 
   /**
@@ -682,6 +698,9 @@ Best regards,
 
       const data = Object.fromEntries(this.variables);
       await window.storageManager.saveKnowledgeBase(data);
+
+      // Also sync to Google Drive if authenticated
+      await this.syncToGoogleDrive('variables', data);
     } catch (error) {
       console.error('Failed to save knowledge base:', error);
     }
@@ -699,6 +718,9 @@ Best regards,
 
       const data = Object.fromEntries(this.customPrompts);
       await window.storageManager.set({ customPrompts: data });
+
+      // Also sync to Google Drive if authenticated
+      await this.syncToGoogleDrive('custom-prompts', data);
     } catch (error) {
       console.error('Failed to save custom prompts:', error);
     }
@@ -1282,6 +1304,46 @@ Best regards,
         cacheSize: this.fileCache.size
       }
     };
+  }
+
+  /**
+   * Sync data to Google Drive
+   */
+  async syncToGoogleDrive(dataType, data) {
+    try {
+      // Check if Google Drive client is available and user is authenticated
+      if (!window.googleDriveClient) {
+        console.log('aiFiverr KB: Google Drive client not available for sync');
+        return;
+      }
+
+      // Check if Google Auth service is available and user is authenticated
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        console.log('aiFiverr KB: User not authenticated for Google Drive sync');
+        return;
+      }
+
+      // Test connection to ensure everything is working
+      const authResult = await window.googleDriveClient.testConnection();
+      if (!authResult.success) {
+        console.log('aiFiverr KB: Google Drive connection test failed:', authResult.error);
+        return;
+      }
+
+      const fileName = `aifiverr-${dataType}.json`;
+      const description = `aiFiverr ${dataType} data - automatically synced`;
+
+      await window.googleDriveClient.saveDataFile(fileName, {
+        type: dataType,
+        timestamp: new Date().toISOString(),
+        data: data
+      }, description);
+
+      console.log(`aiFiverr KB: Synced ${dataType} to Google Drive`);
+    } catch (error) {
+      console.warn(`aiFiverr KB: Failed to sync ${dataType} to Google Drive:`, error);
+      // Don't throw error - sync is optional
+    }
   }
 }
 

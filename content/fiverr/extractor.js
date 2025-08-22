@@ -31,11 +31,13 @@ class FiverrExtractor {
    */
   async saveConversation(username, conversationData) {
     try {
-      this.storedConversations.set(username, {
+      const conversationWithMeta = {
         ...conversationData,
         lastExtracted: Date.now(),
         lastUpdated: Date.now()
-      });
+      };
+
+      this.storedConversations.set(username, conversationWithMeta);
 
       const storageData = Object.fromEntries(this.storedConversations);
       await storageManager.set({ 'fiverrConversations': storageData });
@@ -45,6 +47,9 @@ class FiverrExtractor {
         data: conversationData,
         timestamp: Date.now()
       });
+
+      // Sync individual conversation to Google Drive
+      await this.syncConversationToGoogleDrive(username, conversationWithMeta);
 
       return true;
     } catch (error) {
@@ -1336,6 +1341,39 @@ class FiverrExtractor {
     }
 
     return recommendations;
+  }
+
+  /**
+   * Sync conversation to Google Drive
+   */
+  async syncConversationToGoogleDrive(username, conversationData) {
+    try {
+      // Check if Google Drive client is available and user is authenticated
+      if (!window.googleDriveClient) {
+        return;
+      }
+
+      // Check authentication status
+      const authResult = await window.googleDriveClient.testConnection();
+      if (!authResult.success) {
+        return;
+      }
+
+      const fileName = `fiverr-conversation-${username}-${new Date().toISOString().split('T')[0]}.json`;
+      const description = `Fiverr conversation with ${username} - automatically synced`;
+
+      await window.googleDriveClient.saveDataFile(fileName, {
+        type: 'fiverr-conversation',
+        username: username,
+        timestamp: new Date().toISOString(),
+        data: conversationData
+      }, description);
+
+      console.log(`aiFiverr Extractor: Synced conversation with ${username} to Google Drive`);
+    } catch (error) {
+      console.warn(`aiFiverr Extractor: Failed to sync conversation with ${username} to Google Drive:`, error);
+      // Don't throw error - sync is optional
+    }
   }
 }
 

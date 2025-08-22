@@ -818,6 +818,58 @@ Would you like to continue without authentication or switch to Chrome?`;
     }
   }
 
+  /**
+   * Ensure aiFiverr folder exists in Google Drive
+   */
+  async ensureAiFiverrFolder(token) {
+    try {
+      const aiFiverrFolderName = "aiFiverr";
+
+      // Search for existing folder
+      const searchResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${aiFiverrFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error(`Failed to search for folder: ${searchResponse.status}`);
+      }
+
+      const searchData = await searchResponse.json();
+
+      if (searchData.files && searchData.files.length > 0) {
+        console.log('aiFiverr Background: Found existing aiFiverr folder:', searchData.files[0].id);
+        return searchData.files[0].id;
+      }
+
+      // Create new folder
+      const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: aiFiverrFolderName,
+          mimeType: 'application/vnd.google-apps.folder'
+        })
+      });
+
+      if (!createResponse.ok) {
+        throw new Error(`Failed to create folder: ${createResponse.status}`);
+      }
+
+      const createData = await createResponse.json();
+      console.log('aiFiverr Background: Created new aiFiverr folder:', createData.id);
+      return createData.id;
+
+    } catch (error) {
+      console.error('aiFiverr Background: Failed to ensure aiFiverr folder:', error);
+      throw error;
+    }
+  }
+
   async uploadFileToDrive(request) {
     try {
       if (!this.isAuthenticated) {
@@ -829,6 +881,9 @@ Would you like to continue without authentication or switch to Chrome?`;
         return { success: false, error: 'Failed to get valid access token' };
       }
 
+      // Ensure aiFiverr folder exists
+      const folderId = await this.ensureAiFiverrFolder(token);
+
       // Get file data (already base64 from popup)
       const fileData = request.file.data;
 
@@ -837,6 +892,7 @@ Would you like to continue without authentication or switch to Chrome?`;
         name: request.fileName,
         description: `aiFiverr Knowledge Base file uploaded on ${new Date().toISOString()}`,
         mimeType: request.file.type,
+        parents: [folderId],
         properties: {
           'aiFiverr_type': 'knowledge_base',
           'aiFiverr_upload_date': new Date().toISOString(),

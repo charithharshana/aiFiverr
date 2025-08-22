@@ -1328,11 +1328,17 @@ class AIAssistanceChat {
   }
 
   formatFileSize(bytes) {
-    if (!bytes) return '0 B';
+    // Handle undefined, null, or non-numeric values
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 B';
 
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+
+    // Ensure i is within bounds
+    const sizeIndex = Math.min(i, sizes.length - 1);
+    const size = Math.round(bytes / Math.pow(1024, sizeIndex) * 100) / 100;
+
+    return size + ' ' + sizes[sizeIndex];
   }
 
   displayFileSelector(files) {

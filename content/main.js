@@ -81,7 +81,7 @@ class AiFiverrMain {
       // Extension initialized - no background communication needed
       console.log('aiFiverr: Extension initialized for:', {
         url: window.location.href,
-        pageType: fiverrDetector.pageType
+        pageType: window.fiverrDetector?.pageType
       });
 
     } catch (error) {
@@ -163,25 +163,33 @@ class AiFiverrMain {
       // Initialize core managers first (these are needed for basic functionality)
       console.log('aiFiverr: Initializing core managers...');
       await this.initializeStorageManager();
-      await this.initializeSessionManager();
-      await this.initializeAPIKeyManager();
-      await this.initializeGeminiClient();
-      await this.initializePromptManager();
-      await this.initializeKnowledgeBaseManager();
 
-      // Initialize Fiverr-specific managers
+      // Initialize other core managers in parallel for better performance
+      await Promise.all([
+        this.initializeSessionManager(),
+        this.initializeAPIKeyManager(),
+        this.initializeGeminiClient(),
+        this.initializePromptManager(),
+        this.initializeKnowledgeBaseManager()
+      ]);
+
+      // Initialize Fiverr-specific managers in parallel
       console.log('aiFiverr: Initializing Fiverr managers...');
-      await this.initializeFiverrDetector();
-      await this.initializeFiverrExtractor();
-      await this.initializeFiverrInjector();
-      await this.initializeTextSelector();
+      await Promise.all([
+        this.initializeFiverrDetector(),
+        this.initializeFiverrExtractor(),
+        this.initializeFiverrInjector(),
+        this.initializeTextSelector()
+      ]);
 
-      // Initialize utility managers
+      // Initialize utility managers in parallel
       console.log('aiFiverr: Initializing utility managers...');
-      await this.initializeExportImportManager();
-      await this.initializePromptSelector();
+      await Promise.all([
+        this.initializeExportImportManager(),
+        this.initializePromptSelector()
+      ]);
 
-      // Initialize chat managers last
+      // Initialize chat managers last (these depend on other managers)
       console.log('aiFiverr: Initializing chat managers...');
       await this.initializeChatAssistantManager();
       await this.initializeAIChat();

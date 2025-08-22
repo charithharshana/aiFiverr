@@ -285,7 +285,7 @@ class PopupManager {
         } else if (action === 'download') {
           this.downloadFile(fileId);
         } else if (action === 'delete') {
-          this.deleteFile(fileId);
+          this.handleDeleteFile(fileId);
         }
       }
     });
@@ -380,18 +380,6 @@ class PopupManager {
 
     document.getElementById('refreshSingleConversation')?.addEventListener('click', () => {
       this.refreshCurrentConversation();
-    });
-
-    document.getElementById('refreshSingleConversation')?.addEventListener('click', () => {
-      this.refreshCurrentConversation();
-    });
-
-    document.getElementById('closeConversationModal')?.addEventListener('click', () => {
-      this.closeConversationModal();
-    });
-
-    document.getElementById('closeConversationModalBtn')?.addEventListener('click', () => {
-      this.closeConversationModal();
     });
 
     // Close conversation modal when clicking overlay
@@ -3920,11 +3908,17 @@ class PopupManager {
   }
 
   formatFileSize(bytes) {
-    if (!bytes) return '0 B';
+    // Handle undefined, null, or non-numeric values
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 B';
 
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+
+    // Ensure i is within bounds
+    const sizeIndex = Math.min(i, sizes.length - 1);
+    const size = Math.round(bytes / Math.pow(1024, sizeIndex) * 100) / 100;
+
+    return size + ' ' + sizes[sizeIndex];
   }
 
   async searchKnowledgeBaseFiles() {
@@ -4106,6 +4100,24 @@ class PopupManager {
     } catch (error) {
       console.error('Delete failed:', error);
       this.showToast('Failed to delete file', 'error');
+    }
+  }
+
+  async handleDeleteFile(fileId) {
+    if (!confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      this.showLoading(true);
+      await this.deleteFile(fileId);
+      this.showToast('File deleted successfully', 'success');
+      await this.loadKnowledgeBaseFiles(); // Refresh the file list
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      this.showToast(`Failed to delete file: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
     }
   }
 
@@ -4655,14 +4667,47 @@ class PopupManager {
   }
 }
 
-// Listen for messages from content script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (window.popupManager) {
-    window.popupManager.handleRuntimeMessage(request, sender, sendResponse);
-  }
-});
+// Listen for messages from content script (only if chrome.runtime is available)
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (window.popupManager) {
+      window.popupManager.handleRuntimeMessage(request, sender, sendResponse);
+    }
+  });
+}
+
+// Fallback tab switching for when PopupManager fails to initialize
+function initializeFallbackTabSwitching() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const tabName = e.target.dataset.tab;
+
+      // Update tab buttons
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+
+      // Update tab panels
+      document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+      const targetPanel = document.getElementById(tabName);
+      if (targetPanel) {
+        targetPanel.classList.add('active');
+      }
+    });
+  });
+}
 
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  window.popupManager = new PopupManager();
+  // Check if we're in a proper extension context
+  if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+    try {
+      window.popupManager = new PopupManager();
+    } catch (error) {
+      console.warn('PopupManager failed to initialize, using fallback tab switching:', error);
+      initializeFallbackTabSwitching();
+    }
+  } else {
+    console.warn('Not in extension context, using fallback tab switching');
+    initializeFallbackTabSwitching();
+  }
 });

@@ -7,7 +7,7 @@ class GoogleDriveClient {
   constructor() {
     this.baseUrl = "https://www.googleapis.com/drive/v3";
     this.uploadUrl = "https://www.googleapis.com/upload/drive/v3";
-    this.aiFiverrFolderName = "aiFiverr Knowledge Base";
+    this.aiFiverrFolderName = "aiFiverr";
     this.aiFiverrFolderId = null;
     this.initialized = false;
     this.init();
@@ -555,6 +555,122 @@ class GoogleDriveClient {
         success: false,
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Save data to Google Drive as JSON file
+   */
+  async saveDataFile(fileName, data, description = '') {
+    try {
+      console.log('aiFiverr Drive: Saving data file:', fileName);
+
+      // Ensure aiFiverr folder exists
+      const folderId = await this.ensureAiFiverrFolder();
+
+      // Convert data to JSON
+      const jsonData = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonData], { type: 'application/json' });
+
+      // Check if file already exists
+      const existingFiles = await this.makeRequest(`/files?q=name='${fileName}' and parents in '${folderId}' and trashed=false`);
+
+      let fileId = null;
+      if (existingFiles.files && existingFiles.files.length > 0) {
+        fileId = existingFiles.files[0].id;
+      }
+
+      const metadata = {
+        name: fileName,
+        description: description || `aiFiverr data file updated on ${new Date().toISOString()}`,
+        parents: [folderId],
+        properties: {
+          'aiFiverr_type': 'data',
+          'aiFiverr_data_type': fileName.replace('.json', ''),
+          'aiFiverr_upload_date': new Date().toISOString()
+        }
+      };
+
+      // Create form data for multipart upload
+      const formData = new FormData();
+      formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      formData.append('file', blob);
+
+      let url, method;
+      if (fileId) {
+        // Update existing file
+        url = `${this.uploadUrl}/files/${fileId}?uploadType=multipart`;
+        method = 'PATCH';
+      } else {
+        // Create new file
+        url = `${this.uploadUrl}/files?uploadType=multipart`;
+        method = 'POST';
+      }
+
+      const token = await this.getAccessToken();
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Failed to save data file: ${response.status} - ${errorData.error?.message || response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('aiFiverr Drive: Data file saved successfully:', result.id);
+      return { success: true, data: result };
+
+    } catch (error) {
+      console.error('aiFiverr Drive: Failed to save data file:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load data from Google Drive JSON file
+   */
+  async loadDataFile(fileName) {
+    try {
+      console.log('aiFiverr Drive: Loading data file:', fileName);
+
+      // Ensure aiFiverr folder exists
+      const folderId = await this.ensureAiFiverrFolder();
+
+      // Search for the file
+      const searchResponse = await this.makeRequest(`/files?q=name='${fileName}' and parents in '${folderId}' and trashed=false`);
+
+      if (!searchResponse.files || searchResponse.files.length === 0) {
+        return { success: false, error: 'File not found' };
+      }
+
+      const fileId = searchResponse.files[0].id;
+
+      // Download file content
+      const token = await this.getAccessToken();
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status} - ${response.statusText}`);
+      }
+
+      const jsonText = await response.text();
+      const data = JSON.parse(jsonText);
+
+      console.log('aiFiverr Drive: Data file loaded successfully');
+      return { success: true, data: data };
+
+    } catch (error) {
+      console.error('aiFiverr Drive: Failed to load data file:', error);
+      return { success: false, error: error.message };
     }
   }
 }

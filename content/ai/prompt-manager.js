@@ -376,7 +376,7 @@ Make it grammatically correct, clear, and professional, but keep the original me
       }
 
       // Check if user is authenticated
-      if (!window.googleAuthService.isAuthenticated) {
+      if (!window.googleAuthService.isUserAuthenticated()) {
         console.log('aiFiverr: User not authenticated for Google Drive backup');
         return;
       }
@@ -409,7 +409,7 @@ Make it grammatically correct, clear, and professional, but keep the original me
         return null;
       }
 
-      if (!window.googleAuthService.isAuthenticated) {
+      if (!window.googleAuthService.isUserAuthenticated()) {
         return null;
       }
 
