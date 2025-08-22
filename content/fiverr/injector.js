@@ -1046,6 +1046,14 @@ class FiverrInjector {
       const prompt = typeof result === 'object' ? result.prompt : result;
       const knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
 
+      console.log('aiFiverr Injector: Translation - Knowledge base files:', knowledgeBaseFiles);
+      console.log('aiFiverr Injector: Translation - Files details:', knowledgeBaseFiles.map(f => ({
+        name: f.name,
+        id: f.id,
+        geminiUri: f.geminiUri,
+        hasGeminiUri: !!f.geminiUri
+      })));
+
       const response = await geminiClient.generateContent(prompt, { knowledgeBaseFiles });
 
       removeTooltip();
@@ -1357,6 +1365,14 @@ class FiverrInjector {
         const result = await knowledgeBaseManager.processPrompt(selectedPromptKey, contextVars);
         prompt = typeof result === 'object' ? result.prompt : result;
         knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
+        console.log('aiFiverr Injector: Chat Reply - Knowledge base files:', knowledgeBaseFiles);
+        console.log('aiFiverr Injector: Chat Reply - Files details:', knowledgeBaseFiles.map(f => ({
+          name: f.name,
+          id: f.id,
+          geminiUri: f.geminiUri,
+          hasGeminiUri: !!f.geminiUri
+        })));
       } catch (error) {
         console.warn(`Prompt '${selectedPromptKey}' not found, using fallback:`, error);
         // Fallback to basic prompt if the structured prompt is not available
@@ -1367,6 +1383,7 @@ class FiverrInjector {
         prompt += '\n\nPlease generate an appropriate, professional response that addresses the conversation context.';
       }
 
+      console.log('aiFiverr Injector: Chat Reply - Calling generateChatReply with options:', { knowledgeBaseFiles });
       const response = await geminiClient.generateChatReply(session, prompt, { knowledgeBaseFiles });
       return removeMarkdownFormatting(response.response);
     } catch (error) {
@@ -1405,6 +1422,14 @@ class FiverrInjector {
         const result = await knowledgeBaseManager.processPrompt('project_proposal', contextVars);
         prompt = typeof result === 'object' ? result.prompt : result;
         knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
+        console.log('aiFiverr Injector: Project Proposal - Knowledge base files:', knowledgeBaseFiles);
+        console.log('aiFiverr Injector: Project Proposal - Files details:', knowledgeBaseFiles.map(f => ({
+          name: f.name,
+          id: f.id,
+          geminiUri: f.geminiUri,
+          hasGeminiUri: !!f.geminiUri
+        })));
       } catch (error) {
         console.warn('Project proposal prompt not found, using fallback:', error);
         // Fallback to gemini client's proposal generation
@@ -1413,6 +1438,7 @@ class FiverrInjector {
       }
 
       // Generate proposal using the processed prompt
+      console.log('aiFiverr Injector: Project Proposal - Calling generateContent with options:', { knowledgeBaseFiles });
       const response = await geminiClient.generateContent(prompt, { knowledgeBaseFiles });
       return removeMarkdownFormatting(response.text);
     } catch (error) {

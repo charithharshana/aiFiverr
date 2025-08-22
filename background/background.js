@@ -286,8 +286,14 @@ class BackgroundManager {
           break;
 
         case 'UPLOAD_FILE_TO_GEMINI':
-          const geminiUploadResult = await this.uploadFileToGemini(request);
-          sendResponse(geminiUploadResult);
+          // Handle both direct file upload and Drive file upload
+          if (request.fileData && request.fileData.driveFileId) {
+            const driveFileUploadResult = await this.uploadDriveFileToGemini(request.fileData);
+            sendResponse(driveFileUploadResult);
+          } else {
+            const geminiUploadResult = await this.uploadFileToGemini(request);
+            sendResponse(geminiUploadResult);
+          }
           break;
 
         case 'UPDATE_FILE_REFERENCE_GEMINI_URI':
@@ -961,6 +967,108 @@ Would you like to continue without authentication or switch to Chrome?`;
     }
   }
 
+  /**
+   * Upload a Drive file to Gemini Files API
+   */
+  async uploadDriveFileToGemini(fileData) {
+    try {
+      console.log('aiFiverr Background: Uploading Drive file to Gemini:', fileData.name);
+
+      const apiKey = await this.getGeminiApiKey();
+      if (!apiKey) {
+        return { success: false, error: 'No Gemini API key available' };
+      }
+
+      // Get valid token for Drive API
+      const token = await this.getValidToken();
+      if (!token) {
+        return { success: false, error: 'No valid Google token available' };
+      }
+
+      // Download file from Google Drive
+      const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.driveFileId}?alt=media`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!driveResponse.ok) {
+        throw new Error(`Failed to download file from Drive: ${driveResponse.status} ${driveResponse.statusText}`);
+      }
+
+      const fileBlob = await driveResponse.blob();
+      const arrayBuffer = await fileBlob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+
+      // Validate file type
+      const mimeType = fileData.mimeType || this.getMimeTypeFromExtension(fileData.name);
+      if (!this.isSupportedGeminiFileType(mimeType)) {
+        throw new Error(`Unsupported file type: ${mimeType}`);
+      }
+
+      // Check file size (2GB limit)
+      if (bytes.length > 2 * 1024 * 1024 * 1024) {
+        throw new Error('File size exceeds 2GB limit');
+      }
+
+      // Prepare metadata
+      const metadata = {
+        file: {
+          displayName: fileData.displayName || fileData.name
+        }
+      };
+
+      // Create multipart body for Gemini upload
+      const boundary = '----formdata-boundary-' + Math.random().toString(36);
+      const encoder = new TextEncoder();
+
+      const parts = [
+        encoder.encode(`--${boundary}\r\n`),
+        encoder.encode('Content-Type: application/json; charset=UTF-8\r\n\r\n'),
+        encoder.encode(JSON.stringify(metadata) + '\r\n'),
+        encoder.encode(`--${boundary}\r\n`),
+        encoder.encode(`Content-Type: ${mimeType}\r\n\r\n`),
+        bytes,
+        encoder.encode(`\r\n--${boundary}--\r\n`)
+      ];
+
+      // Combine all parts
+      const totalLength = parts.reduce((sum, part) => sum + part.length, 0);
+      const body = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const part of parts) {
+        body.set(part, offset);
+        offset += part.length;
+      }
+
+      // Upload to Gemini
+      const uploadResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=multipart&key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/related; boundary=${boundary}`
+        },
+        body: body
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Gemini upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+      }
+
+      const result = await uploadResponse.json();
+      console.log('aiFiverr Background: Drive file uploaded to Gemini successfully:', result.file.name);
+
+      return {
+        success: true,
+        data: result.file
+      };
+
+    } catch (error) {
+      console.error('aiFiverr Background: Drive file upload to Gemini failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   async uploadFileToGemini(request) {
     try {
       const apiKey = await this.getGeminiApiKey();
@@ -1356,12 +1464,15 @@ Would you like to continue without authentication or switch to Chrome?`;
   }
 
   mergeFileData(driveFiles, geminiFiles) {
+    console.log('aiFiverr Background: Merging file data - Drive files:', driveFiles?.length || 0, 'Gemini files:', geminiFiles?.length || 0);
+
     const merged = [];
     const geminiFileMap = new Map();
 
     // Create map of Gemini files by display name
     if (geminiFiles && Array.isArray(geminiFiles)) {
       geminiFiles.forEach(file => {
+        console.log('aiFiverr Background: Mapping Gemini file:', file.displayName, 'URI:', file.uri);
         geminiFileMap.set(file.displayName, file);
       });
     }
@@ -1370,14 +1481,31 @@ Would you like to continue without authentication or switch to Chrome?`;
     if (driveFiles && Array.isArray(driveFiles)) {
       driveFiles.forEach(driveFile => {
         const geminiFile = geminiFileMap.get(driveFile.name);
-        merged.push({
+        const mergedFile = {
           ...driveFile,
+          driveFileId: driveFile.id, // Ensure we have the Drive file ID
+          // Add Gemini data at top level for easy access
+          geminiName: geminiFile?.name,
+          geminiUri: geminiFile?.uri,
+          geminiState: geminiFile?.state,
+          geminiMimeType: geminiFile?.mimeType,
+          // Keep original structure for backward compatibility
           geminiFile: geminiFile,
           geminiStatus: geminiFile ? geminiFile.state : 'not_uploaded'
+        };
+
+        console.log('aiFiverr Background: Merged file:', {
+          name: mergedFile.name,
+          driveId: mergedFile.id,
+          geminiUri: mergedFile.geminiUri,
+          geminiState: mergedFile.geminiState
         });
+
+        merged.push(mergedFile);
       });
     }
 
+    console.log('aiFiverr Background: Merge complete - Total files:', merged.length);
     return merged;
   }
 

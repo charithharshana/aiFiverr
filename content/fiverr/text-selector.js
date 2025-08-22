@@ -1094,9 +1094,15 @@ class TextSelector {
 
       console.log('aiFiverr: Processed prompt:', processedPrompt.substring(0, 100) + '...');
       console.log('aiFiverr: Knowledge base files for prompt:', knowledgeBaseFiles);
+      console.log('aiFiverr: Knowledge base files details:', knowledgeBaseFiles.map(f => ({
+        name: f.name,
+        id: f.id,
+        geminiUri: f.geminiUri,
+        hasGeminiUri: !!f.geminiUri
+      })));
 
       // Generate AI response
-      console.log('aiFiverr: Generating AI response...');
+      console.log('aiFiverr: Generating AI response with options:', { knowledgeBaseFiles });
       const response = await window.geminiClient.generateChatReply(session, processedPrompt, { knowledgeBaseFiles });
       console.log('aiFiverr: Got AI response:', response.response.substring(0, 100) + '...');
 

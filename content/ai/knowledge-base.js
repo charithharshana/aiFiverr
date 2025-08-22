@@ -493,7 +493,7 @@ Best regards,
       }
 
       const filesObject = Object.fromEntries(this.files);
-      await window.storageManager.set('knowledgeBaseFiles', filesObject);
+      await window.storageManager.set({ knowledgeBaseFiles: filesObject });
     } catch (error) {
       console.error('Failed to save knowledge base files:', error);
     }
@@ -585,40 +585,68 @@ Best regards,
    */
   async syncWithGeminiFiles() {
     try {
-      // Get Gemini files from background script
-      const geminiFilesResult = await this.getGeminiFilesFromBackground();
+      console.log('aiFiverr KB: Starting sync with merged knowledge base files...');
 
-      if (!geminiFilesResult.success || !geminiFilesResult.data) {
-        console.warn('aiFiverr KB: Failed to get Gemini files:', geminiFilesResult.error);
+      // Get merged knowledge base files from background script (includes both Drive and Gemini data)
+      const kbFilesResult = await this.getKnowledgeBaseFilesFromBackground();
+      if (!kbFilesResult.success) {
+        console.warn('aiFiverr KB: Failed to get knowledge base files from background:', kbFilesResult.error);
         return;
       }
 
-      const geminiFiles = geminiFilesResult.data;
-      console.log('aiFiverr KB: Syncing with', geminiFiles.length, 'Gemini files');
+      const kbFiles = kbFilesResult.data || [];
+      console.log('aiFiverr KB: Syncing with', kbFiles.length, 'knowledge base files');
 
-      // Update file references with Gemini data
+      // Update file references with merged data
       let updatedCount = 0;
-      for (const geminiFile of geminiFiles) {
-        const existingRef = Array.from(this.files.entries())
-          .find(([key, data]) => data.name === geminiFile.displayName);
+      let newCount = 0;
+
+      for (const kbFile of kbFiles) {
+        const fileKey = this.generateFileKey(kbFile.name);
+        const existingRef = this.files.get(fileKey);
+
+        const updatedFileData = {
+          name: kbFile.name,
+          mimeType: kbFile.mimeType,
+          size: kbFile.size,
+          driveFileId: kbFile.driveFileId || kbFile.id,
+          webViewLink: kbFile.webViewLink,
+          createdTime: kbFile.createdTime,
+          modifiedTime: kbFile.modifiedTime,
+          // Gemini data
+          geminiName: kbFile.geminiName,
+          geminiUri: kbFile.geminiUri,
+          geminiState: kbFile.geminiState,
+          geminiMimeType: kbFile.geminiMimeType,
+          // Sync metadata
+          lastSynced: new Date().toISOString(),
+          source: 'merged_sync'
+        };
 
         if (existingRef) {
-          const [key, data] = existingRef;
-          this.files.set(key, {
-            ...data,
-            geminiName: geminiFile.name,
-            geminiUri: geminiFile.uri,
-            geminiState: geminiFile.state,
-            geminiLastSynced: new Date().toISOString()
+          // Update existing reference
+          this.files.set(fileKey, {
+            ...existingRef,
+            ...updatedFileData
           });
           updatedCount++;
+          console.log('aiFiverr KB: Updated file reference:', kbFile.name, 'geminiUri:', kbFile.geminiUri);
+        } else {
+          // Add new reference
+          this.files.set(fileKey, {
+            ...updatedFileData,
+            addedAt: new Date().toISOString(),
+            type: 'file'
+          });
+          newCount++;
+          console.log('aiFiverr KB: Added new file reference:', kbFile.name, 'geminiUri:', kbFile.geminiUri);
         }
       }
 
       // Save updated file references
-      if (updatedCount > 0) {
+      if (updatedCount > 0 || newCount > 0) {
         await this.saveKnowledgeBaseFiles();
-        console.log('aiFiverr KB: Updated', updatedCount, 'file references with Gemini data');
+        console.log(`aiFiverr KB: Sync complete - Updated: ${updatedCount}, New: ${newCount}, Total: ${this.files.size}`);
       }
     } catch (error) {
       console.error('aiFiverr KB: Failed to sync with Gemini Files API:', error);
@@ -638,6 +666,66 @@ Best regards,
         }
       });
     });
+  }
+
+  /**
+   * Get knowledge base files from background script (merged Drive + Gemini data)
+   */
+  async getKnowledgeBaseFilesFromBackground() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: 'GET_KNOWLEDGE_BASE_FILES' }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('aiFiverr KB: Error getting files from background:', chrome.runtime.lastError.message);
+          resolve({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          console.log('aiFiverr KB: Got files from background:', response);
+          resolve(response || { success: false, error: 'No response' });
+        }
+      });
+    });
+  }
+
+  /**
+   * Upload a file to Gemini Files API
+   */
+  async uploadFileToGemini(fileData) {
+    try {
+      console.log('aiFiverr KB: Attempting to upload file to Gemini:', fileData.name);
+
+      // Request file upload through background script
+      return new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'UPLOAD_FILE_TO_GEMINI',
+          fileData: {
+            driveFileId: fileData.driveFileId,
+            name: fileData.name,
+            mimeType: fileData.mimeType,
+            displayName: fileData.name
+          }
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('aiFiverr KB: Error uploading file to Gemini:', chrome.runtime.lastError.message);
+            resolve(null);
+          } else if (response && response.success) {
+            console.log('aiFiverr KB: File uploaded to Gemini successfully:', response.data);
+            resolve({
+              name: response.data.displayName,
+              mimeType: response.data.mimeType,
+              geminiUri: response.data.uri,
+              geminiName: response.data.name,
+              geminiState: response.data.state,
+              size: response.data.sizeBytes
+            });
+          } else {
+            console.error('aiFiverr KB: Failed to upload file to Gemini:', response?.error || 'Unknown error');
+            resolve(null);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('aiFiverr KB: Error in uploadFileToGemini:', error);
+      return null;
+    }
   }
 
   /**
@@ -827,7 +915,10 @@ Best regards,
    * Resolve knowledge base file IDs to full file data
    */
   async resolveKnowledgeBaseFiles(fileReferences) {
+    console.log('aiFiverr KB: Resolving knowledge base files:', fileReferences);
+
     if (!fileReferences || fileReferences.length === 0) {
+      console.log('aiFiverr KB: No file references provided');
       return [];
     }
 
@@ -835,8 +926,11 @@ Best regards,
 
     for (const fileRef of fileReferences) {
       try {
+        console.log('aiFiverr KB: Processing file reference:', fileRef);
+
         // If it's already a full file object with geminiUri, use it as is
         if (fileRef.geminiUri) {
+          console.log('aiFiverr KB: File already has geminiUri:', fileRef.name, fileRef.geminiUri);
           resolvedFiles.push({
             id: fileRef.id || fileRef.driveFileId,
             name: fileRef.name,
@@ -852,20 +946,27 @@ Best regards,
 
         // First try by ID (could be driveFileId or regular id)
         if (fileRef.id) {
+          console.log('aiFiverr KB: Looking up file by ID:', fileRef.id);
           fullFileData = this.getFileReference(fileRef.id);
         }
         if (!fullFileData && fileRef.driveFileId) {
+          console.log('aiFiverr KB: Looking up file by driveFileId:', fileRef.driveFileId);
           fullFileData = this.getFileReference(fileRef.driveFileId);
         }
 
         // If not found by ID, try by name
         if (!fullFileData && fileRef.name) {
+          console.log('aiFiverr KB: Looking up file by name:', fileRef.name);
           const allFiles = this.getAllFileReferences();
+          console.log('aiFiverr KB: Available files:', Object.keys(allFiles));
           fullFileData = Object.values(allFiles).find(file => file.name === fileRef.name);
         }
 
+        console.log('aiFiverr KB: Found file data:', fullFileData);
+
         // If we found the full file data and it has geminiUri, add it
         if (fullFileData && fullFileData.geminiUri) {
+          console.log('aiFiverr KB: File has geminiUri, adding to resolved files:', fullFileData.name, fullFileData.geminiUri);
           resolvedFiles.push({
             id: fileRef.id || fileRef.driveFileId || fullFileData.driveFileId,
             name: fullFileData.name,
@@ -874,12 +975,74 @@ Best regards,
             size: fullFileData.size
           });
         } else if (fullFileData) {
-          // File exists but no geminiUri - try to upload to Gemini if possible
-          console.warn('aiFiverr KB: File found but not uploaded to Gemini, attempting upload:', fileRef.name);
+          // File exists but no geminiUri - try to get from background or sync
+          console.warn('aiFiverr KB: File found but no geminiUri, attempting to sync:', fileRef.name);
 
-          // For now, we'll skip files without geminiUri but log the issue
-          // In the future, we could implement automatic upload here
-          console.warn('aiFiverr KB: Skipping file without Gemini URI:', fileRef.name);
+          // Try to get updated file data from background
+          const backgroundFiles = await this.getKnowledgeBaseFilesFromBackground();
+          if (backgroundFiles.success && backgroundFiles.data) {
+            const matchingFile = backgroundFiles.data.find(f =>
+              f.name === fullFileData.name || f.driveFileId === fullFileData.driveFileId
+            );
+
+            if (matchingFile && matchingFile.geminiUri) {
+              console.log('aiFiverr KB: Found geminiUri from background sync:', matchingFile.name, matchingFile.geminiUri);
+
+              // Update local file reference
+              const fileKey = this.generateFileKey(matchingFile.name);
+              this.files.set(fileKey, {
+                ...fullFileData,
+                geminiUri: matchingFile.geminiUri,
+                geminiName: matchingFile.geminiName,
+                geminiState: matchingFile.geminiState
+              });
+              await this.saveKnowledgeBaseFiles();
+
+              resolvedFiles.push({
+                id: fileRef.id || fileRef.driveFileId || matchingFile.driveFileId,
+                name: matchingFile.name,
+                mimeType: matchingFile.mimeType,
+                geminiUri: matchingFile.geminiUri,
+                size: matchingFile.size
+              });
+            } else {
+              console.warn('aiFiverr KB: File not found in background or missing geminiUri, attempting upload:', fileRef.name);
+
+              // Try to upload file to Gemini if it has a driveFileId
+              if (fullFileData.driveFileId) {
+                try {
+                  const uploadResult = await this.uploadFileToGemini(fullFileData);
+                  if (uploadResult && uploadResult.geminiUri) {
+                    console.log('aiFiverr KB: Successfully uploaded file to Gemini:', uploadResult.name, uploadResult.geminiUri);
+
+                    // Update local file reference
+                    const fileKey = this.generateFileKey(fullFileData.name);
+                    this.files.set(fileKey, {
+                      ...fullFileData,
+                      geminiUri: uploadResult.geminiUri,
+                      geminiName: uploadResult.geminiName,
+                      geminiState: uploadResult.geminiState
+                    });
+                    await this.saveKnowledgeBaseFiles();
+
+                    resolvedFiles.push({
+                      id: fileRef.id || fileRef.driveFileId,
+                      name: uploadResult.name,
+                      mimeType: uploadResult.mimeType,
+                      geminiUri: uploadResult.geminiUri,
+                      size: uploadResult.size
+                    });
+                  } else {
+                    console.warn('aiFiverr KB: Failed to upload file to Gemini:', fileRef.name);
+                  }
+                } catch (error) {
+                  console.error('aiFiverr KB: Error uploading file to Gemini:', fileRef.name, error);
+                }
+              }
+            }
+          } else {
+            console.warn('aiFiverr KB: Failed to get files from background, skipping file:', fileRef.name);
+          }
         } else {
           console.warn('aiFiverr KB: Could not resolve file reference:', fileRef);
         }
@@ -888,7 +1051,7 @@ Best regards,
       }
     }
 
-    console.log('aiFiverr KB: Resolved', resolvedFiles.length, 'files for API request');
+    console.log('aiFiverr KB: Resolved', resolvedFiles.length, 'files for API request:', resolvedFiles);
     return resolvedFiles;
   }
 

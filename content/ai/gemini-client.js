@@ -277,24 +277,40 @@ class GeminiClient {
         console.log('aiFiverr Gemini: Processing knowledge base files:', options.knowledgeBaseFiles);
 
         let filesAdded = 0;
+        let filesSkipped = 0;
+
         options.knowledgeBaseFiles.forEach(file => {
+          console.log('aiFiverr Gemini: Processing file:', {
+            name: file.name,
+            mimeType: file.mimeType,
+            geminiUri: file.geminiUri,
+            hasGeminiUri: !!file.geminiUri
+          });
+
           if (file.geminiUri) {
-            parts.push({
+            const filePart = {
               fileData: {
                 mimeType: file.mimeType || 'application/octet-stream',
                 fileUri: file.geminiUri
               }
-            });
+            };
+            parts.push(filePart);
             filesAdded++;
-            console.log('aiFiverr Gemini: Added file to request:', file.name, file.geminiUri);
+            console.log('aiFiverr Gemini: Added file to request:', file.name, file.geminiUri, filePart);
           } else {
-            console.warn('aiFiverr Gemini: Skipping file without geminiUri:', file.name);
+            filesSkipped++;
+            console.warn('aiFiverr Gemini: Skipping file without geminiUri:', {
+              name: file.name,
+              id: file.id,
+              driveFileId: file.driveFileId,
+              mimeType: file.mimeType
+            });
           }
         });
 
-        console.log('aiFiverr Gemini: Added', filesAdded, 'files to API request');
+        console.log(`aiFiverr Gemini: File attachment summary - Added: ${filesAdded}, Skipped: ${filesSkipped}, Total parts: ${parts.length}`);
       } else {
-        console.log('aiFiverr Gemini: No knowledge base files provided');
+        console.log('aiFiverr Gemini: No knowledge base files provided in options');
       }
 
       body.contents.push({
@@ -314,6 +330,24 @@ class GeminiClient {
       body.systemInstruction = {
         parts: [{ text: options.systemInstruction }]
       };
+    }
+
+    // Log final request structure for debugging
+    console.log('aiFiverr Gemini: Final API request body structure:', {
+      contentsCount: body.contents.length,
+      hasSystemInstruction: !!body.systemInstruction,
+      firstContentParts: body.contents[0]?.parts?.length || 0,
+      fileDataParts: body.contents[0]?.parts?.filter(p => p.fileData)?.length || 0,
+      textParts: body.contents[0]?.parts?.filter(p => p.text)?.length || 0
+    });
+
+    // Log file data parts specifically
+    const fileDataParts = body.contents[0]?.parts?.filter(p => p.fileData) || [];
+    if (fileDataParts.length > 0) {
+      console.log('aiFiverr Gemini: File data parts in request:', fileDataParts.map(p => ({
+        mimeType: p.fileData.mimeType,
+        fileUri: p.fileData.fileUri
+      })));
     }
 
     return body;
