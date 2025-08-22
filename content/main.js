@@ -166,6 +166,7 @@ class AiFiverrMain {
       await this.initializeSessionManager();
       await this.initializeAPIKeyManager();
       await this.initializeGeminiClient();
+      await this.initializePromptManager();
       await this.initializeKnowledgeBaseManager();
 
       // Initialize Fiverr-specific managers
@@ -252,6 +253,22 @@ class AiFiverrMain {
       }
     } catch (error) {
       console.error('aiFiverr: Failed to initialize Gemini Client:', error);
+    }
+  }
+
+  /**
+   * Initialize Prompt Manager
+   */
+  async initializePromptManager() {
+    try {
+      if (window.promptManager) {
+        console.log('aiFiverr: Initializing Prompt Manager...');
+        await window.promptManager.init();
+      } else {
+        console.log('aiFiverr: Prompt Manager not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Prompt Manager:', error);
     }
   }
 
@@ -645,6 +662,20 @@ class AiFiverrMain {
           sendResponse({ success: true, stats: authStats });
           break;
 
+        // Knowledge Base Files handlers
+        // File operations are handled by background script
+        case 'GET_DRIVE_FILES':
+        case 'GET_GEMINI_FILES':
+        case 'UPLOAD_FILE_TO_DRIVE':
+        case 'UPLOAD_FILE_TO_GEMINI':
+        case 'GET_FILE_DETAILS':
+        case 'DELETE_DRIVE_FILE':
+        case 'SEARCH_DRIVE_FILES':
+        case 'UPDATE_FILE_METADATA':
+          // These are handled by the background script, not content script
+          sendResponse({ success: false, error: 'This message should be sent to background script' });
+          break;
+
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
       }
@@ -674,10 +705,16 @@ class AiFiverrMain {
    * Toggle floating widget
    */
   toggleFloatingWidget() {
-    if (window.fiverrInjector?.floatingWidget) {
-      const panel = window.fiverrInjector.floatingWidget.querySelector('.widget-panel');
-      const isVisible = panel.style.display !== 'none';
-      panel.style.display = isVisible ? 'none' : 'block';
+    try {
+      if (window.fiverrInjector?.floatingWidget) {
+        const panel = window.fiverrInjector.floatingWidget.querySelector('.widget-panel');
+        if (panel) {
+          const isVisible = panel.style.display !== 'none';
+          panel.style.display = isVisible ? 'none' : 'block';
+        }
+      }
+    } catch (error) {
+      console.error('aiFiverr: Error toggling floating widget:', error);
     }
   }
 
@@ -714,9 +751,18 @@ class AiFiverrMain {
       }
 
       // Process prompt with Fiverr context
-      const processedPrompt = await window.knowledgeBaseManager?.processPromptWithFiverrContext(promptKey, additionalContext);
+      const result = await window.knowledgeBaseManager?.processPromptWithFiverrContext(promptKey, additionalContext);
 
-      return { processedPrompt };
+      // Handle both old and new format
+      if (typeof result === 'object' && result.prompt) {
+        return {
+          processedPrompt: result.prompt,
+          knowledgeBaseFiles: result.knowledgeBaseFiles || []
+        };
+      } else {
+        // Backward compatibility
+        return { processedPrompt: result };
+      }
     } catch (error) {
       console.error('Failed to process prompt:', error);
       throw error;
@@ -1029,6 +1075,9 @@ class AiFiverrMain {
       window.fiverrInjector.cleanup();
     }
   }
+
+  // Knowledge Base Files Handler Methods
+  // File operations are now handled by background script only
 }
 
 // Initialize extension when script loads

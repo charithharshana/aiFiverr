@@ -175,8 +175,8 @@ class TextSelector {
       return;
     }
 
-    // Check if selection is within Fiverr content areas
-    const isValid = this.isValidSelectionArea(selection);
+    // Check if selection is within valid content areas
+    const isValid = await this.isValidSelectionArea(selection);
     console.log('aiFiverr: Selection area valid:', isValid);
 
     if (!isValid) {
@@ -325,7 +325,7 @@ class TextSelector {
   /**
    * Check if selection is in a valid area (including input fields, textareas, etc.)
    */
-  isValidSelectionArea(selection) {
+  async isValidSelectionArea(selection) {
     if (!selection.rangeCount) return false;
 
     const range = selection.getRangeAt(0);
@@ -333,6 +333,12 @@ class TextSelector {
     const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
 
     console.log('aiFiverr: Checking selection area:', element.tagName, element.className);
+
+    // Skip if selection is within our own UI elements
+    if (element.closest('.aifiverr-floating-icon, .aifiverr-context-menu, .aifiverr-chat-container, .aifiverr-ui')) {
+      console.log('aiFiverr: Selection within aiFiverr UI, skipping');
+      return false;
+    }
 
     // Allow selections from input fields, textareas, and contenteditable elements
     // This is the main fix - we now ALLOW these instead of rejecting them
@@ -342,34 +348,81 @@ class TextSelector {
       return true;
     }
 
-    // Check if we're in a valid content area
-    // For Fiverr pages, check specific selectors
-    if (window.location.hostname.includes('fiverr.com')) {
-      const fiverrContent = element.closest('[class*="conversation"], [class*="message"], [class*="brief"], [class*="description"], [class*="content"], .inbox-view, .order-page');
-      const isValid = !!fiverrContent;
-      console.log('aiFiverr: Fiverr content check:', isValid);
-      if (isValid) return true;
+    // Get current site restriction settings
+    try {
+      const result = await chrome.storage.local.get(['settings']);
+      const settings = result.settings || {};
+      const restrictToFiverr = settings.restrictToFiverr !== false;
 
-      // Be more permissive on Fiverr - allow selection in most text areas
-      const generalContent = element.closest('div, p, span, article, section, main, td, th, li');
-      if (generalContent) {
-        console.log('aiFiverr: General content area found on Fiverr');
+      console.log('aiFiverr: Site restriction check for text selection:', {
+        restrictToFiverr,
+        currentHostname: window.location.hostname,
+        isFiverrPage: window.location.hostname.includes('fiverr.com')
+      });
+
+      // Check if we're in a valid content area
+      // For Fiverr pages, check specific selectors
+      if (window.location.hostname.includes('fiverr.com')) {
+        const fiverrContent = element.closest('[class*="conversation"], [class*="message"], [class*="brief"], [class*="description"], [class*="content"], .inbox-view, .order-page');
+        const isValid = !!fiverrContent;
+        console.log('aiFiverr: Fiverr content check:', isValid);
+        if (isValid) return true;
+
+        // Be more permissive on Fiverr - allow selection in most text areas
+        const generalContent = element.closest('div, p, span, article, section, main, td, th, li');
+        if (generalContent) {
+          console.log('aiFiverr: General content area found on Fiverr');
+          return true;
+        }
+      }
+
+      // For non-Fiverr sites, be more permissive when restrictToFiverr is disabled
+      if (!restrictToFiverr && !window.location.hostname.includes('fiverr.com')) {
+        console.log('aiFiverr: Non-Fiverr site with unrestricted mode enabled');
+
+        // Allow selection in common content areas for all websites
+        const commonContentSelectors = [
+          // Common content containers
+          'article', 'section', 'main', 'div', 'p', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          // Table content
+          'td', 'th', 'table',
+          // List content
+          'li', 'ul', 'ol',
+          // Common content classes (generic patterns)
+          '[class*="content"]', '[class*="text"]', '[class*="message"]', '[class*="post"]',
+          '[class*="article"]', '[class*="description"]', '[class*="body"]', '[class*="paragraph"]',
+          // Common semantic elements
+          'blockquote', 'pre', 'code'
+        ];
+
+        for (const selector of commonContentSelectors) {
+          if (element.matches(selector) || element.closest(selector)) {
+            console.log('aiFiverr: Valid content area found on non-Fiverr site:', selector);
+            return true;
+          }
+        }
+      }
+
+      // For test pages or other domains, allow selection in elements with specific classes
+      const testContent = element.closest('.selectable-text, .conversation, .message, .brief, .description, .content');
+      if (testContent) {
+        console.log('aiFiverr: Test content area found');
         return true;
       }
-    }
 
-    // For test pages or other domains, allow selection in elements with specific classes
-    const testContent = element.closest('.selectable-text, .conversation, .message, .brief, .description, .content');
-    if (testContent) {
-      console.log('aiFiverr: Test content area found');
-      return true;
-    }
+      // Allow selection in general content areas (paragraphs, divs, etc.)
+      const contentTags = ['P', 'DIV', 'SPAN', 'ARTICLE', 'SECTION', 'MAIN', 'TD', 'TH', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+      const isValidTag = contentTags.includes(element.tagName);
+      console.log('aiFiverr: Content tag check:', isValidTag, element.tagName);
+      return isValidTag;
 
-    // Allow selection in general content areas (paragraphs, divs, etc.)
-    const contentTags = ['P', 'DIV', 'SPAN', 'ARTICLE', 'SECTION', 'MAIN', 'TD', 'TH', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
-    const isValidTag = contentTags.includes(element.tagName);
-    console.log('aiFiverr: Content tag check:', isValidTag, element.tagName);
-    return isValidTag;
+    } catch (error) {
+      console.error('aiFiverr: Error checking site restriction settings for text selection:', error);
+      // Default to allowing selection in basic content areas
+      const contentTags = ['P', 'DIV', 'SPAN', 'ARTICLE', 'SECTION', 'MAIN', 'TD', 'TH', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+      const isValidTag = contentTags.includes(element.tagName);
+      return isValidTag;
+    }
   }
 
   /**
@@ -1031,16 +1084,20 @@ class TextSelector {
       const promptText = prompt.prompt || prompt.description || prompt.text;
       console.log('aiFiverr: Processing prompt text:', promptText.substring(0, 100) + '...');
 
-      const processedPrompt = await window.knowledgeBaseManager.processPrompt(promptKey, {
+      const result = await window.knowledgeBaseManager.processPrompt(promptKey, {
         conversation: selectedText,
         username: 'User'
       });
 
+      const processedPrompt = typeof result === 'object' ? result.prompt : result;
+      const knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
       console.log('aiFiverr: Processed prompt:', processedPrompt.substring(0, 100) + '...');
+      console.log('aiFiverr: Knowledge base files for prompt:', knowledgeBaseFiles);
 
       // Generate AI response
       console.log('aiFiverr: Generating AI response...');
-      const response = await window.geminiClient.generateChatReply(session, processedPrompt);
+      const response = await window.geminiClient.generateChatReply(session, processedPrompt, { knowledgeBaseFiles });
       console.log('aiFiverr: Got AI response:', response.response.substring(0, 100) + '...');
 
       // Show result popup near the icon (like chatbox style)

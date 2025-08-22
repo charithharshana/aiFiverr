@@ -14,10 +14,6 @@
         <img src="../icons/icon48.png" alt="aiFiverr" class="logo-icon">
         <h1>aiFiverr</h1>
       </div>
-      <div class="status-indicator" id="statusIndicator">
-        <span class="status-dot"></span>
-        <span class="status-text">Ready</span>
-      </div>
     </header>
 
     <!-- Navigation Tabs -->
@@ -221,7 +217,6 @@
               <div class="auth-info">
                 <p>Sign in with your Google account to:</p>
                 <ul>
-                  <li>Save your data to Google Sheets</li>
                   <li>Upload knowledge base files to Google Drive</li>
                   <li>Sync settings across devices</li>
                 </ul>
@@ -255,13 +250,21 @@
         <div class="settings-section">
           <h3>Knowledge Base</h3>
           <div class="knowledge-base-container">
-            <div class="kb-header">
-              <p class="kb-description">Create variables for AI responses. Use <code>{{variable_name}}</code> in prompts.</p>
-              <div class="kb-header-actions">
-                <button class="btn-secondary kb-populate-btn" id="populateFromPrompts">Auto-populate from Prompts</button>
-                <button class="btn-primary kb-add-btn" id="addKnowledgeItem">+ Add</button>
-              </div>
+            <!-- Knowledge Base Tabs -->
+            <div class="kb-tabs">
+              <button class="kb-tab-btn active" data-tab="variables">Variables</button>
+              <button class="kb-tab-btn" data-tab="files">Files</button>
             </div>
+
+            <!-- Variables Tab -->
+            <div class="kb-tab-content active" id="variablesTab">
+              <div class="kb-header">
+                <p class="kb-description">Create variables for AI responses. Use <code>{{variable_name}}</code> in prompts.</p>
+                <div class="kb-header-actions">
+                  <button class="btn-secondary kb-populate-btn" id="populateFromPrompts">Auto-populate from Prompts</button>
+                  <button class="btn-primary kb-add-btn" id="addKnowledgeItem">+ Add Variable</button>
+                </div>
+              </div>
 
             <!-- Add/Edit Form -->
             <div class="kb-form-overlay" id="knowledgeFormOverlay">
@@ -287,9 +290,85 @@
               </div>
             </div>
 
-            <!-- Variables List -->
-            <div class="kb-variables-list" id="knowledgeBaseList">
-              <!-- Variables will be populated here -->
+              <!-- Variables List -->
+              <div class="kb-variables-list" id="knowledgeBaseList">
+                <!-- Variables will be populated here -->
+              </div>
+            </div>
+
+            <!-- Files Tab -->
+            <div class="kb-tab-content" id="filesTab">
+              <div class="kb-files-header">
+                <p class="kb-files-description">Upload and manage files for your knowledge base. Files are stored in Google Drive and can be attached to prompts.</p>
+                <div class="kb-files-actions">
+                  <button class="btn-secondary" id="refreshKbFiles">🔄 Refresh</button>
+                  <button class="btn-primary" id="uploadKbFiles">📁 Upload Files</button>
+                </div>
+              </div>
+
+              <!-- File Upload Area -->
+              <div class="kb-file-upload-area" id="kbFileUploadArea" style="display: none;">
+                <div class="upload-dropzone" id="uploadDropzone">
+                  <div class="upload-icon">📁</div>
+                  <div class="upload-text">
+                    <p><strong>Drop files here or click to browse</strong></p>
+                    <p>Supports: Documents, Images, Audio, Video, Code files</p>
+                    <p>Max size: 100MB per file</p>
+                  </div>
+                  <input type="file" id="fileInput" multiple accept=".txt,.doc,.docx,.pdf,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.mp3,.mp4,.mov,.py,.js,.html,.css,.json" style="display: none;">
+                </div>
+                <div class="upload-progress" id="uploadProgress" style="display: none;">
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                  </div>
+                  <div class="progress-text" id="progressText">Uploading...</div>
+                </div>
+              </div>
+
+              <!-- File Statistics -->
+              <div class="kb-files-stats" id="kbFilesStats">
+                <div class="stat-item">
+                  <span class="stat-label">Total Files:</span>
+                  <span class="stat-value" id="totalKbFiles">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Storage Used:</span>
+                  <span class="stat-value" id="kbStorageUsed">0 MB</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Google Drive:</span>
+                  <span class="stat-value" id="driveStatus">Not Connected</span>
+                </div>
+              </div>
+
+              <!-- File Search and Filters -->
+              <div class="kb-files-search">
+                <div class="search-input-wrapper">
+                  <input type="text" id="kbFileSearch" placeholder="Search files..." class="search-input">
+                  <button class="search-btn" id="searchKbFiles">🔍</button>
+                </div>
+                <div class="file-filters">
+                  <select id="fileTypeFilter">
+                    <option value="">All Types</option>
+                    <option value="text">Documents</option>
+                    <option value="image">Images</option>
+                    <option value="audio">Audio</option>
+                    <option value="video">Video</option>
+                    <option value="application">Code/Data</option>
+                  </select>
+                  <select id="fileSortOrder">
+                    <option value="modified">Recently Modified</option>
+                    <option value="created">Recently Created</option>
+                    <option value="name">Name A-Z</option>
+                    <option value="size">File Size</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Files List -->
+              <div class="kb-files-list" id="kbFilesList">
+                <!-- Files will be populated here -->
+              </div>
             </div>
           </div>
         </div>
@@ -345,6 +424,23 @@
                 <small class="field-description">
                   Use {{variable_name}} for knowledge base variables<br>
                   Fiverr variables: {conversation}, {conversation_summary}, {conversation_count}, {conversation_last_message}, {username}
+                </small>
+              </div>
+
+              <div class="prompt-form-field">
+                <label class="field-label">
+                  Knowledge Base Files <span class="field-help" title="Select files from your knowledge base to attach to this prompt">ℹ️</span>
+                </label>
+                <div class="kb-file-selector-container">
+                  <button type="button" class="btn-secondary kb-file-selector-btn" id="selectKbFiles">
+                    📁 Select Files from Knowledge Base
+                  </button>
+                  <div class="selected-kb-files" id="selectedKbFiles">
+                    <!-- Selected files will be displayed here -->
+                  </div>
+                </div>
+                <small class="field-description">
+                  Selected files will be sent to Gemini API along with the prompt for enhanced context
                 </small>
               </div>
 
@@ -417,6 +513,109 @@
     <div class="loading-spinner">
       <div class="spinner"></div>
       <div class="loading-text">Processing...</div>
+    </div>
+  </div>
+
+  <!-- Knowledge Base File Detail Modal -->
+  <div class="kb-file-modal-overlay" id="kbFileModalOverlay" style="display: none;">
+    <div class="kb-file-modal">
+      <div class="kb-file-modal-header">
+        <div class="kb-file-modal-title">
+          <h4 id="kbFileModalTitle">File Details</h4>
+          <div class="kb-file-modal-meta" id="kbFileModalMeta"></div>
+        </div>
+        <div class="kb-file-modal-actions">
+          <button class="btn-secondary" id="downloadKbFile">📥 Download</button>
+          <button class="btn-secondary" id="copyKbFileLink">🔗 Copy Link</button>
+          <button class="btn-danger" id="deleteKbFile">🗑️ Delete</button>
+          <button class="kb-file-modal-close" id="closeKbFileModal">×</button>
+        </div>
+      </div>
+      <div class="kb-file-modal-body">
+        <div class="kb-file-info">
+          <div class="file-info-section">
+            <h5>File Information</h5>
+            <div class="file-info-grid">
+              <div class="info-item">
+                <span class="info-label">Name:</span>
+                <span class="info-value" id="fileInfoName">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Type:</span>
+                <span class="info-value" id="fileInfoType">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Size:</span>
+                <span class="info-value" id="fileInfoSize">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Created:</span>
+                <span class="info-value" id="fileInfoCreated">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Modified:</span>
+                <span class="info-value" id="fileInfoModified">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Gemini Status:</span>
+                <span class="info-value" id="fileInfoGeminiStatus">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="file-info-section">
+            <h5>Description & Tags</h5>
+            <div class="file-description-edit">
+              <textarea id="fileDescriptionEdit" placeholder="Add description..." rows="3"></textarea>
+              <div class="file-tags-edit">
+                <input type="text" id="fileTagsEdit" placeholder="Add tags (comma-separated)">
+              </div>
+              <button class="btn-primary btn-sm" id="saveFileMetadata">Save Changes</button>
+            </div>
+          </div>
+
+          <div class="file-info-section" id="filePreviewSection">
+            <h5>Preview</h5>
+            <div class="file-preview" id="filePreview">
+              <!-- File preview will be shown here -->
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="kb-file-modal-footer">
+        <div class="file-actions">
+          <button class="btn-primary" id="attachToPrompt">📎 Attach to Prompt</button>
+          <button class="btn-secondary" id="uploadToGemini">🚀 Upload to Gemini</button>
+        </div>
+        <button class="btn-secondary" id="closeKbFileModalBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Selection Modal for Prompts -->
+  <div class="file-selection-modal-overlay" id="fileSelectionModalOverlay" style="display: none;">
+    <div class="file-selection-modal">
+      <div class="file-selection-header">
+        <h4>Select Files for Prompt</h4>
+        <button class="file-selection-close" id="closeFileSelectionModal">×</button>
+      </div>
+      <div class="file-selection-body">
+        <div class="file-selection-search">
+          <input type="text" id="fileSelectionSearch" placeholder="Search files..." class="search-input">
+        </div>
+        <div class="file-selection-list" id="fileSelectionList">
+          <!-- Selectable files will be shown here -->
+        </div>
+      </div>
+      <div class="file-selection-footer">
+        <div class="selected-files-info">
+          <span id="selectedFilesCount">0 files selected</span>
+        </div>
+        <div class="file-selection-actions">
+          <button class="btn-secondary" id="clearFileSelection">Clear All</button>
+          <button class="btn-primary" id="confirmFileSelection">Attach Selected</button>
+        </div>
+      </div>
     </div>
   </div>
 

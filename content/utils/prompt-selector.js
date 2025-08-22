@@ -66,7 +66,7 @@ class PromptSelector {
 
       // If no favorites, set some defaults
       if (this.favoritePrompts.length === 0) {
-        this.favoritePrompts = ['professional_initial_reply', 'project_summary', 'follow_up_message'];
+        this.favoritePrompts = ['summary', 'follow_up', 'proposal'];
       }
 
       // Load custom prompts using fallback storage
@@ -85,51 +85,45 @@ class PromptSelector {
     } catch (error) {
       console.error('Failed to load prompts:', error);
       // Set fallbacks
-      this.favoritePrompts = ['professional_initial_reply', 'project_summary', 'follow_up_message'];
+      this.favoritePrompts = ['summary', 'follow_up', 'proposal'];
       this.allPrompts = this.getDefaultPrompts();
     }
   }
 
   /**
-   * Get default prompts (same as in popup.js)
+   * Get default prompts (delegates to prompt manager)
    */
   getDefaultPrompts() {
+    // Use centralized prompt manager if available
+    if (window.promptManager && window.promptManager.initialized) {
+      return window.promptManager.getDefaultPrompts();
+    }
+
+    // Fallback prompts if prompt manager not available
     return {
-      'professional_initial_reply': {
-        name: 'Professional Initial Reply',
-        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message'
+      'summary': {
+        name: 'Summary',
+        description: 'Summarize the conversation and extract key details like budget, timeline, and next steps'
       },
-      'project_summary': {
-        name: 'Project Summary',
-        description: 'Analyze conversation and extract key details into a structured, concise summary'
+      'follow_up': {
+        name: 'Follow-up',
+        description: 'Write a friendly and professional follow-up message based on conversation'
       },
-      'follow_up_message': {
-        name: 'Follow-up Message',
-        description: 'Draft a concise and effective follow-up message to a client based on conversation history'
+      'proposal': {
+        name: 'Proposal',
+        description: 'Create a Fiverr project proposal based on the conversation'
       },
-      'project_proposal': {
-        name: 'Project Proposal',
-        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message'
+      'translate': {
+        name: 'Translate',
+        description: 'Translate conversation into specified language'
       },
-      'translate_message': {
-        name: 'Translate Message',
-        description: 'Translate message to specified language and explain it'
+      'improve_translate': {
+        name: 'Improve & Translate',
+        description: 'Improve grammar and tone, then translate to English'
       },
-      'improve_and_translate': {
-        name: 'Improve and Translate',
-        description: 'Improve message and translate it to English'
-      },
-      'improve_message': {
-        name: 'Improve Message',
-        description: 'Improve message quality, clarity, and impact'
-      },
-      'summarize_message': {
-        name: 'Summarize Message',
-        description: 'Create a concise summary of a message highlighting key points'
-      },
-      'detailed_response': {
-        name: 'Detailed Response',
-        description: 'Generate a comprehensive, detailed response to a message or inquiry'
+      'improve': {
+        name: 'Improve',
+        description: 'Improve message grammar, clarity and professionalism'
       }
     };
   }

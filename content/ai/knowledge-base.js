@@ -8,6 +8,8 @@ class KnowledgeBaseManager {
     this.variables = new Map();
     this.customPrompts = new Map();
     this.templates = new Map();
+    this.files = new Map(); // Store file references
+    this.fileCache = new Map(); // Cache file data
     this.init();
   }
 
@@ -15,6 +17,14 @@ class KnowledgeBaseManager {
     await this.loadKnowledgeBase();
     await this.loadCustomPrompts();
     await this.loadTemplates();
+    await this.loadKnowledgeBaseFiles();
+
+    // Sync with Gemini Files API to ensure we have up-to-date geminiUri data
+    try {
+      await this.syncWithGeminiFiles();
+    } catch (error) {
+      console.warn('aiFiverr KB: Failed to sync with Gemini Files API during init:', error);
+    }
   }
 
   /**
@@ -22,9 +32,14 @@ class KnowledgeBaseManager {
    */
   async loadKnowledgeBase() {
     try {
-      const data = await storageManager.getKnowledgeBase();
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping knowledge base load');
+        return;
+      }
+
+      const data = await window.storageManager.getKnowledgeBase();
       this.variables.clear();
-      
+
       Object.entries(data).forEach(([key, value]) => {
         this.variables.set(key, value);
       });
@@ -38,9 +53,14 @@ class KnowledgeBaseManager {
    */
   async loadCustomPrompts() {
     try {
-      const result = await storageManager.get('customPrompts');
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping custom prompts load');
+        return;
+      }
+
+      const result = await window.storageManager.get('customPrompts');
       const prompts = result.customPrompts || {};
-      
+
       this.customPrompts.clear();
       Object.entries(prompts).forEach(([key, prompt]) => {
         this.customPrompts.set(key, prompt);
@@ -58,9 +78,14 @@ class KnowledgeBaseManager {
    */
   async loadTemplates() {
     try {
-      const result = await storageManager.get('templates');
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping templates load');
+        return;
+      }
+
+      const result = await window.storageManager.get('templates');
       const templates = result.templates || {};
-      
+
       this.templates.clear();
       Object.entries(templates).forEach(([key, template]) => {
         this.templates.set(key, template);
@@ -76,180 +101,18 @@ class KnowledgeBaseManager {
   }
 
   /**
-   * Add default prompts
+   * Add default prompts (deprecated - now handled by prompt manager)
    */
   addDefaultPrompts() {
-    const defaultPrompts = {
-      'professional_initial_reply': {
-        name: 'Professional Initial Reply',
-        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message',
-        prompt: `Go through this initial requirement
+    // This method is deprecated - default prompts are now managed by the centralized prompt manager
+    // Only add if prompt manager is not available (fallback)
+    if (window.promptManager && window.promptManager.initialized) {
+      console.log('aiFiverr KB: Skipping default prompts - using centralized prompt manager');
+      return;
+    }
 
-{conversation}
-
-Write an appropriate initial reply under 2500 characters using below information
-
-I am a freelancer who works on Fiverr
-
-Use my background: {{bio}}
-My services: {{services}}
-Additional info: {{custom1}}
-
-Portfolio: {{portfolio}}
-
-Rules:
-- Greet the client personally
-- Show you understand their request
-- Mention relevant experience or service
-- Add relevant portfolio links which match to clients requirement
-- Suggest next steps
-- Keep it friendly and professional
-- No markdown formatting, no explanations.`
-      },
-      'project_summary': {
-        name: 'Project Summary',
-        description: 'Analyze conversation and extract key details into a structured, concise summary',
-        prompt: `Summarize this project:
-
-{conversation}
-
-Extract all important information like Budget, Timeline, Next Steps etc..
-
-Need a well formatted reply under 3000 characters, no markdown formatting, no explanations.`
-      },
-      'follow_up_message': {
-        name: 'Follow-up Message',
-        description: 'Draft a concise and effective follow-up message to a client based on conversation history',
-        prompt: `Write a follow-up message based on this conversation:
-
-{conversation}
-
-Purpose: {{custom1}}
-My availability: {{custom2}}
-
-Make it:
-- Friendly and professional
-- Reference something specific from our conversation
-- Include clear next steps
-- Mention availability if provided
-- No markdown formatting, no explanations.`
-      },
-      'project_proposal': {
-        name: 'Project Proposal',
-        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message',
-        prompt: `Create a project proposal based on Conversation:
-
-{conversation}
-
-I am a freelancer who works on Fiverr
-
-Use my background: {{bio}}
-My services: {{services}}
-Additional info: {{custom1}}
-
-Portfolio: {{portfolio}}
-
-Structure:
-1. Personal greeting
-2. Project understanding summary
-3. Proposal details (scope, timeline, price)
-4. Why I'm the right fit
-5. Relevant portfolio examples/links
-6. Clear next steps
-
-Need a well formatted reply under 3000 characters, no markdown formatting, no explanations.`
-      },
-      'translate_message': {
-        name: 'Translate Message',
-        description: 'Translate message to specified language and explain it',
-        prompt: `Translate this message to {{language}} and explain it along with the original language:
-
-{conversation}
-
-Write a well formatted reply. Provide only the final translated text, no explanations.`
-      },
-      'improve_and_translate': {
-        name: 'Improve and Translate Message',
-        description: 'Improve message and translate it to English',
-        prompt: `Improve this message and translate it to English:
-
-{conversation}
-
-I am a freelancer who works on Fiverr, use this as a reference and add relevant information about me:
-
-Use my background: {{bio}}
-My services: {{services}}
-Additional info: {{custom1}}
-
-Portfolio: {{portfolio}}
-
-Write a well formatted reply. no explanations.`
-      },
-      'improve_message': {
-        name: 'Improve Message',
-        description: 'Improve message quality, clarity, and impact',
-        prompt: `Improve this message
-
-{conversation} - could i know the correct things here? (the text we copied from Fiverr)
-
-This is my history: {conversation}
-
-Make it:
-- Grammatically correct
-- Clear and concise
-- More {{custom1}} in tone
-- Keep the same meaning
-
-Write a well formatted reply, no explanations.`
-      },
-      'translate_message': {
-        name: 'Translate Message',
-        description: 'Translate a message to a specified language while maintaining context and tone',
-        prompt: `Translate this message to {language}: {message}
-
-Context: {conversation}
-
-Keep the same tone and meaning. Provide only the translation.`
-      },
-      'summarize_message': {
-        name: 'Summarize Message',
-        description: 'Create a concise summary of a message highlighting key points',
-        prompt: `Summarize this message: {message}
-
-Context: {conversation}
-
-Include:
-- Main points
-- Action items
-- Key details
-
-Format as bullet points. Keep it concise.`
-      },
-      'detailed_response': {
-        name: 'Detailed Response',
-        description: 'Generate a comprehensive, detailed response to a message or inquiry',
-        prompt: `Create a detailed response to: {message}
-
-Context: {conversation}
-My expertise: {{services}}
-My background: {{bio}}
-
-Make it:
-- Comprehensive and thorough
-- Professional but approachable
-- Include specific examples
-- Provide actionable next steps
-- Address all their points
-
-Use plain text formatting.`
-      }
-    };
-
-    Object.entries(defaultPrompts).forEach(([key, prompt]) => {
-      this.customPrompts.set(key, prompt);
-    });
-
-    this.saveCustomPrompts();
+    console.warn('aiFiverr KB: Prompt manager not available, using fallback default prompts');
+    // Minimal fallback - the prompt manager should handle this
   }
 
   /**
@@ -355,13 +218,65 @@ Best regards,
    */
   replaceVariables(text) {
     let result = text;
-    
+
     this.variables.forEach((value, key) => {
       const regex = new RegExp(`{{${key}}}`, 'g');
       result = result.replace(regex, value);
     });
 
     return result;
+  }
+
+  /**
+   * Replace file references in text
+   */
+  replaceFileReferences(text) {
+    let processedText = text;
+
+    // Replace file references with file information
+    this.files.forEach((fileData, key) => {
+      const regex = new RegExp(`{{file:${key}}}`, 'g');
+      const fileInfo = this.formatFileReference(fileData);
+      processedText = processedText.replace(regex, fileInfo);
+    });
+
+    return processedText;
+  }
+
+  /**
+   * Format file reference for inclusion in text
+   */
+  formatFileReference(fileData) {
+    let fileInfo = `[File: ${fileData.name}]`;
+
+    if (fileData.mimeType) {
+      fileInfo += `\nType: ${fileData.mimeType}`;
+    }
+
+    if (fileData.size) {
+      fileInfo += `\nSize: ${this.formatFileSize(fileData.size)}`;
+    }
+
+    if (fileData.geminiUri) {
+      fileInfo += `\nGemini URI: ${fileData.geminiUri}`;
+    } else if (fileData.webViewLink) {
+      fileInfo += `\nDrive Link: ${fileData.webViewLink}`;
+    }
+
+    fileInfo += '\n[End of file reference]';
+
+    return fileInfo;
+  }
+
+  /**
+   * Format file size in human readable format
+   */
+  formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   }
 
   /**
@@ -395,158 +310,66 @@ Best regards,
   }
 
   /**
-   * Get all prompts (default + custom)
+   * Get all prompts (delegates to prompt manager)
    */
   getAllPrompts() {
+    // Use centralized prompt manager if available
+    if (window.promptManager && window.promptManager.initialized) {
+      return window.promptManager.getAllPrompts();
+    }
+
+    // Fallback to local prompts
     const defaultPrompts = this.getDefaultPrompts();
     const customPrompts = Object.fromEntries(this.customPrompts);
     return { ...defaultPrompts, ...customPrompts };
   }
 
   /**
-   * Get default prompts (without saving them as custom)
+   * Get default prompts (delegates to prompt manager)
    */
   getDefaultPrompts() {
+    // Use centralized prompt manager if available
+    if (window.promptManager && window.promptManager.initialized) {
+      return window.promptManager.getDefaultPrompts();
+    }
+
+    // Fallback prompts if prompt manager not available
     return {
-      'professional_initial_reply': {
-        name: 'Professional Initial Reply',
-        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message',
-        prompt: `You are an expert freelance assistant. Your goal is to generate a professional, friendly, and concise reply to a potential client's initial message.
-
-**Analyze this context:**
-*   **Client's Message:** {conversation}
-*   **Client's Username:** {username}
-*   **My Professional Bio:** {{bio}}
-*   **My Services:** {{services}}
-*   **My Portfolio:** {{portfolio}}
-*   **Custom Information:** {{custom1}}
-
-**Generate a reply that:**
-1.  **Addresses them by name** using {username}
-2.  **Shows understanding** of their project based on {conversation}
-3.  **Demonstrates expertise** by referencing relevant experience from {{bio}}
-4.  **Highlights relevant services** from {{services}} that match their needs
-5.  **Builds credibility** with a specific example or link from {{portfolio}}
-6.  **Includes any custom context** from {{custom1}} if provided
-7.  **Ends with a clear call-to-action** (e.g., "Would you like to discuss this further?" or "I'd be happy to provide a detailed proposal")
-
-**Keep the tone:**
-- Professional yet approachable
-- Confident but not pushy
-- Personalized to their specific needs
-- Concise (aim for 3-4 short paragraphs)
-
-Use plain text only, no markdown formatting.`
+      'summary': {
+        name: 'Summary',
+        description: 'Summarize the conversation and extract key details like budget, timeline, and next steps',
+        prompt: 'Please go through the attached documents.\n\nSummarize the conversation: {conversation}\n\nExtract key details like budget, timeline, and next steps. Write a clear summary. No markdown or explanations.',
+        knowledgeBaseFiles: []
       },
-      'project_summary': {
-        name: 'Project Summary',
-        description: 'Analyze conversation and extract key details into a structured, concise summary',
-        prompt: `Analyze this Fiverr conversation and create a structured project summary: {conversation}
-
-**Extract and organize these details:**
-
-*   **Client Information:**
-    *   Username: {username}
-    *   Communication style and tone
-    *   Apparent experience level with similar projects
-
-*   **Project Overview:**
-    *   Main goal or objective
-    *   Type of work requested
-    *   Industry or niche (if mentioned)
-
-*   **Specific Requirements:**
-    *   Detailed list of what they want delivered
-    *   Technical specifications or preferences
-    *   Style, format, or quality expectations
-
-*   **Timeline & Budget:**
-    *   Mentioned deadlines or urgency level
-    *   Budget range or pricing discussions
-    *   Flexibility on timing or scope
-
-*   **Key Decisions Made:** A bulleted list of important agreements or changes confirmed.
-*   **Budget & Pricing:** Any mention of financial agreements. State "Not discussed" if absent.
-*   **Deadlines & Timeline:** Any specific dates or time frames mentioned. State "Not discussed" if absent.
-*   **Next Action Items:** What needs to be done next, and by whom.
-
-Use plain text only, no markdown formatting.`
+      'follow_up': {
+        name: 'Follow-up',
+        description: 'Write a friendly and professional follow-up message based on conversation',
+        prompt: 'Please go through the attached documents.\n\nWrite a friendly and professional follow-up message based on this conversation: {conversation}\n\nMention a specific detail we discussed and include clear next steps. No markdown or explanations.',
+        knowledgeBaseFiles: []
       },
-      'follow_up_message': {
-        name: 'Follow-up Message',
-        description: 'Draft a concise and effective follow-up message to a client based on conversation history',
-        prompt: `Write a follow-up message based on this conversation: {conversation}
-
-Purpose: {{custom1}}
-My availability: {{custom2}}
-
-Make it:
-- Friendly and professional
-- Reference something specific from our conversation
-- Include clear next steps
-- Mention availability if provided
-- No markdown formatting`
+      'proposal': {
+        name: 'Proposal',
+        description: 'Create a Fiverr project proposal based on the conversation',
+        prompt: 'Please go through the attached documents.\n\nCreate a Fiverr project proposal based on the conversation: {conversation}\n\nUse my bio: {bio}\n\nInclude a greeting, project summary, scope, price, why I\'m a good fit, and next steps. No markdown or explanations.',
+        knowledgeBaseFiles: []
       },
-      'project_proposal': {
-        name: 'Project Proposal',
-        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message',
-        prompt: `Create a project proposal for {username} based on:
-
-Conversation: {conversation}
-Proposal details: {proposal}
-My background: {{bio}}
-Portfolio: {{portfolio}}
-
-Structure:
-1. Personal greeting
-2. Project understanding summary
-3. Proposal details (scope, timeline, price)
-4. Why I'm the right fit
-5. Relevant portfolio example
-6. Clear next steps
-
-Use plain text, no markdown formatting.`
+      'translate': {
+        name: 'Translate',
+        description: 'Translate conversation into specified language',
+        prompt: 'Please go through the attached documents.\n\nTranslate this conversation: {conversation}\n\nInto this language: {language}\n\nProvide only the translated text. No explanations.',
+        knowledgeBaseFiles: []
       },
-      'translate_and_explain': {
-        name: 'Translate and Explain Message',
-        description: 'Translate text and provide a simple explanation of its content',
-        prompt: `Translate this message to {{language}} and explain it: {conversation}
-
-Format your response as:
-
-EXPLANATION:
-Main goal: [What they want]
-Key points: [Important details]
-Tone: [Formal/informal/urgent/etc]
-
-TRANSLATION:
-[Full translation in {{language}}]
-
-Use plain text only.`
+      'improve_translate': {
+        name: 'Improve & Translate',
+        description: 'Improve grammar and tone, then translate to English',
+        prompt: 'Please go through the attached documents.\n\nImprove the grammar and tone of this message: {conversation}\n\nThen, translate the improved message to English. Use my bio: {bio} to add relevant details about me as a Fiverr freelancer. No explanations.',
+        knowledgeBaseFiles: []
       },
-      'refine_and_translate': {
-        name: 'Refine and Translate My Message',
-        description: 'Refine draft message for clarity and professionalism, then translate to requested language',
-        prompt: `Improve this message and translate it to {{language}}: {conversation}
-
-Steps:
-1. Fix grammar and make it more professional
-2. Translate the improved version to {{language}}
-
-Provide only the final translated text, no explanations.`
-      },
-      'refine_message': {
-        name: 'Refine My Message (No Translation)',
-        description: 'Refine draft message to improve quality, clarity, and impact without translation',
-        prompt: `Improve this message to be {{custom1}}: {conversation}
-
-Make it:
-- Grammatically correct
-- Clear and concise
-- More {{custom1}} in tone
-- Keep the same meaning
-
-Provide only the improved message, no explanations.`
+      'improve': {
+        name: 'Improve',
+        description: 'Improve message grammar, clarity and professionalism',
+        prompt: 'Please go through the attached documents.\n\nImprove this message: {conversation}\n\nMake it grammatically correct, clear, and professional, but keep the original meaning. No explanations.',
+        knowledgeBaseFiles: []
       }
     };
   }
@@ -554,7 +377,7 @@ Provide only the improved message, no explanations.`
   /**
    * Process prompt with variables and context
    */
-  processPrompt(promptKey, context = {}) {
+  async processPrompt(promptKey, context = {}) {
     // First try to get from custom prompts
     let prompt = this.getCustomPrompt(promptKey);
 
@@ -579,7 +402,14 @@ Provide only the improved message, no explanations.`
       processedPrompt = processedPrompt.replace(regex, value);
     });
 
-    return processedPrompt;
+    // Resolve knowledge base files to full file data
+    const resolvedFiles = await this.resolveKnowledgeBaseFiles(prompt.knowledgeBaseFiles || []);
+
+    // Return both processed prompt and knowledge base files
+    return {
+      prompt: processedPrompt,
+      knowledgeBaseFiles: resolvedFiles
+    };
   }
 
   /**
@@ -613,7 +443,209 @@ Provide only the improved message, no explanations.`
   }
 
   /**
-   * Process template with variables
+   * Load knowledge base files from storage
+   */
+  async loadKnowledgeBaseFiles() {
+    try {
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping knowledge base files load');
+        return;
+      }
+
+      const result = await window.storageManager.get('knowledgeBaseFiles');
+      const files = result.knowledgeBaseFiles || {};
+
+      this.files.clear();
+      Object.entries(files).forEach(([key, fileData]) => {
+        this.files.set(key, fileData);
+      });
+
+      console.log('aiFiverr KB: Loaded', this.files.size, 'file references');
+    } catch (error) {
+      console.error('Failed to load knowledge base files:', error);
+    }
+  }
+
+  /**
+   * Save knowledge base files to storage
+   */
+  async saveKnowledgeBaseFiles() {
+    try {
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping knowledge base files save');
+        return;
+      }
+
+      const filesObject = Object.fromEntries(this.files);
+      await window.storageManager.set('knowledgeBaseFiles', filesObject);
+    } catch (error) {
+      console.error('Failed to save knowledge base files:', error);
+    }
+  }
+
+  /**
+   * Add file reference to knowledge base
+   */
+  async addFileReference(key, fileData) {
+    this.files.set(key, {
+      ...fileData,
+      addedAt: new Date().toISOString(),
+      type: 'file'
+    });
+    await this.saveKnowledgeBaseFiles();
+  }
+
+  /**
+   * Remove file reference from knowledge base
+   */
+  async removeFileReference(key) {
+    this.files.delete(key);
+    this.fileCache.delete(key);
+    await this.saveKnowledgeBaseFiles();
+  }
+
+  /**
+   * Get file reference
+   */
+  getFileReference(key) {
+    return this.files.get(key);
+  }
+
+  /**
+   * Get all file references
+   */
+  getAllFileReferences() {
+    return Object.fromEntries(this.files);
+  }
+
+  /**
+   * Sync with Google Drive files
+   */
+  async syncWithGoogleDrive() {
+    try {
+      if (!window.googleDriveClient) {
+        console.warn('aiFiverr KB: Google Drive client not available');
+        return;
+      }
+
+      const driveFiles = await window.googleDriveClient.listKnowledgeBaseFiles();
+
+      // Update file references with latest Drive data
+      for (const driveFile of driveFiles) {
+        const existingRef = Array.from(this.files.entries())
+          .find(([key, data]) => data.driveId === driveFile.id);
+
+        if (existingRef) {
+          const [key, data] = existingRef;
+          this.files.set(key, {
+            ...data,
+            ...driveFile,
+            lastSynced: new Date().toISOString()
+          });
+        } else {
+          // Add new file reference
+          const key = this.generateFileKey(driveFile.name);
+          await this.addFileReference(key, {
+            driveId: driveFile.id,
+            name: driveFile.name,
+            mimeType: driveFile.mimeType,
+            size: driveFile.size,
+            webViewLink: driveFile.webViewLink,
+            lastSynced: new Date().toISOString()
+          });
+        }
+      }
+
+      await this.saveKnowledgeBaseFiles();
+      console.log('aiFiverr KB: Synced with Google Drive');
+
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to sync with Google Drive:', error);
+    }
+  }
+
+  /**
+   * Sync with Gemini Files API
+   */
+  async syncWithGeminiFiles() {
+    try {
+      // Get Gemini files from background script
+      const geminiFilesResult = await this.getGeminiFilesFromBackground();
+
+      if (!geminiFilesResult.success || !geminiFilesResult.data) {
+        console.warn('aiFiverr KB: Failed to get Gemini files:', geminiFilesResult.error);
+        return;
+      }
+
+      const geminiFiles = geminiFilesResult.data;
+      console.log('aiFiverr KB: Syncing with', geminiFiles.length, 'Gemini files');
+
+      // Update file references with Gemini data
+      let updatedCount = 0;
+      for (const geminiFile of geminiFiles) {
+        const existingRef = Array.from(this.files.entries())
+          .find(([key, data]) => data.name === geminiFile.displayName);
+
+        if (existingRef) {
+          const [key, data] = existingRef;
+          this.files.set(key, {
+            ...data,
+            geminiName: geminiFile.name,
+            geminiUri: geminiFile.uri,
+            geminiState: geminiFile.state,
+            geminiLastSynced: new Date().toISOString()
+          });
+          updatedCount++;
+        }
+      }
+
+      // Save updated file references
+      if (updatedCount > 0) {
+        await this.saveKnowledgeBaseFiles();
+        console.log('aiFiverr KB: Updated', updatedCount, 'file references with Gemini data');
+      }
+    } catch (error) {
+      console.error('aiFiverr KB: Failed to sync with Gemini Files API:', error);
+    }
+  }
+
+  /**
+   * Get Gemini files from background script
+   */
+  async getGeminiFilesFromBackground() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: 'GET_GEMINI_FILES' }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      });
+    });
+  }
+
+  /**
+   * Generate unique key for file
+   */
+  generateFileKey(fileName) {
+    const baseName = fileName.toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+
+    let key = baseName;
+    let counter = 1;
+
+    while (this.files.has(key) || this.variables.has(key)) {
+      key = `${baseName}_${counter}`;
+      counter++;
+    }
+
+    return key;
+  }
+
+  /**
+   * Process template with variables and files
    */
   processTemplate(templateKey, variables = {}) {
     const template = this.getTemplate(templateKey);
@@ -625,6 +657,9 @@ Provide only the improved message, no explanations.`
 
     // Replace knowledge base variables
     processedContent = this.replaceVariables(processedContent);
+
+    // Replace file references
+    processedContent = this.replaceFileReferences(processedContent);
 
     // Replace additional variables
     Object.entries(variables).forEach(([key, value]) => {
@@ -640,8 +675,13 @@ Provide only the improved message, no explanations.`
    */
   async saveKnowledgeBase() {
     try {
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping knowledge base save');
+        return;
+      }
+
       const data = Object.fromEntries(this.variables);
-      await storageManager.saveKnowledgeBase(data);
+      await window.storageManager.saveKnowledgeBase(data);
     } catch (error) {
       console.error('Failed to save knowledge base:', error);
     }
@@ -652,8 +692,13 @@ Provide only the improved message, no explanations.`
    */
   async saveCustomPrompts() {
     try {
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping custom prompts save');
+        return;
+      }
+
       const data = Object.fromEntries(this.customPrompts);
-      await storageManager.set({ customPrompts: data });
+      await window.storageManager.set({ customPrompts: data });
     } catch (error) {
       console.error('Failed to save custom prompts:', error);
     }
@@ -664,8 +709,13 @@ Provide only the improved message, no explanations.`
    */
   async saveTemplates() {
     try {
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping templates save');
+        return;
+      }
+
       const data = Object.fromEntries(this.templates);
-      await storageManager.set({ templates: data });
+      await window.storageManager.set({ templates: data });
     } catch (error) {
       console.error('Failed to save templates:', error);
     }
@@ -752,6 +802,75 @@ Provide only the improved message, no explanations.`
   }
 
   /**
+   * Resolve knowledge base file IDs to full file data
+   */
+  async resolveKnowledgeBaseFiles(fileReferences) {
+    if (!fileReferences || fileReferences.length === 0) {
+      return [];
+    }
+
+    const resolvedFiles = [];
+
+    for (const fileRef of fileReferences) {
+      try {
+        // If it's already a full file object with geminiUri, use it as is
+        if (fileRef.geminiUri) {
+          resolvedFiles.push({
+            id: fileRef.id || fileRef.driveFileId,
+            name: fileRef.name,
+            mimeType: fileRef.mimeType,
+            geminiUri: fileRef.geminiUri,
+            size: fileRef.size
+          });
+          continue;
+        }
+
+        // Try to find the file in our knowledge base by ID or name
+        let fullFileData = null;
+
+        // First try by ID (could be driveFileId or regular id)
+        if (fileRef.id) {
+          fullFileData = this.getFileReference(fileRef.id);
+        }
+        if (!fullFileData && fileRef.driveFileId) {
+          fullFileData = this.getFileReference(fileRef.driveFileId);
+        }
+
+        // If not found by ID, try by name
+        if (!fullFileData && fileRef.name) {
+          const allFiles = this.getAllFileReferences();
+          fullFileData = Object.values(allFiles).find(file => file.name === fileRef.name);
+        }
+
+        // If we found the full file data and it has geminiUri, add it
+        if (fullFileData && fullFileData.geminiUri) {
+          resolvedFiles.push({
+            id: fileRef.id || fileRef.driveFileId || fullFileData.driveFileId,
+            name: fullFileData.name,
+            mimeType: fullFileData.mimeType,
+            geminiUri: fullFileData.geminiUri,
+            size: fullFileData.size
+          });
+        } else if (fullFileData) {
+          // File exists but no geminiUri - try to upload to Gemini if possible
+          console.warn('aiFiverr KB: File found but not uploaded to Gemini, attempting upload:', fileRef.name);
+
+          // For now, we'll skip files without geminiUri but log the issue
+          // In the future, we could implement automatic upload here
+          console.warn('aiFiverr KB: Skipping file without Gemini URI:', fileRef.name);
+        } else {
+          console.warn('aiFiverr KB: Could not resolve file reference:', fileRef);
+        }
+      } catch (error) {
+        console.error('aiFiverr KB: Error resolving file:', fileRef, error);
+      }
+    }
+
+    console.log('aiFiverr KB: Resolved', resolvedFiles.length, 'files for API request');
+    return resolvedFiles;
+  }
+
+  /**
    * Process prompt with automatic context extraction from Fiverr page
    */
   async processPromptWithFiverrContext(promptKey, additionalContext = {}) {
@@ -766,7 +885,16 @@ Provide only the improved message, no explanations.`
       const fullContext = { ...context, ...additionalContext };
 
       // Process the prompt
-      return this.processPrompt(promptKey, fullContext);
+      const result = this.processPrompt(promptKey, fullContext);
+
+      // Return the processed prompt text for backward compatibility
+      // but also include the knowledge base files
+      if (typeof result === 'object' && result.prompt) {
+        return result;
+      } else {
+        // Fallback for old format
+        return { prompt: result, knowledgeBaseFiles: [] };
+      }
     } catch (error) {
       console.error('Failed to process prompt with Fiverr context:', error);
       throw error;
@@ -984,9 +1112,14 @@ Provide only the improved message, no explanations.`
 
   async addFileReference(fileId, fileInfo) {
     try {
-      const fileReferences = await storageManager.get('knowledgeBaseFiles') || {};
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping add file reference');
+        return;
+      }
+
+      const fileReferences = await window.storageManager.get('knowledgeBaseFiles') || {};
       fileReferences[fileId] = fileInfo;
-      await storageManager.set({ knowledgeBaseFiles: fileReferences });
+      await window.storageManager.set({ knowledgeBaseFiles: fileReferences });
     } catch (error) {
       console.error('aiFiverr KB: Failed to add file reference:', error);
     }
@@ -994,10 +1127,15 @@ Provide only the improved message, no explanations.`
 
   async removeFileReference(fileId) {
     try {
-      const result = await storageManager.get('knowledgeBaseFiles');
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, skipping remove file reference');
+        return;
+      }
+
+      const result = await window.storageManager.get('knowledgeBaseFiles');
       const fileReferences = result.knowledgeBaseFiles || {};
       delete fileReferences[fileId];
-      await storageManager.set({ knowledgeBaseFiles: fileReferences });
+      await window.storageManager.set({ knowledgeBaseFiles: fileReferences });
     } catch (error) {
       console.error('aiFiverr KB: Failed to remove file reference:', error);
     }
@@ -1005,7 +1143,12 @@ Provide only the improved message, no explanations.`
 
   async getFileReferences() {
     try {
-      const result = await storageManager.get('knowledgeBaseFiles');
+      if (!window.storageManager) {
+        console.warn('aiFiverr KB: Storage manager not available, returning empty file references');
+        return {};
+      }
+
+      const result = await window.storageManager.get('knowledgeBaseFiles');
       return result.knowledgeBaseFiles || {};
     } catch (error) {
       console.error('aiFiverr KB: Failed to get file references:', error);
@@ -1059,6 +1202,86 @@ Provide only the improved message, no explanations.`
       console.error('aiFiverr KB: Failed to sync with Google Drive:', error);
       return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Get file content for processing (cached)
+   */
+  async getFileContent(key) {
+    if (this.fileCache.has(key)) {
+      return this.fileCache.get(key);
+    }
+
+    const fileRef = this.files.get(key);
+    if (!fileRef) {
+      throw new Error(`File reference '${key}' not found`);
+    }
+
+    try {
+      let content = null;
+
+      // Try to get content from Gemini first (if available)
+      if (fileRef.geminiUri && window.geminiFilesClient) {
+        // Gemini Files API doesn't provide direct content access
+        // Content is handled by the API during generation
+        content = `[Gemini File: ${fileRef.name}]`;
+      } else if (fileRef.webViewLink && window.googleDriveClient) {
+        // For text files, try to get content from Drive
+        if (fileRef.mimeType && fileRef.mimeType.startsWith('text/')) {
+          content = await this.fetchDriveFileContent(fileRef);
+        } else {
+          content = `[Binary File: ${fileRef.name}]`;
+        }
+      }
+
+      if (content) {
+        this.fileCache.set(key, content);
+      }
+
+      return content;
+
+    } catch (error) {
+      console.error(`Failed to get content for file '${key}':`, error);
+      return `[Error loading file: ${fileRef.name}]`;
+    }
+  }
+
+  /**
+   * Fetch file content from Google Drive
+   */
+  async fetchDriveFileContent(fileRef) {
+    try {
+      const response = await fetch(fileRef.webViewLink);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.text();
+    } catch (error) {
+      console.error('Failed to fetch Drive file content:', error);
+      return `[Unable to load content from: ${fileRef.name}]`;
+    }
+  }
+
+  /**
+   * Clear file cache
+   */
+  clearFileCache() {
+    this.fileCache.clear();
+  }
+
+  /**
+   * Get combined knowledge base data (variables + files)
+   */
+  getAllKnowledgeBaseData() {
+    return {
+      variables: Object.fromEntries(this.variables),
+      files: Object.fromEntries(this.files),
+      stats: {
+        variableCount: this.variables.size,
+        fileCount: this.files.size,
+        cacheSize: this.fileCache.size
+      }
+    };
   }
 }
 

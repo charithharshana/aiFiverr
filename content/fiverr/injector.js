@@ -548,51 +548,50 @@ class FiverrInjector {
    * Get default prompts
    */
   getDefaultPrompts() {
-    // Use knowledge base manager if available
+    // Use centralized prompt manager if available
+    if (window.promptManager && window.promptManager.initialized) {
+      return window.promptManager.getAllPrompts();
+    }
+
+    // Use knowledge base manager as fallback
     if (window.knowledgeBaseManager) {
-      // Get ALL prompts (default + custom) instead of just custom prompts
       const allPrompts = window.knowledgeBaseManager.getAllPrompts();
       if (Object.keys(allPrompts).length > 0) {
         return allPrompts;
       }
     }
 
-    // Fallback default prompts (should include all default prompts)
+    // Final fallback prompts
     return {
-      'professional_initial_reply': {
-        name: 'Professional Initial Reply',
-        title: 'Professional Initial Reply',
-        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message'
+      'summary': {
+        name: 'Summary',
+        title: 'Summary',
+        description: 'Summarize the conversation and extract key details like budget, timeline, and next steps'
       },
-      'project_summary': {
-        name: 'Project Summary',
-        title: 'Project Summary',
-        description: 'Analyze conversation and extract key details into a structured, concise summary'
+      'follow_up': {
+        name: 'Follow-up',
+        title: 'Follow-up',
+        description: 'Write a friendly and professional follow-up message based on conversation'
       },
-      'follow_up_message': {
-        name: 'Follow-up Message',
-        title: 'Follow-up Message',
-        description: 'Draft a concise and effective follow-up message to a client based on conversation history'
+      'proposal': {
+        name: 'Proposal',
+        title: 'Proposal',
+        description: 'Create a Fiverr project proposal based on the conversation'
       },
-      'project_proposal': {
-        name: 'Project Proposal',
-        title: 'Project Proposal',
-        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message'
+      'translate': {
+        name: 'Translate',
+        title: 'Translate',
+        description: 'Translate conversation into specified language'
       },
-      'translate_and_explain': {
-        name: 'Translate and Explain Message',
-        title: 'Translate and Explain Message',
-        description: 'Translate text and provide a simple explanation of its content'
+      'improve_translate': {
+        name: 'Improve & Translate',
+        title: 'Improve & Translate',
+        description: 'Improve grammar and tone, then translate to English'
       },
-      'refine_and_translate': {
-        name: 'Refine and Translate My Message',
-        title: 'Refine and Translate My Message',
-        description: 'Refine draft message for clarity and professionalism, then translate to requested language'
-      },
-      'refine_message': {
-        name: 'Refine My Message (No Translation)',
-        title: 'Refine My Message (No Translation)',
-        description: 'Refine draft message to improve quality, clarity, and impact without translation'
+      'improve': {
+        name: 'Improve',
+        title: 'Improve',
+        description: 'Improve message grammar, clarity and professionalism'
       }
     };
   }
@@ -1043,8 +1042,11 @@ class FiverrInjector {
       };
 
       // Process translate prompt
-      const prompt = await knowledgeBaseManager.processPrompt('translate_message', contextVars);
-      const response = await geminiClient.generateContent(prompt);
+      const result = await knowledgeBaseManager.processPrompt('translate_message', contextVars);
+      const prompt = typeof result === 'object' ? result.prompt : result;
+      const knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
+      const response = await geminiClient.generateContent(prompt, { knowledgeBaseFiles });
 
       removeTooltip();
       return {
@@ -1350,8 +1352,11 @@ class FiverrInjector {
 
       // Use knowledge base manager to process the selected prompt
       let prompt;
+      let knowledgeBaseFiles = [];
       try {
-        prompt = await knowledgeBaseManager.processPrompt(selectedPromptKey, contextVars);
+        const result = await knowledgeBaseManager.processPrompt(selectedPromptKey, contextVars);
+        prompt = typeof result === 'object' ? result.prompt : result;
+        knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
       } catch (error) {
         console.warn(`Prompt '${selectedPromptKey}' not found, using fallback:`, error);
         // Fallback to basic prompt if the structured prompt is not available
@@ -1362,7 +1367,7 @@ class FiverrInjector {
         prompt += '\n\nPlease generate an appropriate, professional response that addresses the conversation context.';
       }
 
-      const response = await geminiClient.generateChatReply(session, prompt);
+      const response = await geminiClient.generateChatReply(session, prompt, { knowledgeBaseFiles });
       return removeMarkdownFormatting(response.response);
     } catch (error) {
       console.error('AI reply generation failed:', error);
@@ -1395,8 +1400,11 @@ class FiverrInjector {
 
       // Use knowledge base manager to process the project proposal prompt
       let prompt;
+      let knowledgeBaseFiles = [];
       try {
-        prompt = await knowledgeBaseManager.processPrompt('project_proposal', contextVars);
+        const result = await knowledgeBaseManager.processPrompt('project_proposal', contextVars);
+        prompt = typeof result === 'object' ? result.prompt : result;
+        knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
       } catch (error) {
         console.warn('Project proposal prompt not found, using fallback:', error);
         // Fallback to gemini client's proposal generation
@@ -1405,7 +1413,7 @@ class FiverrInjector {
       }
 
       // Generate proposal using the processed prompt
-      const response = await geminiClient.generateContent(prompt);
+      const response = await geminiClient.generateContent(prompt, { knowledgeBaseFiles });
       return removeMarkdownFormatting(response.text);
     } catch (error) {
       console.error('AI proposal generation failed:', error);

@@ -104,20 +104,70 @@ class GoogleDriveClient {
   }
 
   /**
-   * Upload file to Google Drive
+   * Validate file for knowledge base upload
    */
-  async uploadFile(file, fileName, description = '') {
+  validateKnowledgeBaseFile(file) {
+    const maxSize = 100 * 1024 * 1024; // 100MB limit for Drive storage
+    const allowedTypes = [
+      // Documents & Text
+      'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/pdf', 'application/rtf',
+
+      // Spreadsheets & Data
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv', 'text/tab-separated-values',
+
+      // Code files
+      'text/x-c', 'text/x-c++src', 'text/x-java-source', 'text/x-python', 'application/x-php',
+      'text/html', 'text/javascript', 'application/json', 'text/xml', 'text/css',
+
+      // Images
+      'image/jpeg', 'image/png', 'image/bmp', 'image/gif', 'image/svg+xml', 'image/tiff', 'image/webp',
+
+      // Video
+      'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/3gpp',
+      'video/x-flv', 'video/x-ms-wmv', 'video/ogg',
+
+      // Audio
+      'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/opus', 'audio/flac', 'audio/aac'
+    ];
+
+    if (file.size > maxSize) {
+      throw new Error(`File size exceeds 100MB limit. Current size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error(`Unsupported file type: ${file.type}. Please use supported formats for knowledge base files.`);
+    }
+
+    return true;
+  }
+
+  /**
+   * Upload file to Google Drive with enhanced metadata
+   */
+  async uploadFile(file, fileName, description = '', tags = []) {
     try {
       console.log('aiFiverr Drive: Uploading file:', fileName);
+
+      // Validate file
+      this.validateKnowledgeBaseFile(file);
 
       // Ensure aiFiverr folder exists
       const folderId = await this.ensureAiFiverrFolder();
 
-      // Prepare metadata
+      // Enhanced metadata with knowledge base specific properties
       const metadata = {
         name: fileName,
         description: description || `aiFiverr Knowledge Base file uploaded on ${new Date().toISOString()}`,
-        parents: [folderId]
+        parents: [folderId],
+        properties: {
+          'aiFiverr_type': 'knowledge_base',
+          'aiFiverr_upload_date': new Date().toISOString(),
+          'aiFiverr_file_size': file.size.toString(),
+          'aiFiverr_mime_type': file.type,
+          'aiFiverr_tags': tags.join(',')
+        }
       };
 
       // Create form data for multipart upload
@@ -185,6 +235,27 @@ class GoogleDriveClient {
     } catch (error) {
       console.error('aiFiverr Drive: Failed to list files:', error);
       return [];
+    }
+  }
+
+  /**
+   * Get detailed file information
+   */
+  async getFileDetails(fileId) {
+    try {
+      const response = await this.makeRequest(`/files/${fileId}?fields=id,name,size,mimeType,createdTime,modifiedTime,webViewLink,description,properties`);
+
+      // Add additional metadata
+      return {
+        ...response,
+        tags: response.properties?.aiFiverr_tags ? response.properties.aiFiverr_tags.split(',') : [],
+        geminiStatus: 'not_uploaded', // Default status
+        geminiUri: null
+      };
+
+    } catch (error) {
+      console.error('aiFiverr Drive: Get file details failed:', error);
+      throw error;
     }
   }
 
@@ -307,21 +378,161 @@ class GoogleDriveClient {
   }
 
   /**
-   * Search files by name or content
+   * Search files by name or content with enhanced filtering
    */
-  async searchFiles(query) {
+  async searchFiles(query, filters = {}) {
     try {
       const folderId = await this.ensureAiFiverrFolder();
-      
-      const searchQuery = `parents in '${folderId}' and trashed=false and (name contains '${query}' or fullText contains '${query}')`;
-      
-      const response = await this.makeRequest(`/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name,size,mimeType,createdTime,modifiedTime,webViewLink,description)`);
+
+      let searchQuery = `parents in '${folderId}' and trashed=false`;
+
+      if (query) {
+        searchQuery += ` and (name contains '${query}' or fullText contains '${query}')`;
+      }
+
+      // Add file type filter
+      if (filters.mimeType) {
+        searchQuery += ` and mimeType='${filters.mimeType}'`;
+      }
+
+      // Add date range filter
+      if (filters.createdAfter) {
+        searchQuery += ` and createdTime > '${filters.createdAfter}'`;
+      }
+
+      if (filters.createdBefore) {
+        searchQuery += ` and createdTime < '${filters.createdBefore}'`;
+      }
+
+      const response = await this.makeRequest(`/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name,size,mimeType,createdTime,modifiedTime,webViewLink,description,properties)&orderBy=modifiedTime desc`);
 
       return response.files || [];
 
     } catch (error) {
       console.error('aiFiverr Drive: Search failed:', error);
       return [];
+    }
+  }
+
+  /**
+   * Batch upload multiple files
+   */
+  async batchUploadFiles(files, progressCallback = null) {
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < files.length; i++) {
+      try {
+        if (progressCallback) {
+          progressCallback(i, files.length, files[i].name);
+        }
+
+        const result = await this.uploadFile(files[i], files[i].name);
+        results.push(result);
+
+      } catch (error) {
+        console.error(`aiFiverr Drive: Failed to upload ${files[i].name}:`, error);
+        errors.push({ file: files[i].name, error: error.message });
+      }
+    }
+
+    if (progressCallback) {
+      progressCallback(files.length, files.length, 'Complete');
+    }
+
+    return { results, errors };
+  }
+
+  /**
+   * Batch delete multiple files
+   */
+  async batchDeleteFiles(fileIds, progressCallback = null) {
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < fileIds.length; i++) {
+      try {
+        if (progressCallback) {
+          progressCallback(i, fileIds.length, fileIds[i]);
+        }
+
+        await this.deleteFile(fileIds[i]);
+        results.push(fileIds[i]);
+
+      } catch (error) {
+        console.error(`aiFiverr Drive: Failed to delete ${fileIds[i]}:`, error);
+        errors.push({ fileId: fileIds[i], error: error.message });
+      }
+    }
+
+    if (progressCallback) {
+      progressCallback(fileIds.length, fileIds.length, 'Complete');
+    }
+
+    return { results, errors };
+  }
+
+  /**
+   * Update file metadata
+   */
+  async updateFileMetadata(fileId, metadata) {
+    try {
+      const token = await this.getAccessToken();
+
+      const response = await fetch(`${this.baseUrl}/files/${fileId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(metadata)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Update metadata failed: ${response.status} - ${errorData.error?.message || response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('aiFiverr Drive: File metadata updated:', fileId);
+      return result;
+
+    } catch (error) {
+      console.error('aiFiverr Drive: Update metadata failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get file statistics for knowledge base
+   */
+  async getKnowledgeBaseStats() {
+    try {
+      const files = await this.listKnowledgeBaseFiles();
+
+      const stats = {
+        totalFiles: files.length,
+        totalSize: files.reduce((sum, file) => sum + (file.size || 0), 0),
+        fileTypes: {},
+        recentFiles: files.slice(0, 5)
+      };
+
+      // Count file types
+      files.forEach(file => {
+        const type = file.mimeType || 'unknown';
+        stats.fileTypes[type] = (stats.fileTypes[type] || 0) + 1;
+      });
+
+      return stats;
+
+    } catch (error) {
+      console.error('aiFiverr Drive: Failed to get stats:', error);
+      return {
+        totalFiles: 0,
+        totalSize: 0,
+        fileTypes: {},
+        recentFiles: []
+      };
     }
   }
 

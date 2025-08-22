@@ -270,9 +270,36 @@ class GeminiClient {
 
     // Handle different prompt types
     if (typeof prompt === 'string') {
+      const parts = [{ text: prompt }];
+
+      // Add knowledge base files if provided
+      if (options.knowledgeBaseFiles && options.knowledgeBaseFiles.length > 0) {
+        console.log('aiFiverr Gemini: Processing knowledge base files:', options.knowledgeBaseFiles);
+
+        let filesAdded = 0;
+        options.knowledgeBaseFiles.forEach(file => {
+          if (file.geminiUri) {
+            parts.push({
+              fileData: {
+                mimeType: file.mimeType || 'application/octet-stream',
+                fileUri: file.geminiUri
+              }
+            });
+            filesAdded++;
+            console.log('aiFiverr Gemini: Added file to request:', file.name, file.geminiUri);
+          } else {
+            console.warn('aiFiverr Gemini: Skipping file without geminiUri:', file.name);
+          }
+        });
+
+        console.log('aiFiverr Gemini: Added', filesAdded, 'files to API request');
+      } else {
+        console.log('aiFiverr Gemini: No knowledge base files provided');
+      }
+
       body.contents.push({
         role: 'user',
-        parts: [{ text: prompt }]
+        parts: parts
       });
     } else if (Array.isArray(prompt)) {
       // Conversation history

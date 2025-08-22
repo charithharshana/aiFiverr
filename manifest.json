@@ -8,14 +8,15 @@
     "storage",
     "scripting",
     "tabs",
-    "background",
     "identity"
   ],
   "host_permissions": [
     "https://www.fiverr.com/*",
     "https://generativelanguage.googleapis.com/*",
     "https://www.googleapis.com/*",
-    "https://accounts.google.com/*"
+    "https://accounts.google.com/*",
+    "http://*/*",
+    "https://*/*"
   ],
   "oauth2": {
     "client_id": "739505516931-1n14m09895iii7n0q6fk9p4sadm5viln.apps.googleusercontent.com",
@@ -63,6 +64,8 @@
         "content/ai/session.js",
         "content/ai/api-manager.js",
         "content/ai/gemini-client.js",
+        "content/ai/gemini-files-client.js",
+        "content/ai/prompt-manager.js",
         "content/ai/knowledge-base.js",
         "content/ai/universal-chat-simple.js",
         "content/main.js"
@@ -76,6 +79,8 @@
       "resources": [
         "content/styles/*",
         "content/utils/*",
+        "content/ai/*",
+        "docs/*",
         "icons/*",
         "popup/*"
       ],
