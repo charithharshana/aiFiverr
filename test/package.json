@@ -1,0 +1,23 @@
+{
+  "name": "gemini-proposal-tester",
+  "version": "1.0.0",
+  "description": "Testing module for Gemini API with file upload and proposal generation",
+  "main": "proposal-generator.js",
+  "scripts": {
+    "test": "node google-drive-workflow-test.js",
+    "start": "node google-drive-workflow-test.js",
+    "clean": "node cleanup.js"
+  },
+  "keywords": [
+    "gemini",
+    "api",
+    "proposal",
+    "generator",
+    "test"
+  ],
+  "author": "aiFiverr Extension",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

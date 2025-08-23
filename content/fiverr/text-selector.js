@@ -175,8 +175,8 @@ class TextSelector {
       return;
     }
 
-    // Check if selection is within Fiverr content areas
-    const isValid = this.isValidSelectionArea(selection);
+    // Check if selection is within valid content areas
+    const isValid = await this.isValidSelectionArea(selection);
     console.log('aiFiverr: Selection area valid:', isValid);
 
     if (!isValid) {
@@ -212,7 +212,10 @@ class TextSelector {
    * Get selection rectangle - handles both regular text and input fields
    */
   getSelectionRect(selection) {
-    if (!selection.rangeCount) return null;
+    if (!selection.rangeCount) {
+      console.log('aiFiverr: No selection range found');
+      return null;
+    }
 
     const range = selection.getRangeAt(0);
 
@@ -220,9 +223,19 @@ class TextSelector {
     // This works for most cases including contentEditable elements
     let rect = range.getBoundingClientRect();
 
+    console.log('aiFiverr: Range getBoundingClientRect:', rect);
+
     // If the rect has valid dimensions, use it
     if (rect.width > 0 && rect.height > 0) {
-      return rect;
+      // Ensure we have all required properties
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      };
     }
 
     // Fallback for input/textarea elements where range.getBoundingClientRect() might not work
@@ -325,7 +338,7 @@ class TextSelector {
   /**
    * Check if selection is in a valid area (including input fields, textareas, etc.)
    */
-  isValidSelectionArea(selection) {
+  async isValidSelectionArea(selection) {
     if (!selection.rangeCount) return false;
 
     const range = selection.getRangeAt(0);
@@ -333,6 +346,12 @@ class TextSelector {
     const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
 
     console.log('aiFiverr: Checking selection area:', element.tagName, element.className);
+
+    // Skip if selection is within our own UI elements
+    if (element.closest('.aifiverr-floating-icon, .aifiverr-context-menu, .aifiverr-chat-container, .aifiverr-ui')) {
+      console.log('aiFiverr: Selection within aiFiverr UI, skipping');
+      return false;
+    }
 
     // Allow selections from input fields, textareas, and contenteditable elements
     // This is the main fix - we now ALLOW these instead of rejecting them
@@ -342,34 +361,81 @@ class TextSelector {
       return true;
     }
 
-    // Check if we're in a valid content area
-    // For Fiverr pages, check specific selectors
-    if (window.location.hostname.includes('fiverr.com')) {
-      const fiverrContent = element.closest('[class*="conversation"], [class*="message"], [class*="brief"], [class*="description"], [class*="content"], .inbox-view, .order-page');
-      const isValid = !!fiverrContent;
-      console.log('aiFiverr: Fiverr content check:', isValid);
-      if (isValid) return true;
+    // Get current site restriction settings
+    try {
+      const result = await chrome.storage.local.get(['settings']);
+      const settings = result.settings || {};
+      const restrictToFiverr = settings.restrictToFiverr !== false;
 
-      // Be more permissive on Fiverr - allow selection in most text areas
-      const generalContent = element.closest('div, p, span, article, section, main, td, th, li');
-      if (generalContent) {
-        console.log('aiFiverr: General content area found on Fiverr');
+      console.log('aiFiverr: Site restriction check for text selection:', {
+        restrictToFiverr,
+        currentHostname: window.location.hostname,
+        isFiverrPage: window.location.hostname.includes('fiverr.com')
+      });
+
+      // Check if we're in a valid content area
+      // For Fiverr pages, check specific selectors
+      if (window.location.hostname.includes('fiverr.com')) {
+        const fiverrContent = element.closest('[class*="conversation"], [class*="message"], [class*="brief"], [class*="description"], [class*="content"], .inbox-view, .order-page');
+        const isValid = !!fiverrContent;
+        console.log('aiFiverr: Fiverr content check:', isValid);
+        if (isValid) return true;
+
+        // Be more permissive on Fiverr - allow selection in most text areas
+        const generalContent = element.closest('div, p, span, article, section, main, td, th, li');
+        if (generalContent) {
+          console.log('aiFiverr: General content area found on Fiverr');
+          return true;
+        }
+      }
+
+      // For non-Fiverr sites, be more permissive when restrictToFiverr is disabled
+      if (!restrictToFiverr && !window.location.hostname.includes('fiverr.com')) {
+        console.log('aiFiverr: Non-Fiverr site with unrestricted mode enabled');
+
+        // Allow selection in common content areas for all websites
+        const commonContentSelectors = [
+          // Common content containers
+          'article', 'section', 'main', 'div', 'p', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          // Table content
+          'td', 'th', 'table',
+          // List content
+          'li', 'ul', 'ol',
+          // Common content classes (generic patterns)
+          '[class*="content"]', '[class*="text"]', '[class*="message"]', '[class*="post"]',
+          '[class*="article"]', '[class*="description"]', '[class*="body"]', '[class*="paragraph"]',
+          // Common semantic elements
+          'blockquote', 'pre', 'code'
+        ];
+
+        for (const selector of commonContentSelectors) {
+          if (element.matches(selector) || element.closest(selector)) {
+            console.log('aiFiverr: Valid content area found on non-Fiverr site:', selector);
+            return true;
+          }
+        }
+      }
+
+      // For test pages or other domains, allow selection in elements with specific classes
+      const testContent = element.closest('.selectable-text, .conversation, .message, .brief, .description, .content');
+      if (testContent) {
+        console.log('aiFiverr: Test content area found');
         return true;
       }
-    }
 
-    // For test pages or other domains, allow selection in elements with specific classes
-    const testContent = element.closest('.selectable-text, .conversation, .message, .brief, .description, .content');
-    if (testContent) {
-      console.log('aiFiverr: Test content area found');
-      return true;
-    }
+      // Allow selection in general content areas (paragraphs, divs, etc.)
+      const contentTags = ['P', 'DIV', 'SPAN', 'ARTICLE', 'SECTION', 'MAIN', 'TD', 'TH', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+      const isValidTag = contentTags.includes(element.tagName);
+      console.log('aiFiverr: Content tag check:', isValidTag, element.tagName);
+      return isValidTag;
 
-    // Allow selection in general content areas (paragraphs, divs, etc.)
-    const contentTags = ['P', 'DIV', 'SPAN', 'ARTICLE', 'SECTION', 'MAIN', 'TD', 'TH', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
-    const isValidTag = contentTags.includes(element.tagName);
-    console.log('aiFiverr: Content tag check:', isValidTag, element.tagName);
-    return isValidTag;
+    } catch (error) {
+      console.error('aiFiverr: Error checking site restriction settings for text selection:', error);
+      // Default to allowing selection in basic content areas
+      const contentTags = ['P', 'DIV', 'SPAN', 'ARTICLE', 'SECTION', 'MAIN', 'TD', 'TH', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+      const isValidTag = contentTags.includes(element.tagName);
+      return isValidTag;
+    }
   }
 
   /**
@@ -561,7 +627,14 @@ class TextSelector {
    * Show floating icon near selection
    */
   showFloatingIcon() {
-    if (!this.floatingIcon || !this.selectionRect) return;
+    if (!this.floatingIcon || !this.selectionRect) {
+      console.log('aiFiverr: Cannot show floating icon - missing icon or selectionRect:', {
+        hasIcon: !!this.floatingIcon,
+        hasRect: !!this.selectionRect,
+        rect: this.selectionRect
+      });
+      return;
+    }
 
     // Clear any existing hide timeout
     if (this.hideTimeout) {
@@ -579,19 +652,31 @@ class TextSelector {
 
     let left, top;
 
+    // Ensure we have valid rect dimensions
+    const rect = {
+      left: this.selectionRect.left || 0,
+      right: this.selectionRect.right || this.selectionRect.left || 0,
+      top: this.selectionRect.top || 0,
+      bottom: this.selectionRect.bottom || this.selectionRect.top || 0,
+      width: this.selectionRect.width || 0,
+      height: this.selectionRect.height || 0
+    };
+
+    console.log('aiFiverr: Positioning icon with rect:', rect, 'isInputField:', isInputField);
+
     if (isInputField) {
       // For input fields, position icon closer to the text, vertically centered
-      left = this.selectionRect.right + margin;
-      top = this.selectionRect.top + (this.selectionRect.height / 2) - (iconSize / 2);
+      left = rect.right + margin;
+      top = rect.top + (rect.height / 2) - (iconSize / 2);
 
       // If the icon would be too far to the right, position it to the left of the selection
       if (left + iconSize > window.innerWidth - margin) {
-        left = this.selectionRect.left - iconSize - margin;
+        left = rect.left - iconSize - margin;
       }
     } else {
       // For regular text, position at top-right of selection
-      left = this.selectionRect.right + margin;
-      top = this.selectionRect.top - margin;
+      left = rect.right + margin;
+      top = rect.top - margin;
     }
 
     // Ensure icon stays within viewport
@@ -599,21 +684,30 @@ class TextSelector {
     const viewportHeight = window.innerHeight;
 
     if (left + iconSize > viewportWidth) {
-      left = this.selectionRect.left - iconSize - margin;
+      left = rect.left - iconSize - margin;
     }
 
     if (top < 0) {
-      top = this.selectionRect.bottom + margin;
+      top = rect.bottom + margin;
     }
 
     if (top + iconSize > viewportHeight) {
       top = viewportHeight - iconSize - margin;
     }
 
+    // Ensure minimum positioning (prevent negative values)
+    left = Math.max(0, left);
+    top = Math.max(0, top);
+
+    console.log('aiFiverr: Final icon position:', { left, top });
+
     // Position and show icon
     this.floatingIcon.style.left = `${left}px`;
     this.floatingIcon.style.top = `${top}px`;
     this.floatingIcon.style.display = 'flex';
+
+    // Force a repaint to ensure positioning takes effect
+    this.floatingIcon.offsetHeight;
   }
 
   /**
@@ -876,12 +970,23 @@ class TextSelector {
     try {
       console.log('aiFiverr: Populating dropdown with prompts...');
 
+      // Check if prompt selector is available
+      if (!window.promptSelector) {
+        console.warn('aiFiverr: Prompt selector not available');
+        this.contextMenu.innerHTML = '<div style="padding: 12px; color: #666;">Prompt selector not available</div>';
+        return;
+      }
+
       // Get prompts from prompt selector
       await window.promptSelector.loadPrompts();
-      const prompts = window.promptSelector.allPrompts;
+      const prompts = window.promptSelector.allPrompts || {};
       const favoritePrompts = window.promptSelector.favoritePrompts || [];
 
-      console.log('aiFiverr: Available prompts:', Object.keys(prompts).length);
+      console.log('aiFiverr Text Selector: Available prompts:', {
+        total: Object.keys(prompts).length,
+        promptKeys: Object.keys(prompts),
+        samplePrompt: Object.keys(prompts).length > 0 ? prompts[Object.keys(prompts)[0]] : null
+      });
 
       if (!prompts || Object.keys(prompts).length === 0) {
         this.contextMenu.innerHTML = '<div style="padding: 12px; color: #666;">No prompts available</div>';
@@ -938,17 +1043,44 @@ class TextSelector {
       transition: 'background-color 0.2s ease'
     });
 
-    // Create content
+    // Enhanced content creation with better validation
     const name = document.createElement('div');
     name.style.fontWeight = '500';
     name.style.color = '#374151';
-    name.textContent = prompt.name || promptKey;
+
+    // Enhanced title extraction
+    let title = 'Untitled';
+    if (prompt.name && typeof prompt.name === 'string' && prompt.name.trim()) {
+      title = prompt.name.trim();
+    } else if (prompt.title && typeof prompt.title === 'string' && prompt.title.trim()) {
+      title = prompt.title.trim();
+    } else if (promptKey && typeof promptKey === 'string' && promptKey.trim()) {
+      title = promptKey.trim().replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+    name.textContent = title;
 
     const description = document.createElement('div');
     description.style.fontSize = '12px';
     description.style.color = '#6b7280';
     description.style.marginTop = '2px';
-    description.textContent = prompt.description || 'No description';
+
+    // Enhanced description extraction
+    let descText = 'AI-powered response';
+    if (prompt.description && typeof prompt.description === 'string' && prompt.description.trim()) {
+      descText = prompt.description.trim();
+    } else if (prompt.prompt && typeof prompt.prompt === 'string' && prompt.prompt.trim()) {
+      // Use first part of prompt as description if no description available
+      const promptText = prompt.prompt.trim();
+      descText = promptText.length > 50 ? promptText.substring(0, 50) + '...' : promptText;
+    }
+    description.textContent = descText;
+
+    console.log('aiFiverr Text Selector: Creating dropdown item:', {
+      promptKey,
+      title,
+      description: descText.substring(0, 30) + '...',
+      hasPromptContent: !!(prompt.prompt || prompt.content || prompt.text)
+    });
 
     item.appendChild(name);
     item.appendChild(description);
@@ -994,8 +1126,10 @@ class TextSelector {
    */
   async processTextWithPrompt(promptKey, selectedText) {
     try {
+      console.log('=== aiFiverr Text Selection Processing Started ===');
       console.log('aiFiverr: Processing text with prompt:', promptKey);
       console.log('aiFiverr: Selected text length:', selectedText.length);
+      console.log('aiFiverr: Selected text preview:', selectedText.substring(0, 200) + '...');
 
       // Show loading animation on the icon
       this.startIconLoadingAnimation();
@@ -1010,7 +1144,16 @@ class TextSelector {
         throw new Error(`Prompt '${promptKey}' not found`);
       }
 
-      console.log('aiFiverr: Found prompt:', prompt.name || promptKey);
+      // Enhanced prompt debugging
+      console.log('aiFiverr: Found prompt:', {
+        name: prompt.name || promptKey,
+        hasDescription: !!prompt.description,
+        hasPrompt: !!prompt.prompt,
+        hasContent: !!prompt.content,
+        hasText: !!prompt.text,
+        keys: Object.keys(prompt),
+        promptType: prompt.isDefault ? 'default' : 'custom'
+      });
 
       // Check if required managers are available
       if (!window.sessionManager) {
@@ -1027,20 +1170,50 @@ class TextSelector {
       const session = await window.sessionManager.getOrCreateSession('text_selection');
       console.log('aiFiverr: Got session:', session.id);
 
-      // Process the prompt with the selected text
-      const promptText = prompt.prompt || prompt.description || prompt.text;
-      console.log('aiFiverr: Processing prompt text:', promptText.substring(0, 100) + '...');
+      // Enhanced prompt text extraction with better error handling
+      let promptText = null;
 
-      const processedPrompt = await window.knowledgeBaseManager.processPrompt(promptKey, {
+      // Try different property names that might contain the prompt content
+      if (prompt.prompt && typeof prompt.prompt === 'string' && prompt.prompt.trim()) {
+        promptText = prompt.prompt.trim();
+        console.log('aiFiverr: Using prompt.prompt property');
+      } else if (prompt.content && typeof prompt.content === 'string' && prompt.content.trim()) {
+        promptText = prompt.content.trim();
+        console.log('aiFiverr: Using prompt.content property');
+      } else if (prompt.text && typeof prompt.text === 'string' && prompt.text.trim()) {
+        promptText = prompt.text.trim();
+        console.log('aiFiverr: Using prompt.text property');
+      } else if (prompt.description && typeof prompt.description === 'string' && prompt.description.trim()) {
+        promptText = prompt.description.trim();
+        console.log('aiFiverr: Using prompt.description property as fallback');
+      } else {
+        console.error('aiFiverr: No valid prompt content found in prompt object:', prompt);
+        throw new Error(`Prompt '${promptKey}' has no valid content. Available properties: ${Object.keys(prompt).join(', ')}`);
+      }
+
+      console.log('aiFiverr: Extracted prompt text:', promptText.substring(0, 100) + '...');
+
+      const result = await window.knowledgeBaseManager.processPrompt(promptKey, {
         conversation: selectedText,
         username: 'User'
       });
 
-      console.log('aiFiverr: Processed prompt:', processedPrompt.substring(0, 100) + '...');
+      const processedPrompt = typeof result === 'object' ? result.prompt : result;
+      const knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
+      const safeProcessedPrompt = processedPrompt || 'No processed prompt available';
+      console.log('aiFiverr: Processed prompt:', safeProcessedPrompt.substring(0, 100) + '...');
+      console.log('aiFiverr: Knowledge base files for prompt:', knowledgeBaseFiles);
+      console.log('aiFiverr: Knowledge base files details:', knowledgeBaseFiles.map(f => ({
+        name: f.name,
+        id: f.id,
+        geminiUri: f.geminiUri,
+        hasGeminiUri: !!f.geminiUri
+      })));
 
       // Generate AI response
-      console.log('aiFiverr: Generating AI response...');
-      const response = await window.geminiClient.generateChatReply(session, processedPrompt);
+      console.log('aiFiverr: Generating AI response with options:', { knowledgeBaseFiles });
+      const response = await window.geminiClient.generateChatReply(session, processedPrompt, { knowledgeBaseFiles });
       console.log('aiFiverr: Got AI response:', response.response.substring(0, 100) + '...');
 
       // Show result popup near the icon (like chatbox style)

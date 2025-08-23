@@ -427,7 +427,51 @@ class FiverrInjector {
       dropdown.innerHTML = '';
 
       // Get ALL prompts (default + custom) - always show all available prompts
-      const allPrompts = this.getDefaultPrompts();
+      let allPrompts = {};
+
+      // Load default prompts
+      const defaultPrompts = this.getDefaultPrompts();
+      allPrompts = { ...defaultPrompts };
+
+      // Load custom prompts from storage with enhanced error handling
+      let customPrompts = {};
+      let defaultPromptVisibility = {};
+
+      try {
+        const customPromptsResult = await chrome.storage.local.get('customPrompts');
+        customPrompts = customPromptsResult.customPrompts || {};
+
+        console.log('aiFiverr Injector: Raw custom prompts from storage:', customPromptsResult);
+        console.log('aiFiverr Injector: Processed custom prompts:', customPrompts);
+
+        // Load default prompt visibility settings
+        const visibilityResult = await chrome.storage.local.get('defaultPromptVisibility');
+        defaultPromptVisibility = visibilityResult.defaultPromptVisibility || {};
+
+        // Filter default prompts based on visibility settings
+        const visibleDefaultPrompts = {};
+        Object.entries(defaultPrompts).forEach(([key, prompt]) => {
+          // Default to visible if not explicitly set to false
+          if (defaultPromptVisibility[key] !== false) {
+            visibleDefaultPrompts[key] = prompt;
+          }
+        });
+
+        // Merge visible default prompts with custom prompts (custom prompts override defaults)
+        allPrompts = { ...visibleDefaultPrompts, ...customPrompts };
+
+        console.log('aiFiverr: Loaded prompts for dropdown:', {
+          defaultTotal: Object.keys(defaultPrompts).length,
+          defaultVisible: Object.keys(visibleDefaultPrompts).length,
+          custom: Object.keys(customPrompts).length,
+          total: Object.keys(allPrompts).length,
+          customPromptKeys: Object.keys(customPrompts),
+          customPromptSample: Object.keys(customPrompts).length > 0 ? customPrompts[Object.keys(customPrompts)[0]] : null,
+          allPromptKeys: Object.keys(allPrompts)
+        });
+      } catch (error) {
+        console.warn('aiFiverr: Failed to load custom prompts, using defaults only:', error);
+      }
 
       if (!allPrompts || Object.keys(allPrompts).length === 0) {
         dropdown.innerHTML = '<div style="padding: 12px; color: #6b7280;">No prompts available</div>';
@@ -445,9 +489,21 @@ class FiverrInjector {
    * Render prompt items in dropdown
    */
   renderPromptItems(dropdown, prompts, inputElement) {
+    if (!dropdown) {
+      console.error('aiFiverr: Dropdown element is null');
+      return;
+    }
+
     Object.entries(prompts).forEach(([key, prompt]) => {
-      const item = document.createElement('div');
-      item.className = 'aifiverr-prompt-item';
+      // Skip invalid prompts
+      if (!prompt || typeof prompt !== 'object') {
+        console.warn('aiFiverr: Skipping invalid prompt:', key, prompt);
+        return;
+      }
+
+      try {
+        const item = document.createElement('div');
+        item.className = 'aifiverr-prompt-item';
       item.style.cssText = `
         padding: 12px 16px;
         cursor: pointer;
@@ -455,16 +511,41 @@ class FiverrInjector {
         transition: background-color 0.2s ease;
       `;
 
-      // Get first few characters of prompt title or key
-      const title = prompt.name || prompt.title || key || 'Untitled';
-      const displayTitle = (title && title.length > 30) ? title.substring(0, 30) + '...' : title;
+      // Enhanced title extraction with better validation
+      let title = 'Untitled';
+      if (prompt.name && typeof prompt.name === 'string' && prompt.name.trim()) {
+        title = prompt.name.trim();
+      } else if (prompt.title && typeof prompt.title === 'string' && prompt.title.trim()) {
+        title = prompt.title.trim();
+      } else if (key && typeof key === 'string' && key.trim()) {
+        title = key.trim().replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      }
+
+      const displayTitle = (title.length > 30) ? title.substring(0, 30) + '...' : title;
+
+      // Enhanced description extraction with better validation
+      let description = 'AI-powered response';
+      if (prompt.description && typeof prompt.description === 'string' && prompt.description.trim()) {
+        description = prompt.description.trim();
+      } else if (prompt.prompt && typeof prompt.prompt === 'string' && prompt.prompt.trim()) {
+        // Use first part of prompt as description if no description available
+        const promptText = prompt.prompt.trim();
+        description = promptText.length > 50 ? promptText.substring(0, 50) + '...' : promptText;
+      }
+
+      console.log('aiFiverr: Rendering prompt item:', {
+        key,
+        title,
+        description: description.substring(0, 50) + '...',
+        hasPromptContent: !!(prompt.prompt || prompt.content || prompt.text)
+      });
 
       item.innerHTML = `
         <div style="font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 2px;">
-          ${displayTitle}
+          ${this.escapeHtml(displayTitle)}
         </div>
         <div style="font-size: 12px; color: #6b7280; line-height: 1.3;">
-          ${prompt.description || 'AI-powered response'}
+          ${this.escapeHtml(description)}
         </div>
       `;
 
@@ -489,7 +570,10 @@ class FiverrInjector {
         await this.executePrompt(inputElement, key);
       });
 
-      dropdown.appendChild(item);
+        dropdown.appendChild(item);
+      } catch (error) {
+        console.error('aiFiverr: Error creating prompt item:', key, error);
+      }
     });
 
     // Remove border from last item
@@ -548,51 +632,50 @@ class FiverrInjector {
    * Get default prompts
    */
   getDefaultPrompts() {
-    // Use knowledge base manager if available
+    // Use centralized prompt manager if available
+    if (window.promptManager && window.promptManager.initialized) {
+      return window.promptManager.getAllPrompts();
+    }
+
+    // Use knowledge base manager as fallback
     if (window.knowledgeBaseManager) {
-      // Get ALL prompts (default + custom) instead of just custom prompts
       const allPrompts = window.knowledgeBaseManager.getAllPrompts();
       if (Object.keys(allPrompts).length > 0) {
         return allPrompts;
       }
     }
 
-    // Fallback default prompts (should include all default prompts)
+    // Final fallback prompts
     return {
-      'professional_initial_reply': {
-        name: 'Professional Initial Reply',
-        title: 'Professional Initial Reply',
-        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message'
+      'summary': {
+        name: 'Summary',
+        title: 'Summary',
+        description: 'Summarize the conversation and extract key details like budget, timeline, and next steps'
       },
-      'project_summary': {
-        name: 'Project Summary',
-        title: 'Project Summary',
-        description: 'Analyze conversation and extract key details into a structured, concise summary'
+      'follow_up': {
+        name: 'Follow-up',
+        title: 'Follow-up',
+        description: 'Write a friendly and professional follow-up message based on conversation'
       },
-      'follow_up_message': {
-        name: 'Follow-up Message',
-        title: 'Follow-up Message',
-        description: 'Draft a concise and effective follow-up message to a client based on conversation history'
+      'proposal': {
+        name: 'Proposal',
+        title: 'Proposal',
+        description: 'Create a Fiverr project proposal based on the conversation'
       },
-      'project_proposal': {
-        name: 'Project Proposal',
-        title: 'Project Proposal',
-        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message'
+      'translate': {
+        name: 'Translate',
+        title: 'Translate',
+        description: 'Translate conversation into specified language'
       },
-      'translate_and_explain': {
-        name: 'Translate and Explain Message',
-        title: 'Translate and Explain Message',
-        description: 'Translate text and provide a simple explanation of its content'
+      'improve_translate': {
+        name: 'Improve & Translate',
+        title: 'Improve & Translate',
+        description: 'Improve grammar and tone, then translate to English'
       },
-      'refine_and_translate': {
-        name: 'Refine and Translate My Message',
-        title: 'Refine and Translate My Message',
-        description: 'Refine draft message for clarity and professionalism, then translate to requested language'
-      },
-      'refine_message': {
-        name: 'Refine My Message (No Translation)',
-        title: 'Refine My Message (No Translation)',
-        description: 'Refine draft message to improve quality, clarity, and impact without translation'
+      'improve': {
+        name: 'Improve',
+        title: 'Improve',
+        description: 'Improve message grammar, clarity and professionalism'
       }
     };
   }
@@ -1043,8 +1126,19 @@ class FiverrInjector {
       };
 
       // Process translate prompt
-      const prompt = await knowledgeBaseManager.processPrompt('translate_message', contextVars);
-      const response = await geminiClient.generateContent(prompt);
+      const result = await knowledgeBaseManager.processPrompt('translate_message', contextVars);
+      const prompt = typeof result === 'object' ? result.prompt : result;
+      const knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
+      console.log('aiFiverr Injector: Translation - Knowledge base files:', knowledgeBaseFiles);
+      console.log('aiFiverr Injector: Translation - Files details:', knowledgeBaseFiles.map(f => ({
+        name: f.name,
+        id: f.id,
+        geminiUri: f.geminiUri,
+        hasGeminiUri: !!f.geminiUri
+      })));
+
+      const response = await geminiClient.generateContent(prompt, { knowledgeBaseFiles });
 
       removeTooltip();
       return {
@@ -1350,8 +1444,19 @@ class FiverrInjector {
 
       // Use knowledge base manager to process the selected prompt
       let prompt;
+      let knowledgeBaseFiles = [];
       try {
-        prompt = await knowledgeBaseManager.processPrompt(selectedPromptKey, contextVars);
+        const result = await knowledgeBaseManager.processPrompt(selectedPromptKey, contextVars);
+        prompt = typeof result === 'object' ? result.prompt : result;
+        knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
+        console.log('aiFiverr Injector: Chat Reply - Knowledge base files:', knowledgeBaseFiles);
+        console.log('aiFiverr Injector: Chat Reply - Files details:', knowledgeBaseFiles.map(f => ({
+          name: f.name,
+          id: f.id,
+          geminiUri: f.geminiUri,
+          hasGeminiUri: !!f.geminiUri
+        })));
       } catch (error) {
         console.warn(`Prompt '${selectedPromptKey}' not found, using fallback:`, error);
         // Fallback to basic prompt if the structured prompt is not available
@@ -1362,7 +1467,8 @@ class FiverrInjector {
         prompt += '\n\nPlease generate an appropriate, professional response that addresses the conversation context.';
       }
 
-      const response = await geminiClient.generateChatReply(session, prompt);
+      console.log('aiFiverr Injector: Chat Reply - Calling generateChatReply with options:', { knowledgeBaseFiles });
+      const response = await geminiClient.generateChatReply(session, prompt, { knowledgeBaseFiles });
       return removeMarkdownFormatting(response.response);
     } catch (error) {
       console.error('AI reply generation failed:', error);
@@ -1395,17 +1501,51 @@ class FiverrInjector {
 
       // Use knowledge base manager to process the project proposal prompt
       let prompt;
+      let knowledgeBaseFiles = [];
       try {
-        prompt = await knowledgeBaseManager.processPrompt('project_proposal', contextVars);
+        const result = await knowledgeBaseManager.processPrompt('project_proposal', contextVars);
+        prompt = typeof result === 'object' ? result.prompt : result;
+        knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
+
+        console.log('aiFiverr Injector: Project Proposal - Knowledge base files from prompt:', knowledgeBaseFiles.length);
+
+        // CRITICAL FIX: If prompt has no files attached, force load all available knowledge base files
+        if (!knowledgeBaseFiles || knowledgeBaseFiles.length === 0) {
+          console.warn('aiFiverr Injector: Project proposal prompt has no files attached, force loading all KB files');
+          knowledgeBaseFiles = await this.getKnowledgeBaseFilesForced();
+        }
+
+        console.log('aiFiverr Injector: Project Proposal - Final knowledge base files:', knowledgeBaseFiles);
+        console.log('aiFiverr Injector: Project Proposal - Files details:', knowledgeBaseFiles.map(f => ({
+          name: f.name,
+          id: f.id,
+          geminiUri: f.geminiUri,
+          hasGeminiUri: !!f.geminiUri
+        })));
       } catch (error) {
-        console.warn('Project proposal prompt not found, using fallback:', error);
-        // Fallback to gemini client's proposal generation
+        console.warn('Project proposal prompt not found, using fallback with files:', error);
+
+        // Force load knowledge base files
         const knowledgeBase = await storageManager.getKnowledgeBase();
-        return await geminiClient.generateProposal(briefData, knowledgeBase);
+        const kbFiles = await this.getKnowledgeBaseFilesForced();
+
+        console.log('aiFiverr Injector: Forced KB files:', kbFiles);
+        console.log('aiFiverr Injector: Forced KB files details:', kbFiles.map(f => ({
+          name: f.name,
+          id: f.id,
+          geminiUri: f.geminiUri,
+          hasGeminiUri: !!f.geminiUri
+        })));
+
+        return await geminiClient.generateProposal(briefData, knowledgeBase, { knowledgeBaseFiles: kbFiles });
       }
 
       // Generate proposal using the processed prompt
-      const response = await geminiClient.generateContent(prompt);
+      console.log('aiFiverr Injector: Project Proposal - Calling generateContent with options:', { knowledgeBaseFiles });
+      console.log('aiFiverr Injector: Project Proposal - Files count:', knowledgeBaseFiles.length);
+      console.log('aiFiverr Injector: Project Proposal - Files with Gemini URI:', knowledgeBaseFiles.filter(f => f.geminiUri).length);
+
+      const response = await geminiClient.generateContent(prompt, { knowledgeBaseFiles });
       return removeMarkdownFormatting(response.text);
     } catch (error) {
       console.error('AI proposal generation failed:', error);
@@ -1441,6 +1581,38 @@ class FiverrInjector {
     } catch (error) {
       console.error('AI response failed:', error);
       throw new Error('Failed to get AI response');
+    }
+  }
+
+  /**
+   * Force load knowledge base files (emergency fix)
+   */
+  async getKnowledgeBaseFilesForced() {
+    try {
+      console.log('aiFiverr Injector: Force loading knowledge base files...');
+
+      if (!window.knowledgeBaseManager) {
+        console.warn('Knowledge base manager not available');
+        return [];
+      }
+
+      const result = await window.knowledgeBaseManager.getKnowledgeBaseFilesFromBackground();
+      if (result.success && result.data) {
+        const files = result.data.filter(file => file.geminiUri);
+        console.log('aiFiverr Injector: Forced files loaded:', files.length);
+        console.log('aiFiverr Injector: Forced files details:', files.map(f => ({
+          name: f.name,
+          geminiUri: f.geminiUri,
+          mimeType: f.mimeType
+        })));
+        return files;
+      }
+
+      console.warn('aiFiverr Injector: No files returned from background');
+      return [];
+    } catch (error) {
+      console.error('Failed to force load knowledge base files:', error);
+      return [];
     }
   }
 
@@ -1615,6 +1787,15 @@ class FiverrInjector {
         popup.remove();
       }
     }, 15000);
+  }
+
+  /**
+   * Escape HTML to prevent XSS
+   */
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   /**

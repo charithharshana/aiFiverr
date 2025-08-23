@@ -462,6 +462,18 @@ class AIAssistanceChat {
     // Add loading message
     const loadingId = this.addMessage('assistant', 'Thinking...');
 
+    // Try enhanced streaming first
+    try {
+      if (!window.enhancedGeminiClient) {
+        initializeEnhancedGeminiClient();
+      }
+
+      await this.sendMessageWithEnhancedStreaming(message, loadingId);
+      return;
+    } catch (error) {
+      console.log('aiFiverr: Enhanced streaming failed, falling back to regular:', error);
+    }
+
     try {
       this.isStreaming = true;
 
@@ -472,8 +484,17 @@ class AIAssistanceChat {
       // Add abort controller for request cancellation
       this.currentAbortController = new AbortController();
 
+      // Prepare message with attached files
+      const messageWithFiles = await this.prepareMessageWithFiles(message);
+
       // Call Gemini API with streaming
-      await this.callGeminiAPIStreaming(message, loadingId);
+      await this.callGeminiAPIStreaming(messageWithFiles, loadingId);
+
+      // Clear attached files after sending
+      if (this.attachedFiles && this.attachedFiles.length > 0) {
+        this.attachedFiles = [];
+        this.displayAttachedFiles([]);
+      }
 
     } catch (error) {
       console.error('AI Assistance: Chat error:', error);
@@ -518,13 +539,40 @@ class AIAssistanceChat {
       }
     }
 
-    // Add current message
+    // Prepare parts for current message
+    const currentMessageParts = [{ text: message }];
+
+    // Add knowledge base files if available
+    let knowledgeBaseFiles = [];
+    if (window.knowledgeBaseManager) {
+      try {
+        const allFiles = await window.knowledgeBaseManager.getKnowledgeBaseFiles();
+        knowledgeBaseFiles = allFiles.filter(file => file.geminiUri);
+        console.log('aiFiverr Fallback Non-Streaming: Found', knowledgeBaseFiles.length, 'knowledge base files with geminiUri');
+
+        // Add file parts to current message
+        knowledgeBaseFiles.forEach(file => {
+          console.log('aiFiverr Fallback Non-Streaming: Adding file to request:', file.name, file.geminiUri);
+          currentMessageParts.push({
+            fileData: {
+              mimeType: file.mimeType || 'application/octet-stream',
+              fileUri: file.geminiUri
+            }
+          });
+        });
+      } catch (error) {
+        console.warn('aiFiverr Fallback Non-Streaming: Failed to get knowledge base files:', error);
+      }
+    }
+
+    // Add current message with files
     contents.push({
       role: 'user',
-      parts: [{ text: message }]
+      parts: currentMessageParts
     });
 
-    const modelName = this.modelSettings?.model || 'gemini-2.5-flash-preview-05-20';
+    // Get model from settings or use fallback
+    const modelName = await this.getCurrentModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.apiKey}`;
 
     const body = {
@@ -546,6 +594,8 @@ class AIAssistanceChat {
         }
       ]
     };
+
+    console.log('aiFiverr Fallback Non-Streaming: API request with', knowledgeBaseFiles.length, 'knowledge base files');
 
     const response = await fetch(url, {
       method: 'POST',
@@ -608,13 +658,40 @@ class AIAssistanceChat {
       }
     }
 
-    // Add current message
+    // Prepare parts for current message
+    const currentMessageParts = [{ text: message }];
+
+    // Add knowledge base files if available
+    let knowledgeBaseFiles = [];
+    if (window.knowledgeBaseManager) {
+      try {
+        const allFiles = await window.knowledgeBaseManager.getKnowledgeBaseFiles();
+        knowledgeBaseFiles = allFiles.filter(file => file.geminiUri);
+        console.log('aiFiverr Fallback: Found', knowledgeBaseFiles.length, 'knowledge base files with geminiUri');
+
+        // Add file parts to current message
+        knowledgeBaseFiles.forEach(file => {
+          console.log('aiFiverr Fallback: Adding file to request:', file.name, file.geminiUri);
+          currentMessageParts.push({
+            fileData: {
+              mimeType: file.mimeType || 'application/octet-stream',
+              fileUri: file.geminiUri
+            }
+          });
+        });
+      } catch (error) {
+        console.warn('aiFiverr Fallback: Failed to get knowledge base files:', error);
+      }
+    }
+
+    // Add current message with files
     contents.push({
       role: 'user',
-      parts: [{ text: message }]
+      parts: currentMessageParts
     });
 
-    const modelName = this.modelSettings?.model || 'gemini-2.5-flash-preview-05-20';
+    // Get model from settings or use fallback
+    const modelName = await this.getCurrentModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${this.apiKey}`;
 
     const body = {
@@ -636,6 +713,8 @@ class AIAssistanceChat {
         }
       ]
     };
+
+    console.log('aiFiverr Fallback: API request with', knowledgeBaseFiles.length, 'knowledge base files');
 
     const response = await fetch(url, {
       method: 'POST',
@@ -1046,9 +1125,173 @@ class AIAssistanceChat {
 
   // File Attachment System
   handleFileAttachment() {
+    // Show file attachment options
+    this.showFileAttachmentOptions();
+  }
+
+  showFileAttachmentOptions() {
+    const modal = document.createElement('div');
+    modal.className = 'file-attachment-modal-overlay';
+    modal.innerHTML = `
+      <div class="file-attachment-modal">
+        <div class="file-attachment-header">
+          <h4>Attach Files</h4>
+          <button class="file-attachment-close">×</button>
+        </div>
+        <div class="file-attachment-body">
+          <div class="attachment-options">
+            <button class="attachment-option" data-type="knowledge-base">
+              <div class="option-icon">📚</div>
+              <div class="option-info">
+                <div class="option-title">Knowledge Base Files</div>
+                <div class="option-desc">Select from uploaded knowledge base files</div>
+              </div>
+            </button>
+            <button class="attachment-option" data-type="upload-new">
+              <div class="option-icon">📁</div>
+              <div class="option-info">
+                <div class="option-title">Upload New Files</div>
+                <div class="option-desc">Upload and attach new files</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+      .file-attachment-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      }
+      .file-attachment-modal {
+        background: white;
+        border-radius: 8px;
+        width: 400px;
+        max-width: 90vw;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+      .file-attachment-header {
+        padding: 20px;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .file-attachment-header h4 {
+        margin: 0;
+        color: #2c3e50;
+      }
+      .file-attachment-close {
+        background: none;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        color: #6c757d;
+      }
+      .file-attachment-body {
+        padding: 20px;
+      }
+      .attachment-options {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .attachment-option {
+        display: flex;
+        align-items: center;
+        padding: 15px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: left;
+      }
+      .attachment-option:hover {
+        border-color: #1dbf73;
+        background: rgba(29, 191, 115, 0.05);
+      }
+      .option-icon {
+        font-size: 24px;
+        margin-right: 15px;
+      }
+      .option-info {
+        flex: 1;
+      }
+      .option-title {
+        font-weight: 500;
+        color: #2c3e50;
+        margin-bottom: 4px;
+      }
+      .option-desc {
+        font-size: 13px;
+        color: #6c757d;
+      }
+    `;
+    document.head.appendChild(style);
+
+    document.body.appendChild(modal);
+
+    // Event listeners
+    modal.querySelector('.file-attachment-close').addEventListener('click', () => {
+      document.body.removeChild(modal);
+      document.head.removeChild(style);
+    });
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+        document.head.removeChild(style);
+      }
+    });
+
+    modal.querySelectorAll('.attachment-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const type = option.dataset.type;
+        document.body.removeChild(modal);
+        document.head.removeChild(style);
+
+        if (type === 'knowledge-base') {
+          this.showKnowledgeBaseFileSelector();
+        } else if (type === 'upload-new') {
+          this.showFileUploader();
+        }
+      });
+    });
+  }
+
+  async showKnowledgeBaseFileSelector() {
+    try {
+      // Get knowledge base files
+      const files = await this.getKnowledgeBaseFiles();
+
+      if (!files || files.length === 0) {
+        this.showToast('No knowledge base files available. Please upload files first.', 'warning');
+        return;
+      }
+
+      this.displayFileSelector(files);
+    } catch (error) {
+      console.error('Failed to load knowledge base files:', error);
+      this.showToast('Failed to load knowledge base files', 'error');
+    }
+  }
+
+  showFileUploader() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '*/*'; // Accept all file types for Gemini
+    input.accept = '*/*';
     input.multiple = true;
 
     input.onchange = (e) => {
@@ -1084,6 +1327,440 @@ class AIAssistanceChat {
     });
   }
 
+  async prepareMessageWithFiles(message) {
+    if (!this.attachedFiles || this.attachedFiles.length === 0) {
+      return message;
+    }
+
+    try {
+      // Get file details for attached files
+      const fileDetails = await this.getAttachedFileDetails(this.attachedFiles);
+
+      // Create message with file context
+      let messageWithFiles = message;
+
+      if (fileDetails.length > 0) {
+        const fileContext = fileDetails.map(file => {
+          return `[File: ${file.name}]\nType: ${file.mimeType}\nSize: ${this.formatFileSize(file.size)}\nGemini URI: ${file.geminiUri || 'Not uploaded'}\n`;
+        }).join('\n');
+
+        messageWithFiles = `${message}\n\n--- Attached Files ---\n${fileContext}`;
+      }
+
+      return messageWithFiles;
+    } catch (error) {
+      console.error('Failed to prepare message with files:', error);
+      return message;
+    }
+  }
+
+  async getAttachedFileDetails(fileIds) {
+    const fileDetails = [];
+
+    for (const fileId of fileIds) {
+      try {
+        const details = await this.getFileDetails(fileId);
+        fileDetails.push(details);
+      } catch (error) {
+        console.error(`Failed to get details for file ${fileId}:`, error);
+      }
+    }
+
+    return fileDetails;
+  }
+
+  async getFileDetails(fileId) {
+    try {
+      if (!window.googleDriveClient) {
+        throw new Error('Google Drive client not available');
+      }
+
+      const result = await window.googleDriveClient.getFileDetails(fileId);
+      return result;
+    } catch (error) {
+      console.error('Failed to get file details:', error);
+      throw error;
+    }
+  }
+
+  async getKnowledgeBaseFiles() {
+    try {
+      if (!window.googleDriveClient) {
+        throw new Error('Google Drive client not available');
+      }
+
+      const files = await window.googleDriveClient.listKnowledgeBaseFiles();
+      return files || [];
+    } catch (error) {
+      console.error('Failed to get knowledge base files:', error);
+      return [];
+    }
+  }
+
+  formatFileSize(bytes) {
+    // Handle undefined, null, or non-numeric values
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 B';
+
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+
+    // Ensure i is within bounds
+    const sizeIndex = Math.min(i, sizes.length - 1);
+    const size = Math.round(bytes / Math.pow(1024, sizeIndex) * 100) / 100;
+
+    return size + ' ' + sizes[sizeIndex];
+  }
+
+  displayFileSelector(files) {
+    const modal = document.createElement('div');
+    modal.className = 'kb-file-selector-overlay';
+    modal.innerHTML = `
+      <div class="kb-file-selector-modal">
+        <div class="kb-file-selector-header">
+          <h4>Select Knowledge Base Files</h4>
+          <button class="kb-file-selector-close">×</button>
+        </div>
+        <div class="kb-file-selector-body">
+          <div class="kb-file-search">
+            <input type="text" placeholder="Search files..." class="kb-file-search-input">
+          </div>
+          <div class="kb-file-list">
+            ${files.map(file => `
+              <div class="kb-file-item" data-file-id="${file.id}" data-file-name="${file.name}">
+                <input type="checkbox" class="kb-file-checkbox" value="${file.id}">
+                <div class="kb-file-info">
+                  <div class="kb-file-name">${file.name}</div>
+                  <div class="kb-file-meta">${this.formatFileSize(file.size)} • ${file.mimeType}</div>
+                </div>
+                <div class="kb-file-status">
+                  <span class="status-indicator ${file.geminiStatus || 'not_uploaded'}" title="${file.geminiStatus || 'Not uploaded to Gemini'}"></span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="kb-file-selector-footer">
+          <div class="selected-count">0 files selected</div>
+          <div class="selector-actions">
+            <button class="btn-secondary" id="clearSelection">Clear All</button>
+            <button class="btn-primary" id="attachSelected">Attach Selected</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+      .kb-file-selector-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      }
+      .kb-file-selector-modal {
+        background: white;
+        border-radius: 8px;
+        width: 500px;
+        max-width: 90vw;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+      .kb-file-selector-header {
+        padding: 20px;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .kb-file-selector-body {
+        padding: 20px;
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .kb-file-search {
+        margin-bottom: 15px;
+      }
+      .kb-file-search-input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+      .kb-file-list {
+        flex: 1;
+        overflow-y: auto;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        max-height: 300px;
+      }
+      .kb-file-item {
+        display: flex;
+        align-items: center;
+        padding: 12px 15px;
+        border-bottom: 1px solid #f1f3f4;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+      }
+      .kb-file-item:hover {
+        background: #f8f9fa;
+      }
+      .kb-file-item.selected {
+        background: rgba(29, 191, 115, 0.1);
+      }
+      .kb-file-checkbox {
+        margin-right: 12px;
+      }
+      .kb-file-info {
+        flex: 1;
+      }
+      .kb-file-name {
+        font-weight: 500;
+        color: #2c3e50;
+        font-size: 13px;
+        margin-bottom: 2px;
+      }
+      .kb-file-meta {
+        font-size: 11px;
+        color: #6c757d;
+      }
+      .kb-file-status {
+        margin-left: 8px;
+      }
+      .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #6c757d;
+        display: inline-block;
+      }
+      .status-indicator.ACTIVE { background: #28a745; }
+      .status-indicator.PROCESSING { background: #ffc107; }
+      .status-indicator.FAILED { background: #dc3545; }
+      .kb-file-selector-footer {
+        padding: 20px;
+        border-top: 1px solid #e9ecef;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .selected-count {
+        font-size: 13px;
+        color: #6c757d;
+      }
+      .selector-actions {
+        display: flex;
+        gap: 8px;
+      }
+    `;
+    document.head.appendChild(style);
+
+    document.body.appendChild(modal);
+
+    // Event listeners
+    const selectedFiles = new Set();
+
+    modal.querySelector('.kb-file-selector-close').addEventListener('click', () => {
+      document.body.removeChild(modal);
+      document.head.removeChild(style);
+    });
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+        document.head.removeChild(style);
+      }
+    });
+
+    // File selection
+    modal.querySelectorAll('.kb-file-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', (e) => {
+        const fileId = e.target.value;
+        const item = e.target.closest('.kb-file-item');
+
+        if (e.target.checked) {
+          selectedFiles.add(fileId);
+          item.classList.add('selected');
+        } else {
+          selectedFiles.delete(fileId);
+          item.classList.remove('selected');
+        }
+
+        modal.querySelector('.selected-count').textContent = `${selectedFiles.size} file${selectedFiles.size !== 1 ? 's' : ''} selected`;
+      });
+    });
+
+    // Clear selection
+    modal.querySelector('#clearSelection').addEventListener('click', () => {
+      selectedFiles.clear();
+      modal.querySelectorAll('.kb-file-checkbox').forEach(cb => cb.checked = false);
+      modal.querySelectorAll('.kb-file-item').forEach(item => item.classList.remove('selected'));
+      modal.querySelector('.selected-count').textContent = '0 files selected';
+    });
+
+    // Attach selected files
+    modal.querySelector('#attachSelected').addEventListener('click', async () => {
+      if (selectedFiles.size === 0) {
+        this.showToast('Please select at least one file', 'warning');
+        return;
+      }
+
+      try {
+        await this.attachKnowledgeBaseFiles(Array.from(selectedFiles));
+        document.body.removeChild(modal);
+        document.head.removeChild(style);
+      } catch (error) {
+        console.error('Failed to attach files:', error);
+        this.showToast('Failed to attach files', 'error');
+      }
+    });
+
+    // Search functionality
+    const searchInput = modal.querySelector('.kb-file-search-input');
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      modal.querySelectorAll('.kb-file-item').forEach(item => {
+        const fileName = item.dataset.fileName.toLowerCase();
+        item.style.display = fileName.includes(query) ? 'flex' : 'none';
+      });
+    });
+  }
+
+  async attachKnowledgeBaseFiles(fileIds) {
+    try {
+      // Store selected files for use in the next prompt
+      this.attachedFiles = fileIds;
+
+      // Show attached files in the UI
+      this.displayAttachedFiles(fileIds);
+
+      this.showToast(`${fileIds.length} file(s) attached for next prompt`, 'success');
+    } catch (error) {
+      console.error('Failed to attach files:', error);
+      throw error;
+    }
+  }
+
+  displayAttachedFiles(fileIds) {
+    // Create or update attached files display
+    let attachedContainer = this.container.querySelector('.attached-files-container');
+
+    if (!attachedContainer) {
+      attachedContainer = document.createElement('div');
+      attachedContainer.className = 'attached-files-container';
+
+      const inputContainer = this.container.querySelector('.input-container');
+      inputContainer.insertBefore(attachedContainer, inputContainer.firstChild);
+    }
+
+    if (fileIds.length === 0) {
+      attachedContainer.style.display = 'none';
+      return;
+    }
+
+    attachedContainer.style.display = 'block';
+    attachedContainer.innerHTML = `
+      <div class="attached-files-header">
+        <span class="attached-files-title">📎 ${fileIds.length} file(s) attached</span>
+        <button class="clear-attachments-btn" title="Clear all attachments">×</button>
+      </div>
+      <div class="attached-files-list">
+        ${fileIds.map(fileId => `
+          <div class="attached-file-item" data-file-id="${fileId}">
+            <span class="file-name">File ${fileId}</span>
+            <button class="remove-attachment-btn" data-file-id="${fileId}">×</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    // Add styles if not already added
+    if (!document.querySelector('#attached-files-styles')) {
+      const style = document.createElement('style');
+      style.id = 'attached-files-styles';
+      style.textContent = `
+        .attached-files-container {
+          margin-bottom: 10px;
+          padding: 10px;
+          background: #f8f9fa;
+          border-radius: 6px;
+          border: 1px solid #e9ecef;
+        }
+        .attached-files-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+        .attached-files-title {
+          font-size: 12px;
+          color: #6c757d;
+          font-weight: 500;
+        }
+        .clear-attachments-btn {
+          background: none;
+          border: none;
+          color: #6c757d;
+          cursor: pointer;
+          font-size: 16px;
+          padding: 2px;
+        }
+        .attached-files-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .attached-file-item {
+          display: flex;
+          align-items: center;
+          background: white;
+          border: 1px solid #dee2e6;
+          border-radius: 4px;
+          padding: 4px 8px;
+          font-size: 11px;
+        }
+        .file-name {
+          color: #2c3e50;
+          margin-right: 6px;
+        }
+        .remove-attachment-btn {
+          background: none;
+          border: none;
+          color: #6c757d;
+          cursor: pointer;
+          font-size: 12px;
+          padding: 0;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Event listeners for attachment management
+    attachedContainer.querySelector('.clear-attachments-btn').addEventListener('click', () => {
+      this.attachedFiles = [];
+      this.displayAttachedFiles([]);
+    });
+
+    attachedContainer.querySelectorAll('.remove-attachment-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const fileId = e.target.dataset.fileId;
+        this.attachedFiles = this.attachedFiles.filter(id => id !== fileId);
+        this.displayAttachedFiles(this.attachedFiles);
+      });
+    });
+  }
+
   // Model Settings
   showModelSettings() {
     const settingsHtml = `
@@ -1109,8 +1786,9 @@ class AIAssistanceChat {
         <div style="margin-bottom: 16px;">
           <label style="display: block; margin-bottom: 4px; font-weight: 600; color: #495057;">Model:</label>
           <select id="model-select" style="width: 100%; padding: 8px; border: 1px solid #e1e5e9; border-radius: 6px;">
-            <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash (Preview)</option>
-            <option value="gemini-2.5-pro-preview-05-20">Gemini 2.5 Pro (Preview)</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+            <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           </select>
         </div>
 
@@ -1169,7 +1847,7 @@ class AIAssistanceChat {
       const settings = result.aiAssistanceModelSettings || {
         temperature: 0.7,
         maxTokens: 65536,
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: await this.getDefaultModel(),
         systemPrompt: ''
       };
 
@@ -1182,6 +1860,45 @@ class AIAssistanceChat {
       this.modelSettings = settings;
     } catch (error) {
       console.error('Failed to load model settings:', error);
+    }
+  }
+
+  /**
+   * Get current model from extension settings
+   */
+  async getCurrentModel() {
+    try {
+      // First try to get from local model settings
+      if (this.modelSettings?.model) {
+        return this.modelSettings.model;
+      }
+
+      // Then try to get from extension settings
+      if (window.storageManager) {
+        const settings = await window.storageManager.getSettings();
+        return settings.selectedModel || settings.defaultModel || await this.getDefaultModel();
+      }
+
+      // Fallback to default
+      return await this.getDefaultModel();
+    } catch (error) {
+      console.error('Failed to get current model:', error);
+      return await this.getDefaultModel();
+    }
+  }
+
+  /**
+   * Get default model from extension settings or fallback
+   */
+  async getDefaultModel() {
+    try {
+      if (window.storageManager) {
+        const settings = await window.storageManager.getSettings();
+        return settings.selectedModel || settings.defaultModel || 'gemini-2.5-flash';
+      }
+      return 'gemini-2.5-flash';
+    } catch (error) {
+      return 'gemini-2.5-flash';
     }
   }
 
@@ -1221,7 +1938,7 @@ class AIAssistanceChat {
       this.modelSettings = result.aiAssistanceModelSettings || {
         temperature: 0.7,
         maxTokens: 4096,
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: await this.getDefaultModel(),
         systemPrompt: ''
       };
     } catch (error) {
@@ -1229,9 +1946,101 @@ class AIAssistanceChat {
       this.modelSettings = {
         temperature: 0.7,
         maxTokens: 4096,
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: await this.getDefaultModel(),
         systemPrompt: ''
       };
+    }
+  }
+
+  async sendMessageWithEnhancedStreaming(message, loadingId) {
+    try {
+      console.log('aiFiverr: Using enhanced streaming for message:', message);
+
+      // Get conversation history
+      const contents = [];
+
+      // Add conversation history
+      for (let i = 0; i < this.messages.length - 1; i++) { // -1 to exclude the loading message
+        const msg = this.messages[i];
+        if (msg.role === 'user') {
+          contents.push({
+            role: 'user',
+            parts: [{ text: msg.content }]
+          });
+        } else if (msg.role === 'assistant') {
+          contents.push({
+            role: 'model',
+            parts: [{ text: msg.content }]
+          });
+        }
+      }
+
+      // Add current message
+      contents.push({
+        role: 'user',
+        parts: [{ text: message }]
+      });
+
+      // Convert to prompt format for enhanced client
+      const conversationPrompt = contents.map(c =>
+        `${c.role === 'user' ? 'User' : 'Assistant'}: ${c.parts[0].text}`
+      ).join('\n\n');
+
+      // Get knowledge base files if available
+      let knowledgeBaseFiles = [];
+      if (window.knowledgeBaseManager) {
+        try {
+          console.log('aiFiverr: Getting knowledge base files for API request...');
+          const files = Array.from(window.knowledgeBaseManager.files.values());
+          knowledgeBaseFiles = files.filter(file => file.geminiUri);
+          console.log('aiFiverr: Found', knowledgeBaseFiles.length, 'knowledge base files with geminiUri');
+        } catch (error) {
+          console.warn('aiFiverr: Failed to get knowledge base files:', error);
+        }
+      }
+
+      // Prepare options with knowledge base files
+      const options = {};
+      if (knowledgeBaseFiles.length > 0) {
+        options.knowledgeBaseFiles = knowledgeBaseFiles;
+        console.log('aiFiverr: Attaching', knowledgeBaseFiles.length, 'knowledge base files to API request');
+      }
+
+      // Use enhanced streaming with knowledge base files
+      const streamResponse = await window.enhancedGeminiClient.streamGenerateContent(
+        conversationPrompt,
+        null, // fileUri (legacy parameter)
+        null, // fileMimeType (legacy parameter)
+        'default', // sessionId
+        options // options with knowledgeBaseFiles
+      );
+
+      let fullResponse = '';
+      let isFirstChunk = true;
+
+      for await (const chunk of streamResponse) {
+        if (isFirstChunk) {
+          // Replace loading message with streaming content
+          this.updateMessage(loadingId, chunk.text);
+          fullResponse = chunk.text;
+          isFirstChunk = false;
+        } else {
+          // Append to existing message
+          fullResponse += chunk.text;
+          this.updateMessage(loadingId, fullResponse);
+        }
+
+        // Auto-scroll during streaming
+        this.scrollToBottom();
+      }
+
+      console.log('aiFiverr: Enhanced streaming completed, final length:', fullResponse.length);
+
+    } catch (error) {
+      console.error('aiFiverr: Enhanced streaming error:', error);
+      // Update loading message with error
+      this.updateMessage(loadingId, 'Sorry, I encountered an error. Please try again.');
+      throw error;
     }
   }
 }

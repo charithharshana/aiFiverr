@@ -66,17 +66,59 @@ class PromptSelector {
 
       // If no favorites, set some defaults
       if (this.favoritePrompts.length === 0) {
-        this.favoritePrompts = ['professional_initial_reply', 'project_summary', 'follow_up_message'];
+        this.favoritePrompts = ['summary', 'follow_up', 'proposal'];
       }
 
-      // Load custom prompts using fallback storage
-      const customPrompts = await this.getFromStorage('customPrompts', {});
+      // Load custom prompts using enhanced storage access
+      let customPrompts = {};
+      try {
+        const customPromptsResult = await this.getFromStorage('customPrompts', {});
+        // Handle both direct object and nested object patterns
+        if (customPromptsResult && typeof customPromptsResult === 'object') {
+          customPrompts = customPromptsResult.customPrompts || customPromptsResult;
+        }
+        console.log('aiFiverr Prompt Selector: Loaded custom prompts:', Object.keys(customPrompts));
+      } catch (error) {
+        console.warn('aiFiverr Prompt Selector: Failed to load custom prompts:', error);
+        customPrompts = {};
+      }
+
+      // Load default prompt visibility settings
+      let defaultPromptVisibility = {};
+      try {
+        const visibilityResult = await this.getFromStorage('defaultPromptVisibility', {});
+        if (visibilityResult && typeof visibilityResult === 'object') {
+          defaultPromptVisibility = visibilityResult.defaultPromptVisibility || visibilityResult;
+        }
+      } catch (error) {
+        console.warn('aiFiverr Prompt Selector: Failed to load visibility settings:', error);
+        defaultPromptVisibility = {};
+      }
 
       // Get default prompts from knowledge base
       const defaultPrompts = this.getDefaultPrompts();
 
-      // Combine all prompts
-      this.allPrompts = { ...defaultPrompts, ...(customPrompts || {}) };
+      // Filter default prompts based on visibility settings
+      const visibleDefaultPrompts = {};
+      Object.entries(defaultPrompts).forEach(([key, prompt]) => {
+        // Default to visible if not explicitly set to false
+        if (defaultPromptVisibility[key] !== false) {
+          visibleDefaultPrompts[key] = prompt;
+        }
+      });
+
+      // Combine visible default prompts with custom prompts
+      this.allPrompts = { ...visibleDefaultPrompts, ...(customPrompts || {}) };
+
+      // Enhanced debugging for prompt loading
+      console.log('aiFiverr Prompt Selector: Loaded prompts:', {
+        defaultTotal: Object.keys(defaultPrompts).length,
+        defaultVisible: Object.keys(visibleDefaultPrompts).length,
+        customTotal: Object.keys(customPrompts).length,
+        finalTotal: Object.keys(this.allPrompts).length,
+        customPromptKeys: Object.keys(customPrompts),
+        customPromptSample: Object.keys(customPrompts).length > 0 ? customPrompts[Object.keys(customPrompts)[0]] : null
+      });
 
       console.log('aiFiverr: Loaded prompts:', {
         favorites: this.favoritePrompts.length,
@@ -85,51 +127,45 @@ class PromptSelector {
     } catch (error) {
       console.error('Failed to load prompts:', error);
       // Set fallbacks
-      this.favoritePrompts = ['professional_initial_reply', 'project_summary', 'follow_up_message'];
+      this.favoritePrompts = ['summary', 'follow_up', 'proposal'];
       this.allPrompts = this.getDefaultPrompts();
     }
   }
 
   /**
-   * Get default prompts (same as in popup.js)
+   * Get default prompts (delegates to prompt manager)
    */
   getDefaultPrompts() {
+    // Use centralized prompt manager if available
+    if (window.promptManager && window.promptManager.initialized) {
+      return window.promptManager.getDefaultPrompts();
+    }
+
+    // Fallback prompts if prompt manager not available
     return {
-      'professional_initial_reply': {
-        name: 'Professional Initial Reply',
-        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message'
+      'summary': {
+        name: 'Summary',
+        description: 'Summarize the conversation and extract key details like budget, timeline, and next steps'
       },
-      'project_summary': {
-        name: 'Project Summary',
-        description: 'Analyze conversation and extract key details into a structured, concise summary'
+      'follow_up': {
+        name: 'Follow-up',
+        description: 'Write a friendly and professional follow-up message based on conversation'
       },
-      'follow_up_message': {
-        name: 'Follow-up Message',
-        description: 'Draft a concise and effective follow-up message to a client based on conversation history'
+      'proposal': {
+        name: 'Proposal',
+        description: 'Create a Fiverr project proposal based on the conversation'
       },
-      'project_proposal': {
-        name: 'Project Proposal',
-        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message'
+      'translate': {
+        name: 'Translate',
+        description: 'Translate conversation into specified language'
       },
-      'translate_message': {
-        name: 'Translate Message',
-        description: 'Translate message to specified language and explain it'
+      'improve_translate': {
+        name: 'Improve & Translate',
+        description: 'Improve grammar and tone, then translate to English'
       },
-      'improve_and_translate': {
-        name: 'Improve and Translate',
-        description: 'Improve message and translate it to English'
-      },
-      'improve_message': {
-        name: 'Improve Message',
-        description: 'Improve message quality, clarity, and impact'
-      },
-      'summarize_message': {
-        name: 'Summarize Message',
-        description: 'Create a concise summary of a message highlighting key points'
-      },
-      'detailed_response': {
-        name: 'Detailed Response',
-        description: 'Generate a comprehensive, detailed response to a message or inquiry'
+      'improve': {
+        name: 'Improve',
+        description: 'Improve message grammar, clarity and professionalism'
       }
     };
   }

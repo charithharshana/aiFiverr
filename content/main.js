@@ -81,7 +81,7 @@ class AiFiverrMain {
       // Extension initialized - no background communication needed
       console.log('aiFiverr: Extension initialized for:', {
         url: window.location.href,
-        pageType: fiverrDetector.pageType
+        pageType: window.fiverrDetector?.pageType
       });
 
     } catch (error) {
@@ -163,24 +163,33 @@ class AiFiverrMain {
       // Initialize core managers first (these are needed for basic functionality)
       console.log('aiFiverr: Initializing core managers...');
       await this.initializeStorageManager();
-      await this.initializeSessionManager();
-      await this.initializeAPIKeyManager();
-      await this.initializeGeminiClient();
-      await this.initializeKnowledgeBaseManager();
 
-      // Initialize Fiverr-specific managers
+      // Initialize other core managers in parallel for better performance
+      await Promise.all([
+        this.initializeSessionManager(),
+        this.initializeAPIKeyManager(),
+        this.initializeGeminiClient(),
+        this.initializePromptManager(),
+        this.initializeKnowledgeBaseManager()
+      ]);
+
+      // Initialize Fiverr-specific managers in parallel
       console.log('aiFiverr: Initializing Fiverr managers...');
-      await this.initializeFiverrDetector();
-      await this.initializeFiverrExtractor();
-      await this.initializeFiverrInjector();
-      await this.initializeTextSelector();
+      await Promise.all([
+        this.initializeFiverrDetector(),
+        this.initializeFiverrExtractor(),
+        this.initializeFiverrInjector(),
+        this.initializeTextSelector()
+      ]);
 
-      // Initialize utility managers
+      // Initialize utility managers in parallel
       console.log('aiFiverr: Initializing utility managers...');
-      await this.initializeExportImportManager();
-      await this.initializePromptSelector();
+      await Promise.all([
+        this.initializeExportImportManager(),
+        this.initializePromptSelector()
+      ]);
 
-      // Initialize chat managers last
+      // Initialize chat managers last (these depend on other managers)
       console.log('aiFiverr: Initializing chat managers...');
       await this.initializeChatAssistantManager();
       await this.initializeAIChat();
@@ -250,8 +259,32 @@ class AiFiverrMain {
       } else {
         console.log('aiFiverr: Gemini Client initialization function not available');
       }
+
+      // Also initialize Enhanced Gemini Client
+      if (typeof window.initializeEnhancedGeminiClient === 'function') {
+        console.log('aiFiverr: Initializing Enhanced Gemini Client...');
+        await window.initializeEnhancedGeminiClient();
+      } else {
+        console.log('aiFiverr: Enhanced Gemini Client initialization function not available');
+      }
     } catch (error) {
       console.error('aiFiverr: Failed to initialize Gemini Client:', error);
+    }
+  }
+
+  /**
+   * Initialize Prompt Manager
+   */
+  async initializePromptManager() {
+    try {
+      if (window.promptManager) {
+        console.log('aiFiverr: Initializing Prompt Manager...');
+        await window.promptManager.init();
+      } else {
+        console.log('aiFiverr: Prompt Manager not available');
+      }
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize Prompt Manager:', error);
     }
   }
 
@@ -619,6 +652,46 @@ class AiFiverrMain {
           sendResponse({ success: true });
           break;
 
+        // Authentication handlers
+        case 'CHECK_AUTH_STATUS':
+          const authStatus = await this.handleCheckAuthStatus();
+          sendResponse({ success: true, authStatus });
+          break;
+
+        case 'GOOGLE_SIGN_IN':
+          const signInResult = await this.handleGoogleSignIn();
+          sendResponse(signInResult);
+          break;
+
+        case 'GOOGLE_SIGN_OUT':
+          const signOutResult = await this.handleGoogleSignOut();
+          sendResponse(signOutResult);
+          break;
+
+        case 'TEST_GOOGLE_CONNECTION':
+          const connectionResult = await this.handleTestGoogleConnection();
+          sendResponse(connectionResult);
+          break;
+
+        case 'GET_AUTH_STATS':
+          const authStats = await this.handleGetAuthStats();
+          sendResponse({ success: true, stats: authStats });
+          break;
+
+        // Knowledge Base Files handlers
+        // File operations are handled by background script
+        case 'GET_DRIVE_FILES':
+        case 'GET_GEMINI_FILES':
+        case 'UPLOAD_FILE_TO_DRIVE':
+        case 'UPLOAD_FILE_TO_GEMINI':
+        case 'GET_FILE_DETAILS':
+        case 'DELETE_DRIVE_FILE':
+        case 'SEARCH_DRIVE_FILES':
+        case 'UPDATE_FILE_METADATA':
+          // These are handled by the background script, not content script
+          sendResponse({ success: false, error: 'This message should be sent to background script' });
+          break;
+
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
       }
@@ -648,10 +721,16 @@ class AiFiverrMain {
    * Toggle floating widget
    */
   toggleFloatingWidget() {
-    if (window.fiverrInjector?.floatingWidget) {
-      const panel = window.fiverrInjector.floatingWidget.querySelector('.widget-panel');
-      const isVisible = panel.style.display !== 'none';
-      panel.style.display = isVisible ? 'none' : 'block';
+    try {
+      if (window.fiverrInjector?.floatingWidget) {
+        const panel = window.fiverrInjector.floatingWidget.querySelector('.widget-panel');
+        if (panel) {
+          const isVisible = panel.style.display !== 'none';
+          panel.style.display = isVisible ? 'none' : 'block';
+        }
+      }
+    } catch (error) {
+      console.error('aiFiverr: Error toggling floating widget:', error);
     }
   }
 
@@ -688,9 +767,18 @@ class AiFiverrMain {
       }
 
       // Process prompt with Fiverr context
-      const processedPrompt = await window.knowledgeBaseManager?.processPromptWithFiverrContext(promptKey, additionalContext);
+      const result = await window.knowledgeBaseManager?.processPromptWithFiverrContext(promptKey, additionalContext);
 
-      return { processedPrompt };
+      // Handle both old and new format
+      if (typeof result === 'object' && result.prompt) {
+        return {
+          processedPrompt: result.prompt,
+          knowledgeBaseFiles: result.knowledgeBaseFiles || []
+        };
+      } else {
+        // Backward compatibility
+        return { processedPrompt: result };
+      }
     } catch (error) {
       console.error('Failed to process prompt:', error);
       throw error;
@@ -842,6 +930,155 @@ class AiFiverrMain {
     }
   }
 
+  // Authentication Handler Methods
+  async handleCheckAuthStatus() {
+    try {
+      if (!window.googleAuthService) {
+        return { isAuthenticated: false };
+      }
+
+      const isAuthenticated = window.googleAuthService.isUserAuthenticated();
+      const user = window.googleAuthService.getCurrentUser();
+
+      return {
+        isAuthenticated,
+        user: isAuthenticated ? user : null
+      };
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to check auth status:', error);
+      return { isAuthenticated: false };
+    }
+  }
+
+  async handleGoogleSignIn() {
+    try {
+      if (!window.googleAuthService) {
+        throw new Error('Google Auth Service not available');
+      }
+
+      const result = await window.googleAuthService.authenticate();
+      return result;
+
+    } catch (error) {
+      console.error('aiFiverr: Google sign in failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleGoogleSignOut() {
+    try {
+      if (!window.googleAuthService) {
+        throw new Error('Google Auth Service not available');
+      }
+
+      const result = await window.googleAuthService.signOut();
+      return result;
+
+    } catch (error) {
+      console.error('aiFiverr: Google sign out failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleTestGoogleConnection() {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        throw new Error('Not authenticated');
+      }
+
+      // Test Google Sheets connection
+      let sheetsConnected = false;
+      try {
+        if (window.googleClient) {
+          const sheetsTest = await window.googleClient.testConnection();
+          sheetsConnected = sheetsTest.success;
+        }
+      } catch (error) {
+        console.warn('Sheets connection test failed:', error);
+      }
+
+      // Test Google Drive connection
+      let driveConnected = false;
+      try {
+        if (window.googleDriveClient) {
+          const driveTest = await window.googleDriveClient.testConnection();
+          driveConnected = driveTest.success;
+        }
+      } catch (error) {
+        console.warn('Drive connection test failed:', error);
+      }
+
+      return {
+        success: true,
+        sheetsConnected,
+        driveConnected
+      };
+
+    } catch (error) {
+      console.error('aiFiverr: Connection test failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleGetAuthStats() {
+    try {
+      if (!window.googleAuthService || !window.googleAuthService.isUserAuthenticated()) {
+        return {
+          sheetsConnected: false,
+          driveConnected: false,
+          knowledgeBaseFiles: 0,
+          lastSync: null
+        };
+      }
+
+      // Get Google Sheets stats
+      let sheetsConnected = false;
+      try {
+        if (window.googleClient) {
+          const sheetsStats = await window.googleClient.getStats();
+          sheetsConnected = !sheetsStats.error;
+        }
+      } catch (error) {
+        console.warn('Failed to get sheets stats:', error);
+      }
+
+      // Get Google Drive stats
+      let driveConnected = false;
+      let knowledgeBaseFiles = 0;
+      try {
+        if (window.googleDriveClient) {
+          const driveTest = await window.googleDriveClient.testConnection();
+          driveConnected = driveTest.success;
+
+          if (driveConnected) {
+            const files = await window.googleDriveClient.listKnowledgeBaseFiles();
+            knowledgeBaseFiles = files.length;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to get drive stats:', error);
+      }
+
+      return {
+        sheetsConnected,
+        driveConnected,
+        knowledgeBaseFiles,
+        lastSync: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to get auth stats:', error);
+      return {
+        sheetsConnected: false,
+        driveConnected: false,
+        knowledgeBaseFiles: 0,
+        lastSync: null,
+        error: error.message
+      };
+    }
+  }
+
   /**
    * Cleanup on page unload
    */
@@ -854,6 +1091,9 @@ class AiFiverrMain {
       window.fiverrInjector.cleanup();
     }
   }
+
+  // Knowledge Base Files Handler Methods
+  // File operations are now handled by background script only
 }
 
 // Initialize extension when script loads

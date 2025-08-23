@@ -19,7 +19,7 @@ export default class AIAssistanceManager {
     this.triggerButton = null;
     this.settings = {
       service: 'google', // SERVICES.GOOGLE
-      model: 'gemini-2.5-flash-preview-05-20',
+      model: 'gemini-2.5-flash',
       temperature: 0.7,
       max_tokens: 4096,
       stream: true,

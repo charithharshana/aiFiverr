@@ -212,25 +212,64 @@ class ChatAssistantManager {
             // Set loading state
             this.sendMessage('SET_LOADING', true);
 
-            // Get AI response using existing Gemini client
-            if (!window.sessionManager || !window.geminiClient) {
-                throw new Error('AI services not available. Please refresh the page.');
+            // Get AI response using enhanced Gemini client with streaming
+            if (!window.sessionManager) {
+                throw new Error('Session manager not available. Please refresh the page.');
+            }
+
+            // Initialize enhanced Gemini client if not available
+            if (!window.enhancedGeminiClient) {
+                initializeEnhancedGeminiClient();
             }
 
             const session = await window.sessionManager.getOrCreateSession('chat_assistant');
-            
+
             // Add context if available
             if (context?.selectedText) {
                 session.addMessage('system', `Context: User is working with this text: "${context.selectedText}"`);
             }
 
-            const response = await window.geminiClient.generateChatReply(session, message);
+            // Try streaming first, fallback to regular if needed
+            try {
+                const streamResponse = await window.enhancedGeminiClient.generateChatReply(session, message, { stream: true });
 
-            // Send response back to chat assistant
-            this.sendMessage('AI_RESPONSE', {
-                message: response.response,
-                messageId: Date.now().toString()
-            });
+                let fullResponse = '';
+                const messageId = Date.now().toString();
+
+                // Send initial streaming message
+                this.sendMessage('AI_RESPONSE_STREAM_START', {
+                    messageId: messageId
+                });
+
+                // Process streaming chunks
+                for await (const chunk of streamResponse) {
+                    fullResponse += chunk.text;
+                    this.sendMessage('AI_RESPONSE_STREAM_CHUNK', {
+                        chunk: chunk.text,
+                        fullText: fullResponse,
+                        messageId: messageId
+                    });
+                }
+
+                // Send final response
+                this.sendMessage('AI_RESPONSE', {
+                    message: fullResponse,
+                    messageId: messageId,
+                    streaming: true
+                });
+
+            } catch (streamError) {
+                console.log('aiFiverr: Streaming failed, falling back to regular generation:', streamError);
+
+                // Fallback to regular generation
+                const response = await window.enhancedGeminiClient.generateChatReply(session, message, { stream: false });
+
+                this.sendMessage('AI_RESPONSE', {
+                    message: response.response,
+                    messageId: Date.now().toString(),
+                    streaming: false
+                });
+            }
 
         } catch (error) {
             console.error('aiFiverr: Failed to get AI response:', error);

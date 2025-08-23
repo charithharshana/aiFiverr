@@ -1,617 +1,258 @@
 /**
- * Gemini AI Client
- * Handles communication with Google's Gemini API with streaming support
+ * Gemini Client for aiFiverr Extension
+ * Handles direct API calls to Google's Gemini API
  */
 
 class GeminiClient {
   constructor() {
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-    this.model = 'gemini-2.5-flash';
-    this.requestQueue = [];
-    this.isProcessing = false;
-    this.init();
+    this.initialized = false;
+    this.defaultModel = 'gemini-2.5-flash';
   }
 
   async init() {
     try {
-      // Check if extension context is valid
-      if (!chrome.runtime?.id) {
-        console.warn('Gemini client: Extension context invalidated, using defaults');
-        this.model = 'gemini-2.5-flash';
-        this.initialized = true;
-        return;
-      }
-
-      // Load settings
-      const settings = await storageManager.getSettings();
-      this.model = settings.defaultModel || 'gemini-2.5-flash';
       this.initialized = true;
+      console.log('aiFiverr: Gemini Client initialized');
     } catch (error) {
-      console.error('Gemini client init error:', error);
-      this.model = 'gemini-2.5-flash';
-      this.initialized = true;
+      console.error('aiFiverr: Gemini Client initialization error:', error);
+      this.initialized = true; // Still mark as initialized to prevent blocking
     }
   }
 
   /**
-   * Get API key with fallback to background script
+   * Get API key for Gemini API
    */
-  async getApiKey(sessionId) {
+  async getApiKey() {
     try {
-      // Try local API key manager first
       if (window.apiKeyManager && window.apiKeyManager.initialized) {
-        const keyData = window.apiKeyManager.getKeyForSession(sessionId);
+        const keyData = window.apiKeyManager.getKeyForSession('gemini');
         if (keyData) {
-          return keyData;
+          return keyData.key;
         }
       }
 
       // Fallback to background script
-      return await this.getApiKeyFromBackground();
+      const response = await chrome.runtime.sendMessage({ type: 'GET_API_KEY' });
+      if (response?.success && response?.data) {
+        return response.data.key;
+      }
+
+      throw new Error('No API key available');
     } catch (error) {
-      console.error('Failed to get API key:', error);
-      return null;
+      console.error('aiFiverr Gemini: Failed to get API key:', error);
+      throw error;
     }
   }
 
   /**
-   * Get API key from background script
+   * Get selected model from settings
    */
-  async getApiKeyFromBackground() {
-    return new Promise((resolve) => {
-      try {
-        if (!chrome.runtime?.id) {
-          console.warn('Extension context invalidated, cannot get API key');
-          resolve(null);
-          return;
-        }
-
-        chrome.runtime.sendMessage({ type: 'GET_API_KEY' }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.warn('Background API key error:', chrome.runtime.lastError.message);
-            resolve(null);
-          } else if (response?.success && response?.data) {
-            resolve(response.data);
-          } else {
-            resolve(null);
-          }
-        });
-      } catch (error) {
-        console.warn('Failed to get API key from background:', error.message);
-        resolve(null);
-      }
-    });
-  }
-
-  /**
-   * Mark key as successful
-   */
-  markKeySuccess(keyIndex) {
+  async getSelectedModel() {
     try {
-      if (window.apiKeyManager && window.apiKeyManager.initialized) {
-        window.apiKeyManager.markKeySuccess(keyIndex);
-      } else {
-        // Notify background script
-        this.notifyBackgroundKeyStatus(keyIndex, true);
+      if (window.storageManager && window.storageManager.initialized) {
+        const settings = await window.storageManager.get('settings');
+        return settings.settings?.selectedModel || settings.settings?.defaultModel || this.defaultModel;
       }
-    } catch (error) {
-      console.warn('Failed to mark key success:', error);
-    }
-  }
 
-  /**
-   * Mark key as failed
-   */
-  markKeyFailure(keyIndex, error) {
-    try {
-      if (window.apiKeyManager && window.apiKeyManager.initialized) {
-        window.apiKeyManager.markKeyFailure(keyIndex, error);
-      } else {
-        // Notify background script
-        this.notifyBackgroundKeyStatus(keyIndex, false, error);
-      }
+      // Fallback to chrome storage
+      const result = await chrome.storage.local.get('settings');
+      return result.settings?.selectedModel || result.settings?.defaultModel || this.defaultModel;
     } catch (error) {
-      console.warn('Failed to mark key failure:', error);
+      console.warn('aiFiverr Gemini: Failed to get model setting, using default:', error);
+      return this.defaultModel;
     }
-  }
-
-  /**
-   * Log key status locally (no background communication)
-   */
-  notifyBackgroundKeyStatus(keyIndex, success, error = null) {
-    // Just log locally - no background script communication needed
-    console.log(`aiFiverr: API Key ${keyIndex} status:`, success ? 'SUCCESS' : 'FAILED', error?.message || '');
   }
 
   /**
    * Generate content using Gemini API
    */
   async generateContent(prompt, options = {}) {
-    const keyData = await this.getApiKey(options.sessionId || 'default');
-
-    if (!keyData) {
-      throw new Error('No API key available');
-    }
-
     try {
-      const response = await this.makeRequest(keyData, prompt, options);
+      const apiKey = await this.getApiKey();
+      const model = options.model || await this.getSelectedModel();
 
-      // Mark key as successful
-      this.markKeySuccess(keyData.index);
+      console.log('aiFiverr Gemini: Generating content with model:', model);
 
-      return response;
-    } catch (error) {
-      // Mark key as failed
-      this.markKeyFailure(keyData.index, error);
-      throw error;
-    }
-  }
+      const contents = [{
+        parts: [],
+        role: "user"
+      }];
 
-  /**
-   * Generate streaming content
-   */
-  async generateStreamingContent(prompt, options = {}) {
-    const keyData = await this.getApiKey(options.sessionId || 'default');
-
-    if (!keyData) {
-      throw new Error('No API key available');
-    }
-
-    try {
-      const stream = await this.makeStreamingRequest(keyData, prompt, options);
-
-      // Mark key as successful
-      this.markKeySuccess(keyData.index);
-
-      return stream;
-    } catch (error) {
-      // Mark key as failed
-      this.markKeyFailure(keyData.index, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Make API request
-   */
-  async makeRequest(keyData, prompt, options = {}) {
-    const url = `${this.baseUrl}/models/${this.model}:generateContent?key=${keyData.key}`;
-    
-    const requestBody = this.buildRequestBody(prompt, options);
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`API request failed: ${response.status} - ${errorData.error?.message || response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    if (!data.candidates || data.candidates.length === 0) {
-      throw new Error('No response generated');
-    }
-
-    const candidate = data.candidates[0];
-    
-    if (candidate.finishReason === 'SAFETY') {
-      throw new Error('Response blocked by safety filters');
-    }
-
-    return {
-      text: candidate.content?.parts?.[0]?.text || '',
-      finishReason: candidate.finishReason,
-      safetyRatings: candidate.safetyRatings,
-      usageMetadata: data.usageMetadata
-    };
-  }
-
-  /**
-   * Make streaming API request
-   */
-  async makeStreamingRequest(keyData, prompt, options = {}) {
-    const url = `${this.baseUrl}/models/${this.model}:streamGenerateContent?key=${keyData.key}`;
-    
-    const requestBody = this.buildRequestBody(prompt, options);
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Streaming request failed: ${response.status} - ${errorData.error?.message || response.statusText}`);
-    }
-
-    return this.createStreamReader(response);
-  }
-
-  /**
-   * Build request body for API
-   */
-  buildRequestBody(prompt, options = {}) {
-    const body = {
-      contents: [],
-      generationConfig: {
-        temperature: options.temperature || 0.7,
-        topK: options.topK || 40,
-        topP: options.topP || 0.95,
-        maxOutputTokens: options.maxTokens || 2048,
-      },
-      safetySettings: [
-        {
-          category: 'HARM_CATEGORY_HARASSMENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-        },
-        {
-          category: 'HARM_CATEGORY_HATE_SPEECH',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-        },
-        {
-          category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-        },
-        {
-          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-        }
-      ]
-    };
-
-    // Handle different prompt types
-    if (typeof prompt === 'string') {
-      body.contents.push({
-        role: 'user',
-        parts: [{ text: prompt }]
-      });
-    } else if (Array.isArray(prompt)) {
-      // Conversation history
-      body.contents = prompt;
-    } else if (prompt.messages) {
-      // Session format
-      body.contents = prompt.messages;
-    }
-
-    // Add system instruction if provided
-    if (options.systemInstruction) {
-      body.systemInstruction = {
-        parts: [{ text: options.systemInstruction }]
-      };
-    }
-
-    return body;
-  }
-
-  /**
-   * Create stream reader for streaming responses
-   */
-  async createStreamReader(response) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    
-    return {
-      async *[Symbol.asyncIterator]() {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) break;
-            
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-            
-            for (const line of lines) {
-              if (line.trim() && line.startsWith('data: ')) {
-                try {
-                  const jsonStr = line.slice(6); // Remove 'data: ' prefix
-                  const data = JSON.parse(jsonStr);
-                  
-                  if (data.candidates && data.candidates[0]) {
-                    const candidate = data.candidates[0];
-                    const text = candidate.content?.parts?.[0]?.text || '';
-                    
-                    if (text) {
-                      yield {
-                        text,
-                        finishReason: candidate.finishReason,
-                        delta: text
-                      };
-                    }
-                  }
-                } catch (parseError) {
-                  console.warn('Failed to parse streaming chunk:', parseError);
-                }
+      // Add knowledge base files first if provided
+      if (options.knowledgeBaseFiles && options.knowledgeBaseFiles.length > 0) {
+        for (const file of options.knowledgeBaseFiles) {
+          if (file.geminiUri) {
+            contents[0].parts.push({
+              fileData: {
+                fileUri: file.geminiUri,
+                mimeType: file.mimeType || 'application/octet-stream'
               }
-            }
+            });
           }
-        } finally {
-          reader.releaseLock();
         }
+        console.log('aiFiverr Gemini: Added', options.knowledgeBaseFiles.length, 'knowledge base files');
       }
-    };
-  }
 
-  /**
-   * Generate chat reply with conversation context
-   */
-  async generateChatReply(session, userMessage, options = {}) {
-    // Add user message to session
-    session.addMessage('user', userMessage);
-    
-    // Get conversation context
-    const messages = session.getMessagesForAPI();
-    
-    // Add Fiverr context if available
-    let systemInstruction = options.systemInstruction || this.getDefaultSystemInstruction();
-    
-    if (session.metadata.fiverrContext) {
-      systemInstruction += `\n\nFiverr Context: ${session.metadata.fiverrContext}`;
-    }
-
-    try {
-      const response = await this.generateContent(messages, {
-        ...options,
-        sessionId: session.sessionId,
-        systemInstruction
+      // Add text prompt
+      contents[0].parts.push({
+        text: prompt
       });
 
-      // Add AI response to session
-      const aiMessage = session.addMessage('assistant', response.text);
-      
-      // Save session
-      await session.save();
-      
-      return {
-        message: aiMessage,
-        response: response.text,
-        metadata: {
-          finishReason: response.finishReason,
-          usageMetadata: response.usageMetadata
+      const payload = {
+        contents: contents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+          candidateCount: 1
         }
       };
-    } catch (error) {
-      console.error('Chat reply generation failed:', error);
-      throw error;
-    }
-  }
 
-  /**
-   * Generate streaming chat reply
-   */
-  async generateStreamingChatReply(session, userMessage, options = {}) {
-    // Add user message to session
-    session.addMessage('user', userMessage);
-    
-    // Get conversation context
-    const messages = session.getMessagesForAPI();
-    
-    // Add Fiverr context if available
-    let systemInstruction = options.systemInstruction || this.getDefaultSystemInstruction();
-    
-    if (session.metadata.fiverrContext) {
-      systemInstruction += `\n\nFiverr Context: ${session.metadata.fiverrContext}`;
-    }
-
-    try {
-      const stream = await this.generateStreamingContent(messages, {
-        ...options,
-        sessionId: session.sessionId,
-        systemInstruction
-      });
-
-      let fullResponse = '';
-      
-      return {
-        async *[Symbol.asyncIterator]() {
-          for await (const chunk of stream) {
-            fullResponse += chunk.text;
-            yield chunk;
-          }
-          
-          // Add complete AI response to session
-          session.addMessage('assistant', fullResponse);
-          await session.save();
-        }
-      };
-    } catch (error) {
-      console.error('Streaming chat reply generation failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Analyze message content
-   */
-  async analyzeMessage(content, options = {}) {
-    const prompt = `Analyze the following message for tone, intent, and key points. Provide a brief analysis:
-
-Message: "${content}"
-
-Please provide:
-1. Tone (professional, casual, urgent, etc.)
-2. Intent (question, request, complaint, etc.)
-3. Key points or requirements
-4. Suggested response approach`;
-
-    try {
-      const response = await this.generateContent(prompt, options);
-      return response.text;
-    } catch (error) {
-      console.error('Message analysis failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Generate proposal based on brief data
-   */
-  async generateProposal(briefData, knowledgeBase = {}, options = {}) {
-    let prompt = 'Generate a professional Fiverr proposal based on the following project brief:\n\n';
-    
-    if (briefData) {
-      if (briefData.title) prompt += `Title: ${briefData.title}\n`;
-      if (briefData.description) prompt += `Description: ${briefData.description}\n`;
-      if (briefData.requirements?.length) prompt += `Requirements: ${briefData.requirements.join(', ')}\n`;
-      if (briefData.budget) prompt += `Budget: ${briefData.budget}\n`;
-      if (briefData.deadline) prompt += `Deadline: ${briefData.deadline}\n`;
-      if (briefData.skills?.length) prompt += `Skills needed: ${briefData.skills.join(', ')}\n`;
-    }
-
-    prompt += '\n\nPlease create a compelling proposal that:\n';
-    prompt += '1. Addresses the client\'s specific needs\n';
-    prompt += '2. Highlights relevant experience and skills\n';
-    prompt += '3. Provides a clear approach to the project\n';
-    prompt += '4. Maintains a professional yet personable tone\n';
-
-    // Add knowledge base information
-    if (Object.keys(knowledgeBase).length > 0) {
-      prompt += '\n\nUse the following information about the freelancer:\n';
-      Object.entries(knowledgeBase).forEach(([key, value]) => {
-        prompt += `${key}: ${value}\n`;
-      });
-    }
-
-    try {
-      const response = await this.generateContent(prompt, options);
-      return response.text;
-    } catch (error) {
-      console.error('Proposal generation failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get default system instruction
-   */
-  getDefaultSystemInstruction() {
-    return `You are an AI assistant helping with Fiverr communications. You should:
-1. Be professional and helpful
-2. Understand the context of freelance work and client relationships
-3. Provide clear, actionable responses
-4. Maintain appropriate tone for business communications
-5. Help with proposals, messages, and project discussions
-6. Be concise but thorough in your responses`;
-  }
-
-  /**
-   * Summarize conversation
-   */
-  async summarizeConversation(conversationData, options = {}) {
-    const prompt = `Summarize the following Fiverr conversation, highlighting key points, decisions, and action items:
-
-${conversationData}
-
-Please provide:
-1. Brief overview of the conversation
-2. Key decisions made
-3. Action items or next steps
-4. Important deadlines or requirements mentioned`;
-
-    try {
-      const response = await this.generateContent(prompt, options);
-      return response.text;
-    } catch (error) {
-      console.error('Conversation summarization failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Extract key information from text
-   */
-  async extractKeyInfo(text, options = {}) {
-    const prompt = `Extract key information from the following text:
-
-${text}
-
-Please identify:
-1. Important requirements or specifications
-2. Deadlines or time constraints
-3. Budget or pricing information
-4. Contact information or next steps
-5. Any specific preferences or constraints`;
-
-    try {
-      const response = await this.generateContent(prompt, options);
-      return response.text;
-    } catch (error) {
-      console.error('Key information extraction failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Check API key validity
-   */
-  async validateApiKey(apiKey) {
-    try {
-      const url = `${this.baseUrl}/models/${this.model}:generateContent?key=${apiKey}`;
-      
-      const response = await fetch(url, {
+      const response = await fetch(`${this.baseUrl}/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          contents: [{
-            role: 'user',
-            parts: [{ text: 'Hello' }]
-          }],
-          generationConfig: {
-            maxOutputTokens: 10
-          }
-        })
+        body: JSON.stringify(payload)
       });
 
-      return response.ok;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Gemini API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.candidates || result.candidates.length === 0) {
+        throw new Error('No response generated from Gemini API');
+      }
+
+      const text = result.candidates[0].content.parts[0].text;
+      return {
+        text: text,
+        response: text // For compatibility
+      };
+
     } catch (error) {
-      return false;
+      console.error('aiFiverr Gemini: Generate content failed:', error);
+      throw error;
     }
   }
 
   /**
-   * Get available models
+   * Generate chat reply with session context
    */
-  async getAvailableModels(apiKey) {
+  async generateChatReply(session, message, options = {}) {
     try {
-      const url = `${this.baseUrl}/models?key=${apiKey}`;
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch models');
+      console.log('aiFiverr Gemini: Generating chat reply for session:', session?.id);
+
+      const apiKey = await this.getApiKey();
+      const model = options.model || await this.getSelectedModel();
+
+      // Build conversation history
+      const contents = [];
+
+      if (session && session.messages && session.messages.length > 0) {
+        // Add recent conversation history (last 10 messages for context)
+        const recentMessages = session.messages.slice(-10);
+        for (const msg of recentMessages) {
+          if (msg.role === 'user') {
+            contents.push({
+              role: 'user',
+              parts: [{ text: msg.content }]
+            });
+          } else if (msg.role === 'assistant' || msg.role === 'model') {
+            contents.push({
+              role: 'model',
+              parts: [{ text: msg.content }]
+            });
+          }
+        }
       }
 
-      const data = await response.json();
-      return data.models || [];
+      // Add current message
+      const currentMessageParts = [];
+
+      // Add knowledge base files first if provided
+      if (options.knowledgeBaseFiles && options.knowledgeBaseFiles.length > 0) {
+        for (const file of options.knowledgeBaseFiles) {
+          if (file.geminiUri) {
+            currentMessageParts.push({
+              fileData: {
+                fileUri: file.geminiUri,
+                mimeType: file.mimeType || 'application/octet-stream'
+              }
+            });
+          }
+        }
+        console.log('aiFiverr Gemini: Added', options.knowledgeBaseFiles.length, 'knowledge base files to chat');
+      }
+
+      // Add text message
+      currentMessageParts.push({ text: message });
+
+      contents.push({
+        role: 'user',
+        parts: currentMessageParts
+      });
+
+      const payload = {
+        contents: contents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+          candidateCount: 1
+        }
+      };
+
+      const response = await fetch(`${this.baseUrl}/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Gemini API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.candidates || result.candidates.length === 0) {
+        throw new Error('No response generated from Gemini API');
+      }
+
+      const responseText = result.candidates[0].content.parts[0].text;
+
+      // Add to session if provided
+      if (session && session.addMessage) {
+        session.addMessage('user', message);
+        session.addMessage('assistant', responseText);
+      }
+
+      return {
+        response: responseText,
+        text: responseText // For compatibility
+      };
+
     } catch (error) {
-      console.error('Failed to get available models:', error);
-      return [];
+      console.error('aiFiverr Gemini: Generate chat reply failed:', error);
+      throw error;
     }
   }
 }
 
-// Create global Gemini client - but only when explicitly called
+// Initialize global instance
 function initializeGeminiClient() {
   if (!window.geminiClient) {
     window.geminiClient = new GeminiClient();
-    console.log('aiFiverr: Gemini Client created');
+    window.geminiClient.init();
+    console.log('aiFiverr: Gemini Client created and initialized');
   }
   return window.geminiClient;
 }
 
-// Export the initialization function but DO NOT auto-initialize
+// Export the initialization function
 window.initializeGeminiClient = initializeGeminiClient;
-
-// REMOVED AUTO-INITIALIZATION - This was causing the Gemini client to load on every website
-// The Gemini client should only be initialized when explicitly called by the main extension

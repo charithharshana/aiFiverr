@@ -27,6 +27,15 @@ class StorageManager {
     if (!isValid && !this.contextInvalidated) {
       this.contextInvalidated = true;
       console.warn('aiFiverr: Extension context invalidated - storage operations will be limited');
+
+      // Notify other components about context invalidation
+      try {
+        window.dispatchEvent(new CustomEvent('extensionContextInvalidated', {
+          detail: { timestamp: Date.now() }
+        }));
+      } catch (error) {
+        console.warn('aiFiverr: Could not dispatch context invalidation event:', error);
+      }
     }
 
     return isValid;
@@ -289,7 +298,8 @@ class StorageManager {
   getDefaultSettings() {
     return {
       apiKeys: [],
-      defaultModel: 'gemini-1.5-flash',
+      defaultModel: 'gemini-2.5-flash',
+      selectedModel: 'gemini-2.5-flash', // User's selected model
       autoSave: true,
       sessionTimeout: 30 * 60 * 1000, // 30 minutes
       maxSessions: 50,

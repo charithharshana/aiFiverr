@@ -13,7 +13,7 @@ import { filterMessageRole, filterNotMessageRole, join, deepClone, handleErrorRe
 export default class Google extends LLM {
   static service = SERVICES.GOOGLE;
   static DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/';
-  static DEFAULT_MODEL = 'gemini-2.5-flash-preview-05-20';
+  static DEFAULT_MODEL = 'gemini-2.5-flash';
   static isBearerAuth = false;
 
   get chatUrl() {

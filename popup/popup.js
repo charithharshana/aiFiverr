@@ -30,6 +30,17 @@ class PopupManager {
 
       // Load initial data
       await this.loadDashboardData();
+
+      // Initialize Knowledge Base Files if on files tab
+      const activeTab = document.querySelector('.kb-tab-btn.active');
+      if (activeTab && activeTab.dataset.tab === 'files') {
+        await this.loadKnowledgeBaseFiles();
+      }
+
+      // Also initialize files data in background for faster switching
+      setTimeout(() => {
+        this.loadKnowledgeBaseFiles();
+      }, 1000);
     } catch (error) {
       console.error('Popup initialization failed:', error);
       // Remove popup error message - just log to console
@@ -92,6 +103,113 @@ class PopupManager {
       }
     });
 
+    // Knowledge Base tabs
+    document.querySelectorAll('.kb-tab-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        this.switchKnowledgeBaseTab(e.target.dataset.tab);
+      });
+    });
+
+    // Knowledge Base Files management
+    document.getElementById('uploadKbFiles')?.addEventListener('click', () => {
+      this.toggleFileUploadArea();
+    });
+
+    document.getElementById('refreshKbFiles')?.addEventListener('click', () => {
+      this.loadKnowledgeBaseFiles();
+    });
+
+    document.getElementById('fileInput')?.addEventListener('change', (e) => {
+      this.handleFileSelection(e.target.files);
+    });
+
+    document.getElementById('searchKbFiles')?.addEventListener('click', () => {
+      this.searchKnowledgeBaseFiles();
+    });
+
+    document.getElementById('kbFileSearch')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.searchKnowledgeBaseFiles();
+      }
+    });
+
+    document.getElementById('fileTypeFilter')?.addEventListener('change', () => {
+      this.filterKnowledgeBaseFiles();
+    });
+
+    document.getElementById('fileSortOrder')?.addEventListener('change', () => {
+      this.sortKnowledgeBaseFiles();
+    });
+
+    // File upload dropzone
+    const dropzone = document.getElementById('uploadDropzone');
+    if (dropzone) {
+      dropzone.addEventListener('click', () => {
+        document.getElementById('fileInput').click();
+      });
+
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('dragover');
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        this.handleFileSelection(e.dataTransfer.files);
+      });
+    }
+
+    // File detail modal
+    document.getElementById('closeKbFileModal')?.addEventListener('click', () => {
+      this.hideFileDetailModal();
+    });
+
+    document.getElementById('closeKbFileModalBtn')?.addEventListener('click', () => {
+      this.hideFileDetailModal();
+    });
+
+    document.getElementById('deleteKbFile')?.addEventListener('click', () => {
+      this.deleteSelectedFile();
+    });
+
+    document.getElementById('downloadKbFile')?.addEventListener('click', () => {
+      this.downloadSelectedFile();
+    });
+
+    document.getElementById('copyKbFileLink')?.addEventListener('click', () => {
+      this.copyFileLink();
+    });
+
+    document.getElementById('saveFileMetadata')?.addEventListener('click', () => {
+      this.saveFileMetadata();
+    });
+
+    document.getElementById('attachToPrompt')?.addEventListener('click', () => {
+      this.showFileSelectionModal();
+    });
+
+    document.getElementById('uploadToGemini')?.addEventListener('click', () => {
+      this.uploadFileToGemini();
+    });
+
+    // File selection modal
+    document.getElementById('closeFileSelectionModal')?.addEventListener('click', () => {
+      this.hideFileSelectionModal();
+    });
+
+    document.getElementById('clearFileSelection')?.addEventListener('click', () => {
+      this.clearFileSelection();
+    });
+
+    document.getElementById('confirmFileSelection')?.addEventListener('click', () => {
+      this.confirmFileSelection();
+    });
+
     document.getElementById('toggleApiKeysVisibility')?.addEventListener('click', () => {
       this.toggleApiKeysVisibility();
     });
@@ -135,6 +253,43 @@ class PopupManager {
       this.hidePromptForm();
     });
 
+    // Knowledge Base file selector for prompts
+    document.getElementById('selectKbFiles')?.addEventListener('click', () => {
+      console.log('aiFiverr: Select KB Files button clicked');
+      this.showKnowledgeBaseFileSelector();
+    });
+
+    // Event delegation for conversation actions
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('update-conversation-btn')) {
+        const username = e.target.getAttribute('data-username');
+        this.updateConversation(username);
+      } else if (e.target.classList.contains('delete-conversation-btn')) {
+        const username = e.target.getAttribute('data-username');
+        this.deleteConversation(username);
+      } else if (e.target.classList.contains('extract-contact-btn')) {
+        e.stopPropagation();
+        const username = e.target.getAttribute('data-username');
+        this.extractConversationByUsername(username);
+      } else if (e.target.classList.contains('contact-item')) {
+        const username = e.target.getAttribute('data-username');
+        this.extractConversationByUsername(username);
+      } else if (e.target.classList.contains('conversation-item')) {
+        const username = e.target.getAttribute('data-username');
+        this.showConversationModal(username);
+      } else if (e.target.classList.contains('file-action-btn')) {
+        const action = e.target.getAttribute('data-action');
+        const fileId = e.target.getAttribute('data-file-id');
+        if (action === 'details') {
+          this.showFileDetails(fileId);
+        } else if (action === 'download') {
+          this.downloadFile(fileId);
+        } else if (action === 'delete') {
+          this.handleDeleteFile(fileId);
+        }
+      }
+    });
+
     // Prompt tabs
     document.querySelectorAll('.prompt-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -153,6 +308,13 @@ class PopupManager {
       } else if (e.target.classList.contains('prompt-delete-btn')) {
         const key = e.target.getAttribute('data-key');
         this.deletePrompt(key);
+      } else if (e.target.classList.contains('prompt-toggle-btn')) {
+        const key = e.target.getAttribute('data-key');
+        this.toggleDefaultPromptVisibility(key);
+      } else if (e.target.classList.contains('prompt-content-toggle') || e.target.closest('.prompt-content-toggle')) {
+        const toggleBtn = e.target.classList.contains('prompt-content-toggle') ? e.target : e.target.closest('.prompt-content-toggle');
+        const key = toggleBtn.getAttribute('data-key');
+        this.togglePromptContentVisibility(key);
       }
     });
 
@@ -227,18 +389,6 @@ class PopupManager {
       this.refreshCurrentConversation();
     });
 
-    document.getElementById('refreshSingleConversation')?.addEventListener('click', () => {
-      this.refreshCurrentConversation();
-    });
-
-    document.getElementById('closeConversationModal')?.addEventListener('click', () => {
-      this.closeConversationModal();
-    });
-
-    document.getElementById('closeConversationModalBtn')?.addEventListener('click', () => {
-      this.closeConversationModal();
-    });
-
     // Close conversation modal when clicking overlay
     document.getElementById('conversationModalOverlay')?.addEventListener('click', (e) => {
       if (e.target.id === 'conversationModalOverlay') {
@@ -279,11 +429,13 @@ class PopupManager {
 
   async initializeUI() {
     try {
+      // Initialize authentication
+      await this.initializeAuthentication();
+
       // Load settings (this includes knowledge base and prompts)
       await this.loadSettings();
 
-      // Update status
-      this.updateStatus();
+
     } catch (error) {
       console.error('aiFiverr: Failed to initialize UI:', error);
       this.showToast('Failed to initialize extension UI', 'error');
@@ -415,22 +567,22 @@ class PopupManager {
     }
   }
 
-  updateStatus() {
-    const statusText = document.querySelector('.status-text');
-    const statusDot = document.querySelector('.status-dot');
-    
-    if (statusText && statusDot) {
-      statusText.textContent = 'Ready';
-      statusDot.style.background = '#2ecc71';
-    }
-  }
+
 
 
 
   async loadApiConfig() {
     try {
-      const settings = await this.getStorageData('settings');
-      this.currentApiKeys = settings?.apiKeys || [];
+      // Load API keys from the same location the background script uses
+      const result = await this.getStorageData(['apiKeys', 'settings']);
+
+      // Try to get API keys from the background script location first
+      this.currentApiKeys = result.apiKeys || [];
+
+      // If no keys found in background location, try settings as fallback
+      if (this.currentApiKeys.length === 0 && result.settings?.apiKeys) {
+        this.currentApiKeys = result.settings.apiKeys;
+      }
 
       // Display API keys in the list
       this.displayApiKeys();
@@ -448,11 +600,18 @@ class PopupManager {
       }
 
       // Load API configuration
-      if (settings) {
-        document.getElementById('defaultModel').value = settings.defaultModel || 'gemini-2.5-flash';
-        document.getElementById('keyRotation').checked = settings.keyRotation !== false;
-        document.getElementById('apiTimeout').value = settings.apiTimeout || 30;
-        document.getElementById('maxRetries').value = settings.maxRetries || 3;
+      if (result.settings) {
+        // Load model selection - prioritize selectedModel over defaultModel
+        const defaultModelEl = document.getElementById('defaultModel');
+        if (defaultModelEl) {
+          const modelToUse = result.settings.selectedModel || result.settings.defaultModel || 'gemini-2.5-flash';
+          defaultModelEl.value = modelToUse;
+          console.log('aiFiverr Popup: Loading API config with model:', modelToUse);
+        }
+
+        document.getElementById('keyRotation').checked = result.settings.keyRotation !== false;
+        document.getElementById('apiTimeout').value = result.settings.apiTimeout || 30;
+        document.getElementById('maxRetries').value = result.settings.maxRetries || 3;
       }
     } catch (error) {
       console.error('Failed to load API config:', error);
@@ -469,8 +628,14 @@ class PopupManager {
       // Load prompt management
       await this.loadPrompts();
 
-      // Load preferences (removed API keys and model selection)
+      // Load preferences and model selection
       if (settings) {
+        // Load model selection
+        const defaultModelEl = document.getElementById('defaultModel');
+        if (defaultModelEl && (settings.selectedModel || settings.defaultModel)) {
+          defaultModelEl.value = settings.selectedModel || settings.defaultModel;
+        }
+
         document.getElementById('restrictToFiverr').checked = settings.restrictToFiverr !== false;
         document.getElementById('autoSave').checked = settings.autoSave !== false;
         document.getElementById('notifications').checked = settings.notifications !== false;
@@ -533,17 +698,36 @@ class PopupManager {
 
       const variables = new Set();
 
-      // Regular expression to find {{variable}} patterns
-      const variableRegex = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+      // Regular expressions to find both {variable} and {{variable}} patterns
+      const singleBraceRegex = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+      const doubleBraceRegex = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
 
       // Extract variables from all default prompts
       Object.values(defaultPrompts).forEach(prompt => {
         console.log('Processing prompt:', prompt.name, prompt.prompt);
+
+        // Find single brace variables {variable}
         let match;
-        while ((match = variableRegex.exec(prompt.prompt)) !== null) {
-          console.log('Found variable:', match[1]);
+        while ((match = singleBraceRegex.exec(prompt.prompt)) !== null) {
+          const varName = match[1];
+          // Skip system variables that are provided by context
+          if (!['conversation', 'conversation_summary', 'conversation_count', 'conversation_last_message', 'username'].includes(varName)) {
+            console.log('Found single brace variable:', varName);
+            variables.add(varName);
+          }
+        }
+
+        // Reset regex lastIndex for reuse
+        singleBraceRegex.lastIndex = 0;
+
+        // Find double brace variables {{variable}}
+        while ((match = doubleBraceRegex.exec(prompt.prompt)) !== null) {
+          console.log('Found double brace variable:', match[1]);
           variables.add(match[1]);
         }
+
+        // Reset regex lastIndex for reuse
+        doubleBraceRegex.lastIndex = 0;
       });
 
       console.log('All variables found:', Array.from(variables));
@@ -810,6 +994,10 @@ class PopupManager {
       const favorites = await this.forceReloadFromStorage('favoritePrompts') || [];
       this.favoritePrompts = new Set(favorites);
 
+      // Load default prompt visibility settings
+      const defaultPromptVisibility = await this.forceReloadFromStorage('defaultPromptVisibility') || {};
+      this.defaultPromptVisibility = defaultPromptVisibility;
+
       // Load default prompts from knowledge base
       const defaultPrompts = this.getDefaultPrompts();
 
@@ -822,128 +1010,48 @@ class PopupManager {
   }
 
   getDefaultPrompts() {
+    // Use centralized prompt manager if available
+    if (window.promptManager && window.promptManager.initialized) {
+      return window.promptManager.getDefaultPrompts();
+    }
+
+    // Fallback to prompts from SYSTEM_PRO.md
     return {
-      'professional_initial_reply': {
-        name: 'Professional Initial Reply',
-        description: 'Generate a professional, friendly, and concise reply to a potential client\'s initial message',
-        prompt: `Go through this initial requirement
-
-{conversation}
-
-Write an appropriate initial reply under 2500 characters using below information
-
-I am a freelancer who works on Fiverr
-
-Use my background: {{bio}}
-My services: {{services}}
-Additional info: {{custom1}}
-
-Portfolio: {{portfolio}}
-
-Rules:
-- Greet the client personally
-- Show you understand their request
-- Mention relevant experience or service
-- Add relevant portfolio links which match to clients requirement
-- Suggest next steps
-- Keep it friendly and professional
-- No markdown formatting, no explanations.`
+      'summary': {
+        name: 'Summary',
+        description: 'Summarize the below conversation and extract key details about the project',
+        prompt: 'Summarize the below conversation:\n\n{conversation}\n\nExtract key details about this project. Write a well-formatted summary. No explanations.',
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
-      'project_summary': {
-        name: 'Project Summary',
-        description: 'Analyze conversation and extract key details into a structured, concise summary',
-        prompt: `Summarize this project:
-
-{conversation}
-
-Extract all important information like Budget, Timeline, Next Steps etc..
-
-Need a well formatted reply under 3000 characters, no markdown formatting, no explanations.`
+      'follow_up': {
+        name: 'Follow-up',
+        description: 'Write a short, friendly follow-up message based on conversation',
+        prompt: 'Write a short, friendly follow-up message based on this conversation:\n\n{conversation}\n\nMention a specific detail we discussed and include clear next steps. No explanations.',
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
-      'follow_up_message': {
-        name: 'Follow-up Message',
-        description: 'Draft a concise and effective follow-up message to a client based on conversation history',
-        prompt: `Write a follow-up message based on this conversation:
-
-{conversation}
-
-Purpose: {{custom1}}
-My availability: {{custom2}}
-
-Make it:
-- Friendly and professional
-- Reference something specific from our conversation
-- Include clear next steps
-- Mention availability if provided
-- No markdown formatting, no explanations.`
+      'proposal': {
+        name: 'Proposal',
+        description: 'Create a short and concise project proposal based on conversation',
+        prompt: 'My bio: {bio}\n\nCreate a short and concise project proposal (under 3000 characters) based on this conversation:\n\n{conversation}\n\nInclude examples from my previous work. Write a well-formatted proposal. No explanations.',
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
-      'project_proposal': {
-        name: 'Project Proposal',
-        description: 'Transform raw notes into a clear, professional, and persuasive project proposal message',
-        prompt: `Create a project proposal based on Conversation:
-
-{conversation}
-
-I am a freelancer who works on Fiverr
-
-Use my background: {{bio}}
-My services: {{services}}
-Additional info: {{custom1}}
-
-Portfolio: {{portfolio}}
-
-Structure:
-1. Personal greeting
-2. Project understanding summary
-3. Proposal details (scope, timeline, price)
-4. Why I'm the right fit
-5. Relevant portfolio examples/links
-6. Clear next steps
-
-Need a well formatted reply under 3000 characters, no markdown formatting, no explanations.`
+      'translate': {
+        name: 'Translate',
+        description: 'Translate conversation into specified language',
+        prompt: 'Translate this: {conversation}\n\nInto this language: {language}\n\nProvide only the translated text. No explanations.',
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
-      'translate_message': {
-        name: 'Translate Message',
-        description: 'Translate message to specified language and explain it',
-        prompt: `Translate this message to {{language}} and explain it along with the original language:
-
-{conversation}
-
-Write a well formatted reply. Provide only the final translated text, no explanations.`
+      'improve_translate': {
+        name: 'Improve & Translate',
+        description: 'Improve grammar and tone, then translate to English',
+        prompt: 'Improve the grammar and tone of this message: {conversation}\n\nThen, translate the improved message to English. Use my bio ({bio}) to add relevant details about me. No explanations.',
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
-      'improve_and_translate': {
-        name: 'Improve and Translate Message',
-        description: 'Improve message and translate it to English',
-        prompt: `Improve this message and translate it to English:
-
-{conversation}
-
-I am a freelancer who works on Fiverr, use this as a reference and add relevant information about me:
-
-Use my background: {{bio}}
-My services: {{services}}
-Additional info: {{custom1}}
-
-Portfolio: {{portfolio}}
-
-Write a well formatted reply. no explanations.`
-      },
-      'improve_message': {
-        name: 'Improve Message',
-        description: 'Improve message quality, clarity, and impact',
-        prompt: `Improve this message
-
-{conversation} - could i know the correct things here? (the text we copied from Fiverr)
-
-This is my history: {conversation}
-
-Make it:
-- Grammatically correct
-- Clear and concise
-- More {{custom1}} in tone
-- Keep the same meaning
-
-Write a well formatted reply, no explanations.`
+      'improve': {
+        name: 'Improve',
+        description: 'Improve message grammar, clarity and professionalism',
+        prompt: 'Improve this message: {conversation}\n\nMake it grammatically correct, clear, and professional, but keep the original meaning. No explanations.',
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       }
     };
   }
@@ -1018,18 +1126,90 @@ Write a well formatted reply, no explanations.`
                         data-key="${key}"
                         title="Delete prompt">×</button>
               ` : `
-                <button class="prompt-action-btn edit prompt-edit-btn"
+                <button class="prompt-action-btn toggle ${this.isDefaultPromptVisible(key) ? 'visible' : 'hidden'} prompt-toggle-btn"
+                        data-key="${key}"
+                        title="${this.isDefaultPromptVisible(key) ? 'Hide from menu' : 'Show in menu'}">
+                  ${this.isDefaultPromptVisible(key) ? '👁️' : '🙈'}
+                </button>
+                <button class="prompt-action-btn edit prompt-edit-btn default-edit"
                         data-key="${key}"
                         data-type="default"
-                        title="Copy to custom prompts for editing">✎</button>
+                        title="Copy to custom prompts for editing">📝</button>
               `}
             </div>
           </div>
           <div class="prompt-item-description">${this.escapeHtml(prompt.description || '')}</div>
-          <div class="prompt-item-content">${this.escapeHtml(prompt.prompt)}</div>
+          <div class="prompt-item-content-wrapper">
+            <div class="prompt-item-content-header">
+              <span class="prompt-content-label">Prompt Content:</span>
+              <button class="prompt-content-toggle" data-key="${key}" title="Toggle prompt content visibility">
+                <span class="toggle-icon">▼</span>
+              </button>
+            </div>
+            <div class="prompt-item-content expanded" data-key="${key}">${this.escapeHtml(prompt.prompt)}</div>
+          </div>
         </div>
       `;
     }).join('');
+  }
+
+  /**
+   * Check if default prompt is visible in menus
+   */
+  isDefaultPromptVisible(key) {
+    // Default to visible if not explicitly set
+    return this.defaultPromptVisibility?.[key] !== false;
+  }
+
+  /**
+   * Toggle default prompt visibility
+   */
+  async toggleDefaultPromptVisibility(key) {
+    try {
+      if (!this.defaultPromptVisibility) {
+        this.defaultPromptVisibility = {};
+      }
+
+      // Toggle visibility (default is true, so we store false to hide)
+      this.defaultPromptVisibility[key] = !this.isDefaultPromptVisible(key);
+
+      // Save to storage
+      await this.setStorageData({ defaultPromptVisibility: this.defaultPromptVisibility });
+
+      // Refresh display
+      await this.loadPrompts();
+
+      const isVisible = this.isDefaultPromptVisible(key);
+      this.showToast(`Default prompt "${key}" ${isVisible ? 'shown' : 'hidden'} in menus`, 'success');
+    } catch (error) {
+      console.error('Failed to toggle default prompt visibility:', error);
+      this.showToast('Failed to update prompt visibility', 'error');
+    }
+  }
+
+  /**
+   * Toggle prompt content visibility
+   */
+  togglePromptContentVisibility(key) {
+    const contentElement = document.querySelector(`.prompt-item-content[data-key="${key}"]`);
+    const toggleBtn = document.querySelector(`.prompt-content-toggle[data-key="${key}"]`);
+    const toggleIcon = toggleBtn?.querySelector('.toggle-icon');
+
+    if (contentElement && toggleBtn && toggleIcon) {
+      const isExpanded = contentElement.classList.contains('expanded');
+
+      if (isExpanded) {
+        contentElement.classList.remove('expanded');
+        contentElement.classList.add('collapsed');
+        toggleIcon.textContent = '▶';
+        toggleBtn.title = 'Show prompt content';
+      } else {
+        contentElement.classList.remove('collapsed');
+        contentElement.classList.add('expanded');
+        toggleIcon.textContent = '▼';
+        toggleBtn.title = 'Hide prompt content';
+      }
+    }
   }
 
   displayFavoritePrompts() {
@@ -1093,6 +1273,9 @@ Write a well formatted reply, no explanations.`
 
     // Clear original prompt data
     this.originalPromptData = null;
+
+    // Clear selected files
+    this.clearSelectedKbFiles();
   }
 
   async savePrompt() {
@@ -1127,13 +1310,20 @@ Write a well formatted reply, no explanations.`
         return;
       }
 
-      // Check if this is editing a default prompt and if changes were made
-      if (this.originalPromptData && this.originalPromptData.isDefaultPrompt) {
+      // Get selected knowledge base files first for change detection
+      const selectedFiles = this.getSelectedKbFiles();
+
+      // Enhanced change detection logic
+      const isConvertedDefault = this.originalPromptData && this.originalPromptData.wasConverted;
+
+      // For converted default prompts, skip change detection since they're always new
+      if (!isConvertedDefault && this.originalPromptData && this.originalPromptData.isDefaultPrompt) {
         const originalName = this.originalPromptData.name + ' (Custom)';
         const hasChanges =
           name !== originalName ||
           description !== this.originalPromptData.description ||
-          content !== this.originalPromptData.content;
+          content !== this.originalPromptData.content ||
+          JSON.stringify(selectedFiles) !== JSON.stringify(this.originalPromptData.knowledgeBaseFiles || []);
 
         if (!hasChanges) {
           this.hidePromptForm();
@@ -1143,40 +1333,69 @@ Write a well formatted reply, no explanations.`
         }
       }
 
+      // For converted default prompts or regular edits, proceed with saving
       this.showLoading(true);
 
-      const customPrompts = await this.getStorageData('customPrompts') || {};
-      const promptData = {
-        name,
-        description,
-        prompt: content,
-        created: customPrompts[key]?.created || Date.now(),
-        modified: Date.now()
-      };
+      // Use centralized prompt manager if available
+      if (window.promptManager && window.promptManager.initialized) {
+        const promptData = {
+          name,
+          description,
+          prompt: content,
+          knowledgeBaseFiles: selectedFiles
+        };
 
-      customPrompts[key] = promptData;
+        const saveSuccess = await window.promptManager.savePrompt(key, promptData);
 
-      // Save with explicit error handling
-      const saveSuccess = await this.setStorageData({ customPrompts });
-
-      if (saveSuccess) {
-        // Wait a moment for storage to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        // Force reload data from storage to verify
-        const verifyData = await this.forceReloadFromStorage('customPrompts');
-        console.log('Verified saved custom prompts:', verifyData);
-
-        if (verifyData && verifyData[key] && verifyData[key].name === name) {
-          await this.loadPrompts();
+        if (saveSuccess) {
+          // If this was a converted default prompt, switch to custom tab to show the new prompt
+          if (isConvertedDefault && this.currentPromptTab !== 'custom') {
+            this.switchPromptTab('custom');
+          } else {
+            await this.loadPrompts();
+          }
           this.hidePromptForm();
           this.showToast(`Prompt "${name}" saved successfully`, 'success');
-          this.originalPromptData = null; // Clear original data
+          this.originalPromptData = null;
         } else {
-          throw new Error('Data verification failed after save');
+          throw new Error('Failed to save prompt using prompt manager');
         }
       } else {
-        throw new Error('Failed to save custom prompts data');
+        // Fallback to original storage method
+        const customPrompts = await this.getStorageData('customPrompts') || {};
+        const promptData = {
+          name,
+          description,
+          prompt: content,
+          knowledgeBaseFiles: selectedFiles,
+          created: customPrompts[key]?.created || Date.now(),
+          modified: Date.now()
+        };
+
+        customPrompts[key] = promptData;
+
+        const saveSuccess = await this.setStorageData({ customPrompts });
+
+        if (saveSuccess) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          const verifyData = await this.forceReloadFromStorage('customPrompts');
+
+          if (verifyData && verifyData[key] && verifyData[key].name === name) {
+            // If this was a converted default prompt, switch to custom tab to show the new prompt
+            if (isConvertedDefault && this.currentPromptTab !== 'custom') {
+              this.switchPromptTab('custom');
+            } else {
+              await this.loadPrompts();
+            }
+            this.hidePromptForm();
+            this.showToast(`Prompt "${name}" saved successfully`, 'success');
+            this.originalPromptData = null;
+          } else {
+            throw new Error('Data verification failed after save');
+          }
+        } else {
+          throw new Error('Failed to save custom prompts data');
+        }
       }
     } catch (error) {
       console.error('Failed to save prompt:', error);
@@ -1188,14 +1407,62 @@ Write a well formatted reply, no explanations.`
 
   async editPrompt(key) {
     try {
-      // Check if it's a default prompt first
+      // Use centralized prompt manager if available
+      if (window.promptManager && window.promptManager.initialized) {
+        const prompt = window.promptManager.getPrompt(key);
+        const isDefaultPrompt = window.promptManager.defaultPrompts.has(key) && !window.promptManager.customPrompts.has(key);
+
+        if (!prompt) {
+          this.showToast('Prompt not found', 'error');
+          return;
+        }
+
+        let editKey = key;
+
+        // If editing a default prompt, convert it to custom
+        if (isDefaultPrompt) {
+          editKey = await window.promptManager.convertDefaultToCustom(key);
+          this.showToast('Default prompt converted to custom for editing', 'info');
+        }
+
+        // Store original values for change detection
+        this.originalPromptData = {
+          key: editKey,
+          name: prompt.name,
+          description: prompt.description || '',
+          content: prompt.prompt,
+          knowledgeBaseFiles: prompt.knowledgeBaseFiles || [],
+          isDefaultPrompt: isDefaultPrompt, // Keep original state for proper change detection
+          wasConverted: isDefaultPrompt // Track if this was converted from default
+        };
+
+        // Populate form fields
+        document.getElementById('newPromptKey').value = editKey;
+        // For converted default prompts, show the name with (Custom) suffix
+        const displayName = isDefaultPrompt ? `${prompt.name} (Custom)` : prompt.name;
+        document.getElementById('newPromptName').value = displayName;
+        document.getElementById('newPromptDescription').value = prompt.description || '';
+        document.getElementById('newPromptContent').value = prompt.prompt;
+
+        // Load knowledge base files if they exist
+        if (prompt.knowledgeBaseFiles && prompt.knowledgeBaseFiles.length > 0) {
+          this.displaySelectedFiles(prompt.knowledgeBaseFiles);
+        }
+
+        // Make key field readonly when editing existing custom prompt
+        document.getElementById('newPromptKey').readOnly = true;
+
+        this.showPromptForm(true);
+        return;
+      }
+
+      // Fallback to original logic if prompt manager not available
       const defaultPrompts = this.getDefaultPrompts();
       const customPrompts = await this.getStorageData('customPrompts') || {};
 
       let prompt = customPrompts[key];
       let isDefaultPrompt = false;
 
-      // If not found in custom prompts, check default prompts
       if (!prompt && defaultPrompts[key]) {
         prompt = defaultPrompts[key];
         isDefaultPrompt = true;
@@ -1206,20 +1473,19 @@ Write a well formatted reply, no explanations.`
         return;
       }
 
-      // Store original values for change detection
       this.originalPromptData = {
         key: key,
         name: prompt.name,
         description: prompt.description || '',
         content: prompt.prompt,
-        isDefaultPrompt: isDefaultPrompt
+        knowledgeBaseFiles: prompt.knowledgeBaseFiles || [],
+        isDefaultPrompt: isDefaultPrompt,
+        wasConverted: isDefaultPrompt // Track if this will be converted from default
       };
 
-      // If it's a default prompt, create a new key for the custom version
       let editKey = key;
       if (isDefaultPrompt) {
         editKey = `custom_${key}`;
-        // Make sure the custom key doesn't already exist
         let counter = 1;
         while (customPrompts[editKey]) {
           editKey = `custom_${key}_${counter}`;
@@ -1232,10 +1498,12 @@ Write a well formatted reply, no explanations.`
       document.getElementById('newPromptDescription').value = prompt.description || '';
       document.getElementById('newPromptContent').value = prompt.prompt;
 
-      // Make key field readonly when editing existing custom prompt
-      document.getElementById('newPromptKey').readOnly = !isDefaultPrompt;
+      if (prompt.knowledgeBaseFiles && prompt.knowledgeBaseFiles.length > 0) {
+        this.displaySelectedFiles(prompt.knowledgeBaseFiles);
+      }
 
-      this.showPromptForm(true); // Pass true to indicate this is an edit
+      document.getElementById('newPromptKey').readOnly = !isDefaultPrompt;
+      this.showPromptForm(true);
 
       if (isDefaultPrompt) {
         this.showToast('Default prompt copied for editing. You can modify it as needed.', 'info');
@@ -1403,6 +1671,14 @@ Write a well formatted reply, no explanations.`
       });
 
       if (result.success) {
+        // Also clear from direct storage
+        await this.setStorageData({ apiKeys: [] });
+
+        // Clear from settings as well
+        const settings = await this.getStorageData('settings') || {};
+        settings.apiKeys = [];
+        await this.setStorageData({ settings });
+
         // Update display
         this.displayApiKeys();
 
@@ -1413,6 +1689,7 @@ Write a well formatted reply, no explanations.`
           statusElement.className = 'api-keys-status';
           statusElement.style.display = 'none';
         }
+
 
         this.showApiKeyStatus('All API keys cleared', 'success');
         await this.updateStats();
@@ -1459,11 +1736,13 @@ Write a well formatted reply, no explanations.`
         apiKeysInput.value = ''; // Clear input after saving
         this.showApiKeyStatus('API keys saved automatically', 'success');
 
-        // Also save to settings for persistence
+        // Also save directly to storage for consistency with background script
+        await this.setStorageData({ apiKeys: allKeys });
+
+        // Keep settings backup for compatibility
         const settings = await this.getStorageData('settings') || {};
         settings.apiKeys = allKeys;
         await this.setStorageData({ settings });
-
         await this.updateStats();
       } else {
         throw new Error(result.error || 'Failed to save API keys');
@@ -1562,7 +1841,10 @@ Write a well formatted reply, no explanations.`
       const maxContextLengthEl = document.getElementById('maxContextLength');
 
       // Only update settings if elements exist
-      if (defaultModelEl) settings.defaultModel = defaultModelEl.value;
+      if (defaultModelEl) {
+        settings.defaultModel = defaultModelEl.value;
+        settings.selectedModel = defaultModelEl.value; // Also save as selectedModel for enhanced client
+      }
       if (restrictToFiverrEl) settings.restrictToFiverr = restrictToFiverrEl.checked;
       if (autoSaveEl) settings.autoSave = autoSaveEl.checked;
       if (notificationsEl) settings.notifications = notificationsEl.checked;
@@ -1590,7 +1872,9 @@ Write a well formatted reply, no explanations.`
 
       // Save API configuration
       settings.apiKeys = this.currentApiKeys || [];
-      settings.defaultModel = document.getElementById('defaultModel').value;
+      const selectedModel = document.getElementById('defaultModel').value;
+      settings.defaultModel = selectedModel;
+      settings.selectedModel = selectedModel; // Also save as selectedModel for enhanced client
       settings.keyRotation = document.getElementById('keyRotation').checked;
       settings.apiTimeout = parseInt(document.getElementById('apiTimeout').value);
       settings.maxRetries = parseInt(document.getElementById('maxRetries').value);
@@ -1689,18 +1973,47 @@ Write a well formatted reply, no explanations.`
 
 
 
-  downloadFile(exportData) {
+  downloadFile(exportDataOrFileId) {
+    // Handle both export data objects and file IDs
+    if (typeof exportDataOrFileId === 'string') {
+      // It's a file ID - download from Knowledge Base
+      this.downloadKnowledgeBaseFile(exportDataOrFileId);
+      return;
+    }
+
+    // It's export data - handle as before
+    const exportData = exportDataOrFileId;
     const blob = new Blob([exportData.content], { type: exportData.mimeType });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = exportData.filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    
+
     URL.revokeObjectURL(url);
+  }
+
+  async downloadKnowledgeBaseFile(fileId) {
+    try {
+      const fileDetails = await this.getFileDetails(fileId);
+
+      // Create download link using the webViewLink
+      const link = document.createElement('a');
+      link.href = fileDetails.webViewLink;
+      link.download = fileDetails.name;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      this.showToast('Download started', 'success');
+    } catch (error) {
+      console.error('Download failed:', error);
+      this.showToast('Failed to download file', 'error');
+    }
   }
 
   showLoading(show) {
@@ -2096,8 +2409,8 @@ Write a well formatted reply, no explanations.`
           </div>
         </div>
         <div class="conversation-actions">
-          <button class="btn-icon" onclick="popupManager.updateConversation('${conv.username}')" title="Update">🔄</button>
-          <button class="btn-icon" onclick="popupManager.deleteConversation('${conv.username}')" title="Delete">🗑️</button>
+          <button class="btn-icon update-conversation-btn" data-username="${conv.username}" title="Update">🔄</button>
+          <button class="btn-icon delete-conversation-btn" data-username="${conv.username}" title="Delete">🗑️</button>
         </div>
       </div>
     `).join('');
@@ -2138,7 +2451,7 @@ Write a well formatted reply, no explanations.`
     const displayContacts = contacts.slice(0, 20);
 
     contactsList.innerHTML = displayContacts.map(contact => `
-      <div class="contact-item" onclick="popupManager.extractConversationByUsername('${contact.username}')">
+      <div class="contact-item" data-username="${contact.username}">
         <div class="contact-info">
           <div class="contact-name">${contact.username}</div>
           <div class="contact-meta">
@@ -2146,7 +2459,7 @@ Write a well formatted reply, no explanations.`
           </div>
         </div>
         <div class="contact-actions">
-          <button class="btn-icon" onclick="event.stopPropagation(); popupManager.extractConversationByUsername('${contact.username}')" title="Extract">💬</button>
+          <button class="btn-icon extract-contact-btn" data-username="${contact.username}" title="Extract">💬</button>
         </div>
       </div>
     `).join('');
@@ -2316,7 +2629,7 @@ Write a well formatted reply, no explanations.`
     const displayUsername = this.formatUsername(username);
 
     return `
-      <div class="conversation-item" data-username="${username}" onclick="popupManager.showConversationModal('${username}')">
+      <div class="conversation-item" data-username="${username}">
         <div class="conversation-left-column">
           <div class="conversation-item-header">
             <div class="conversation-username">${displayUsername}</div>
@@ -2785,16 +3098,1865 @@ Write a well formatted reply, no explanations.`
       this.showLoading(false);
     }
   }
+
+  // Authentication Methods
+  async initializeAuthentication() {
+    try {
+      // Check browser compatibility first
+      this.checkBrowserCompatibility();
+
+      // Set up authentication event listeners
+      this.setupAuthEventListeners();
+
+      // Check authentication status
+      await this.checkAuthStatus();
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to initialize authentication:', error);
+      this.showAuthError('Failed to initialize authentication');
+    }
+  }
+
+  checkBrowserCompatibility() {
+    const userAgent = navigator.userAgent;
+    const isEdge = userAgent.includes('Edg/') || userAgent.includes('Edge/');
+
+    if (isEdge) {
+      // Add a subtle warning banner for Edge users
+      const authSection = document.querySelector('.auth-section');
+      if (authSection) {
+        const warningBanner = document.createElement('div');
+        warningBanner.className = 'browser-warning';
+        warningBanner.innerHTML = `
+          <div class="warning-content">
+            <span class="warning-icon">⚠️</span>
+            <span class="warning-text">Limited features in Edge. <a href="#" class="edge-info-link">Learn more</a></span>
+          </div>
+        `;
+
+        // Add click handler for the learn more link
+        warningBanner.querySelector('.edge-info-link').addEventListener('click', (e) => {
+          e.preventDefault();
+          this.showEdgeCompatibilityDialog('Edge compatibility information');
+        });
+
+        // Add warning styles
+        const style = document.createElement('style');
+        style.textContent = `
+          .browser-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+          }
+
+          .warning-content {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+
+          .warning-icon {
+            font-size: 14px;
+          }
+
+          .warning-text {
+            color: #856404;
+            flex: 1;
+          }
+
+          .warning-text a {
+            color: #856404;
+            text-decoration: underline;
+            cursor: pointer;
+          }
+
+          .warning-text a:hover {
+            color: #533f03;
+          }
+        `;
+
+        document.head.appendChild(style);
+        authSection.insertBefore(warningBanner, authSection.firstChild);
+      }
+    }
+  }
+
+  setupAuthEventListeners() {
+    // Sign in button
+    const signInBtn = document.getElementById('signInBtn');
+    if (signInBtn) {
+      signInBtn.addEventListener('click', () => this.handleSignIn());
+    }
+
+    // Sign out button
+    const signOutBtn = document.getElementById('signOutBtn');
+    if (signOutBtn) {
+      signOutBtn.addEventListener('click', () => this.handleSignOut());
+    }
+
+    // Test connection button
+    const testConnectionBtn = document.getElementById('testConnectionBtn');
+    if (testConnectionBtn) {
+      testConnectionBtn.addEventListener('click', () => this.handleTestConnection());
+    }
+  }
+
+  async checkAuthStatus() {
+    try {
+      // Send message to background script to check auth status
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_STATUS'
+      });
+
+      if (response && response.success) {
+        this.updateAuthUI({
+          isAuthenticated: response.isAuthenticated,
+          user: response.user
+        });
+      } else {
+        this.updateAuthUI({ isAuthenticated: false });
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to check auth status:', error);
+      this.updateAuthUI({ isAuthenticated: false });
+    }
+  }
+
+  updateAuthUI(authStatus) {
+    const authStatusEl = document.getElementById('authStatus');
+    const notAuthenticatedEl = document.getElementById('authNotAuthenticated');
+    const authenticatedEl = document.getElementById('authAuthenticated');
+
+    // Hide loading
+    if (authStatusEl) {
+      authStatusEl.style.display = 'none';
+    }
+
+    if (authStatus.isAuthenticated && authStatus.user) {
+      // Show authenticated state
+      if (notAuthenticatedEl) notAuthenticatedEl.style.display = 'none';
+      if (authenticatedEl) authenticatedEl.style.display = 'block';
+
+      // Update user info
+      this.updateUserInfo(authStatus.user);
+
+      // Load and display stats
+      this.loadAuthStats();
+
+    } else {
+      // Show not authenticated state
+      if (authenticatedEl) authenticatedEl.style.display = 'none';
+      if (notAuthenticatedEl) notAuthenticatedEl.style.display = 'block';
+    }
+  }
+
+  updateUserInfo(user) {
+    const userAvatar = document.getElementById('userAvatar');
+    const userName = document.getElementById('userName');
+    const userEmail = document.getElementById('userEmail');
+
+    if (userAvatar && user.picture) {
+      userAvatar.src = user.picture;
+      userAvatar.alt = user.name || user.email;
+    }
+
+    if (userName && user.name) {
+      userName.textContent = user.name;
+    }
+
+    if (userEmail && user.email) {
+      userEmail.textContent = user.email;
+    }
+  }
+
+  async loadAuthStats() {
+    try {
+      // For now, show basic stats - we can enhance this later
+      const stats = {
+        sheetsConnected: true,
+        driveConnected: true,
+        knowledgeBaseFiles: 0,
+        lastSync: Date.now()
+      };
+
+      this.displayAuthStats(stats);
+
+    } catch (error) {
+      console.error('aiFiverr: Failed to load auth stats:', error);
+    }
+  }
+
+  displayAuthStats(stats) {
+    const authStatsEl = document.getElementById('authStats');
+    if (!authStatsEl) return;
+
+    authStatsEl.innerHTML = `
+      <h4>Account Statistics</h4>
+      <div class="auth-stat-item">
+        <span>Google Sheets:</span>
+        <span class="auth-stat-value">${stats.sheetsConnected ? 'Connected' : 'Not Connected'}</span>
+      </div>
+      <div class="auth-stat-item">
+        <span>Google Drive:</span>
+        <span class="auth-stat-value">${stats.driveConnected ? 'Connected' : 'Not Connected'}</span>
+      </div>
+      <div class="auth-stat-item">
+        <span>Knowledge Base Files:</span>
+        <span class="auth-stat-value">${stats.knowledgeBaseFiles || 0}</span>
+      </div>
+      <div class="auth-stat-item">
+        <span>Last Sync:</span>
+        <span class="auth-stat-value">${stats.lastSync ? new Date(stats.lastSync).toLocaleDateString() : 'Never'}</span>
+      </div>
+    `;
+  }
+
+  async handleSignIn() {
+    try {
+      this.showLoading(true);
+
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_START'
+      });
+
+      if (response && response.success) {
+        this.showToast('Successfully signed in!', 'success');
+        await this.checkAuthStatus();
+      } else {
+        // Check if this is an Edge compatibility issue
+        if (response?.isEdgeCompatibilityIssue) {
+          this.showEdgeCompatibilityDialog(response.error);
+        } else {
+          throw new Error(response?.error || 'Sign in failed');
+        }
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Sign in failed:', error);
+      this.showToast(`Sign in failed: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async handleSignOut() {
+    try {
+      this.showLoading(true);
+
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_SIGNOUT'
+      });
+
+      if (response && response.success) {
+        this.showToast('Successfully signed out', 'success');
+        await this.checkAuthStatus();
+      } else {
+        throw new Error(response?.error || 'Sign out failed');
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Sign out failed:', error);
+      this.showToast(`Sign out failed: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async handleTestConnection() {
+    try {
+      this.showLoading(true);
+
+      // Test by getting a valid token from background script
+      const response = await chrome.runtime.sendMessage({
+        type: 'GOOGLE_AUTH_TOKEN'
+      });
+
+      if (response && response.success && response.token) {
+        this.showToast('Connection test successful!', 'success');
+        await this.loadAuthStats();
+      } else {
+        throw new Error('No valid authentication token available');
+      }
+
+    } catch (error) {
+      console.error('aiFiverr: Connection test failed:', error);
+      this.showToast(`Connection test failed: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  showEdgeCompatibilityDialog(message) {
+    // Create a modal dialog for Edge compatibility
+    const modal = document.createElement('div');
+    modal.className = 'edge-compatibility-modal';
+    modal.innerHTML = `
+      <div class="modal-overlay">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Browser Compatibility Notice</h3>
+            <button class="modal-close" onclick="this.closest('.edge-compatibility-modal').remove()">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="browser-icons">
+              <div class="browser-item">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjQiIGN5PSIyNCIgcj0iMjQiIGZpbGw9IiM0Mjg1RjQiLz4KPHBhdGggZD0iTTM2IDI0QzM2IDMwLjYyNzQgMzAuNjI3NCAzNiAyNCAzNkMxNy4zNzI2IDM2IDEyIDMwLjYyNzQgMTIgMjRDMTIgMTcuMzcyNiAxNy4zNzI2IDEyIDI0IDEyQzMwLjYyNzQgMTIgMzYgMTcuMzcyNiAzNiAyNCIgZmlsbD0iI0ZGRkZGRiIvPgo8L3N2Zz4K" alt="Chrome">
+                <span>Chrome</span>
+                <span class="recommended">Recommended</span>
+              </div>
+              <div class="browser-item disabled">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjQiIGN5PSIyNCIgcj0iMjQiIGZpbGw9IiMwMDc4RDQiLz4KPHBhdGggZD0iTTM2IDI0QzM2IDMwLjYyNzQgMzAuNjI3NCAzNiAyNCAzNkMxNy4zNzI2IDM2IDEyIDMwLjYyNzQgMTIgMjRDMTIgMTcuMzcyNiAxNy4zNzI2IDEyIDI0IDEyQzMwLjYyNzQgMTIgMzYgMTcuMzcyNiAzNiAyNCIgZmlsbD0iI0ZGRkZGRiIvPgo8L3N2Zz4K" alt="Edge">
+                <span>Edge</span>
+                <span class="limited">Limited Support</span>
+              </div>
+            </div>
+            <div class="message">
+              <p><strong>Microsoft Edge has limited support for Google authentication in extensions.</strong></p>
+              <p>For the best experience with aiFiverr, please use Google Chrome which supports all features including:</p>
+              <ul>
+                <li>✅ Google authentication & data sync</li>
+                <li>✅ Google Drive integration</li>
+                <li>✅ Knowledge base file uploads</li>
+                <li>✅ Cross-device settings sync</li>
+              </ul>
+              <p><strong>In Edge, you can still use:</strong></p>
+              <ul>
+                <li>✅ Basic AI chat functionality</li>
+                <li>✅ Text processing features</li>
+                <li>✅ Local settings (not synced)</li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" onclick="this.closest('.edge-compatibility-modal').remove()">
+              Continue without authentication
+            </button>
+            <button class="btn-primary" onclick="window.open('https://www.google.com/chrome/', '_blank')">
+              Download Chrome
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add styles for the modal
+    const style = document.createElement('style');
+    style.textContent = `
+      .edge-compatibility-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10000;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      .modal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      }
+
+      .modal-header {
+        padding: 20px 20px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .modal-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+      }
+
+      .modal-close:hover {
+        background: #f0f0f0;
+      }
+
+      .modal-body {
+        padding: 20px;
+      }
+
+      .browser-icons {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+        justify-content: center;
+      }
+
+      .browser-item {
+        text-align: center;
+        padding: 15px;
+        border-radius: 8px;
+        border: 2px solid #e0e0e0;
+        min-width: 100px;
+      }
+
+      .browser-item img {
+        width: 32px;
+        height: 32px;
+        margin-bottom: 8px;
+      }
+
+      .browser-item span {
+        display: block;
+        font-size: 14px;
+        color: #333;
+        font-weight: 500;
+      }
+
+      .browser-item .recommended {
+        background: #4CAF50;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      .browser-item .limited {
+        background: #FF9800;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      .browser-item.disabled {
+        opacity: 0.6;
+        border-color: #ccc;
+      }
+
+      .message p {
+        margin: 0 0 12px;
+        color: #333;
+        line-height: 1.5;
+      }
+
+      .message ul {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .message li {
+        margin: 4px 0;
+        color: #555;
+      }
+
+      .modal-footer {
+        padding: 0 20px 20px;
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+      }
+
+      .btn-primary, .btn-secondary {
+        padding: 10px 20px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+
+      .btn-primary {
+        background: #4285F4;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #3367D6;
+      }
+
+      .btn-secondary {
+        background: #f8f9fa;
+        color: #333;
+        border: 1px solid #dadce0;
+      }
+
+      .btn-secondary:hover {
+        background: #e8eaed;
+      }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+  }
+
+  showAuthError(message) {
+    const authStatusEl = document.getElementById('authStatus');
+    if (authStatusEl) {
+      authStatusEl.innerHTML = `
+        <div class="auth-error">
+          <span style="color: #dc3545;">⚠️ ${message}</span>
+        </div>
+      `;
+    }
+  }
+
+  // Knowledge Base Files Methods
+  async checkGoogleAuth() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GOOGLE_AUTH_STATUS' });
+      return response || { success: false, error: 'No auth response' };
+    } catch (error) {
+      console.error('Failed to check Google auth:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  switchKnowledgeBaseTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.kb-tab-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+    // Update tab content
+    document.querySelectorAll('.kb-tab-content').forEach(content => {
+      content.classList.remove('active');
+    });
+    document.getElementById(`${tabName}Tab`).classList.add('active');
+
+    // Load data for the active tab
+    if (tabName === 'files') {
+      this.loadKnowledgeBaseFiles();
+    }
+  }
+
+  toggleFileUploadArea() {
+    const uploadArea = document.getElementById('kbFileUploadArea');
+    const isVisible = uploadArea.style.display !== 'none';
+    uploadArea.style.display = isVisible ? 'none' : 'block';
+
+    if (!isVisible) {
+      // Reset upload area
+      document.getElementById('uploadProgress').style.display = 'none';
+      document.getElementById('progressFill').style.width = '0%';
+    }
+  }
+
+  async handleFileSelection(files) {
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    const uploadArea = document.getElementById('kbFileUploadArea');
+    const progressContainer = document.getElementById('uploadProgress');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+
+    // Show upload area and progress
+    uploadArea.style.display = 'block';
+    progressContainer.style.display = 'block';
+
+    try {
+      // Check authentication
+      const authResult = await this.checkGoogleAuth();
+      if (!authResult.success) {
+        this.showToast('Please sign in with Google to upload files', 'error');
+        return;
+      }
+
+      let uploadedCount = 0;
+      const totalFiles = fileArray.length;
+
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+
+        try {
+          progressText.textContent = `Uploading ${file.name}... (${i + 1}/${totalFiles})`;
+          progressFill.style.width = `${(i / totalFiles) * 100}%`;
+
+          // Upload to Google Drive
+          const result = await this.uploadFileToGoogleDrive(file);
+          uploadedCount++;
+
+          // Also upload to Gemini Files API for immediate use
+          try {
+            await this.uploadFileToGeminiAPI(file);
+          } catch (geminiError) {
+            console.warn('Failed to upload to Gemini API:', geminiError);
+            // Continue even if Gemini upload fails
+          }
+
+        } catch (error) {
+          console.error(`Failed to upload ${file.name}:`, error);
+          this.showToast(`Failed to upload ${file.name}: ${error.message}`, 'error');
+        }
+      }
+
+      // Complete
+      progressFill.style.width = '100%';
+      progressText.textContent = `Upload complete! ${uploadedCount}/${totalFiles} files uploaded.`;
+
+      if (uploadedCount > 0) {
+        this.showToast(`Successfully uploaded ${uploadedCount} file(s)`, 'success');
+        await this.loadKnowledgeBaseFiles();
+      }
+
+      // Hide upload area after a delay
+      setTimeout(() => {
+        this.toggleFileUploadArea();
+      }, 2000);
+
+    } catch (error) {
+      console.error('File upload error:', error);
+      this.showToast(`Upload failed: ${error.message}`, 'error');
+      progressContainer.style.display = 'none';
+    }
+  }
+
+  async uploadFileToGoogleDrive(file) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Convert file to base64 for message passing
+        const fileData = await this.fileToBase64(file);
+
+        chrome.runtime.sendMessage({
+          type: 'UPLOAD_FILE_TO_DRIVE',
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data: fileData
+          },
+          fileName: file.name,
+          description: `Knowledge base file uploaded on ${new Date().toISOString()}`
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else if (response && response.success) {
+            resolve(response.data);
+          } else {
+            reject(new Error(response?.error || 'Upload failed'));
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  async uploadFileToGeminiAPI(file) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Convert file to base64 for message passing
+        const fileData = await this.fileToBase64(file);
+
+        chrome.runtime.sendMessage({
+          type: 'UPLOAD_FILE_TO_GEMINI',
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data: fileData
+          },
+          displayName: file.name,
+          enhanced: true  // Use enhanced upload method
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else if (response && response.success) {
+            resolve(response.data);
+          } else {
+            reject(new Error(response?.error || 'Enhanced Gemini upload failed'));
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Enhanced file upload with progress tracking
+   */
+  async uploadFileToGeminiAPIEnhanced(file, onProgress = null) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        console.log('aiFiverr Popup: Starting enhanced file upload:', file.name);
+
+        if (onProgress) onProgress(10, 'Converting file...');
+
+        // Convert file to base64 for message passing
+        const fileData = await this.fileToBase64(file);
+
+        if (onProgress) onProgress(30, 'Uploading to Gemini...');
+
+        chrome.runtime.sendMessage({
+          type: 'UPLOAD_FILE_TO_GEMINI',
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data: fileData
+          },
+          displayName: file.name,
+          enhanced: true
+        }, async (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          if (response && response.success) {
+            if (onProgress) onProgress(70, 'Processing file...');
+
+            // Wait for file processing if needed
+            if (response.data.state !== 'ACTIVE') {
+              try {
+                await this.waitForFileProcessing(response.data.name, onProgress);
+              } catch (processingError) {
+                console.warn('aiFiverr Popup: File processing timeout, continuing anyway:', processingError);
+              }
+            }
+
+            if (onProgress) onProgress(100, 'Upload complete!');
+            resolve(response.data);
+          } else {
+            reject(new Error(response?.error || 'Enhanced Gemini upload failed'));
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Wait for file processing with progress updates
+   */
+  async waitForFileProcessing(fileName, onProgress = null, maxWaitTime = 60000) {
+    const startTime = Date.now();
+    let attempts = 0;
+
+    while (Date.now() - startTime < maxWaitTime) {
+      attempts++;
+
+      if (onProgress) {
+        const progress = Math.min(70 + (attempts * 5), 95);
+        onProgress(progress, `Processing file (${attempts}/30)...`);
+      }
+
+      try {
+        const response = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            type: 'CHECK_GEMINI_FILE_STATUS',
+            fileName: fileName
+          }, resolve);
+        });
+
+        if (response && response.success && response.data.state === 'ACTIVE') {
+          console.log('aiFiverr Popup: File processing completed');
+          return response.data;
+        }
+
+        console.log(`aiFiverr Popup: File state: ${response?.data?.state || 'unknown'}, waiting...`);
+      } catch (error) {
+        console.log('aiFiverr Popup: Checking file status...');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    throw new Error('File processing timeout');
+  }
+
+  async loadKnowledgeBaseFiles() {
+    try {
+      console.log('aiFiverr Popup: Loading knowledge base files...');
+
+      const authResult = await this.checkGoogleAuth();
+      console.log('aiFiverr Popup: Auth result:', authResult);
+
+      if (!authResult.success) {
+        console.log('aiFiverr Popup: Not authenticated, showing error');
+        this.displayKnowledgeBaseFilesError('Please sign in with Google to view files');
+        return;
+      }
+
+      // Get files from Google Drive
+      console.log('aiFiverr Popup: Getting Drive files...');
+      const driveFiles = await this.getGoogleDriveFiles();
+      console.log('aiFiverr Popup: Drive files:', driveFiles);
+
+      // Get files from Gemini API
+      console.log('aiFiverr Popup: Getting Gemini files...');
+      const geminiFiles = await this.getGeminiFiles();
+      console.log('aiFiverr Popup: Gemini files:', geminiFiles);
+
+      // Merge and display files
+      const allFiles = this.mergeFileData(driveFiles, geminiFiles);
+      console.log('aiFiverr Popup: Merged files:', allFiles);
+
+      this.displayKnowledgeBaseFiles(allFiles);
+      this.updateKnowledgeBaseStats(allFiles);
+
+    } catch (error) {
+      console.error('aiFiverr Popup: Failed to load knowledge base files:', error);
+      this.displayKnowledgeBaseFilesError(error.message);
+    }
+  }
+
+  async getGoogleDriveFiles() {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'GET_DRIVE_FILES'
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response && response.success) {
+          resolve(response.data || []);
+        } else {
+          reject(new Error(response?.error || 'Failed to get Drive files'));
+        }
+      });
+    });
+  }
+
+  async getGeminiFiles() {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'GET_GEMINI_FILES'
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve([]); // Gemini files are optional
+        } else if (response && response.success) {
+          resolve(response.data || []);
+        } else {
+          resolve([]); // Gemini files are optional
+        }
+      });
+    });
+  }
+
+  mergeFileData(driveFiles, geminiFiles) {
+    const merged = [];
+    const geminiFileMap = new Map();
+
+    // Create map of Gemini files by display name
+    geminiFiles.forEach(file => {
+      geminiFileMap.set(file.displayName, file);
+    });
+
+    // Merge Drive files with Gemini data
+    driveFiles.forEach(driveFile => {
+      const geminiFile = geminiFileMap.get(driveFile.name);
+      merged.push({
+        ...driveFile,
+        geminiFile: geminiFile,
+        geminiStatus: geminiFile ? geminiFile.state : 'not_uploaded'
+      });
+    });
+
+    return merged;
+  }
+
+  displayKnowledgeBaseFiles(files) {
+    const container = document.getElementById('kbFilesList');
+
+    if (!files || files.length === 0) {
+      container.innerHTML = `
+        <div class="kb-files-empty">
+          <div class="kb-files-empty-icon">📁</div>
+          <h4>No files uploaded yet</h4>
+          <p>Upload files to your knowledge base to get started.<br>Files will be stored in Google Drive and can be used with AI prompts.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = files.map(file => {
+      const fileType = this.getFileTypeCategory(file.mimeType);
+      const fileIcon = this.getFileIcon(fileType);
+      const fileSize = this.formatFileSize(file.size);
+      const connectionStatus = this.getFileConnectionStatus(file);
+      const statusIcon = this.getStatusIcon(connectionStatus);
+
+      return `
+        <div class="kb-file-item" data-file-id="${file.id}">
+          <div class="file-icon ${fileType}">${fileIcon}</div>
+          <div class="file-info">
+            <div class="file-name" title="${file.name}">${file.name}</div>
+            <div class="file-meta">
+              <span>${fileSize}</span>
+              <span>${new Date(file.modifiedTime).toLocaleDateString()}</span>
+              <span>${file.mimeType.split('/')[0]}</span>
+            </div>
+          </div>
+          <div class="file-status">
+            <div class="status-indicator ${connectionStatus}" title="Gemini Status: ${connectionStatus}">${statusIcon}</div>
+          </div>
+          <div class="file-actions">
+            <button class="file-action-btn" data-action="details" data-file-id="${file.id}" title="View Details">👁️</button>
+            <button class="file-action-btn" data-action="download" data-file-id="${file.id}" title="Download">📥</button>
+            <button class="file-action-btn" data-action="delete" data-file-id="${file.id}" title="Delete">🗑️</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  displayKnowledgeBaseFilesError(message) {
+    const container = document.getElementById('kbFilesList');
+    container.innerHTML = `
+      <div class="kb-files-empty">
+        <div class="kb-files-empty-icon">⚠️</div>
+        <h4>Unable to load files</h4>
+        <p>${message}</p>
+      </div>
+    `;
+  }
+
+  updateKnowledgeBaseStats(files) {
+    const totalFiles = files.length;
+    const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+    const connectedFiles = files.filter(f => this.isFileConnectedToGemini(f)).length;
+
+    document.getElementById('totalKbFiles').textContent = totalFiles;
+    document.getElementById('kbStorageUsed').textContent = this.formatFileSize(totalSize);
+
+    // Update drive status to show connection info
+    const driveStatusText = totalFiles > 0
+      ? `${connectedFiles}/${totalFiles} files connected`
+      : 'No Files';
+    document.getElementById('driveStatus').textContent = driveStatusText;
+  }
+
+  getFileTypeCategory(mimeType) {
+    if (!mimeType) return 'unknown';
+
+    const type = mimeType.split('/')[0];
+    const subtype = mimeType.split('/')[1];
+
+    if (type === 'text' || mimeType.includes('document') || mimeType.includes('pdf')) {
+      return 'document';
+    } else if (type === 'image') {
+      return 'image';
+    } else if (type === 'audio') {
+      return 'audio';
+    } else if (type === 'video') {
+      return 'video';
+    } else if (mimeType.includes('javascript') || mimeType.includes('json') ||
+               mimeType.includes('xml') || mimeType.includes('css') ||
+               subtype === 'x-python' || subtype === 'x-java-source') {
+      return 'code';
+    }
+
+    return 'document';
+  }
+
+  getFileIcon(fileType) {
+    const icons = {
+      document: '📄',
+      image: '🖼️',
+      audio: '🎵',
+      video: '🎬',
+      code: '💻',
+      unknown: '📎'
+    };
+    return icons[fileType] || icons.unknown;
+  }
+
+  /**
+   * Get unified file connection status
+   */
+  getFileConnectionStatus(file) {
+    // Check if file has geminiUri (most reliable indicator)
+    if (file.geminiUri) {
+      return file.geminiStatus || 'ACTIVE';
+    }
+
+    // Check geminiStatus
+    if (file.geminiStatus === 'ACTIVE') {
+      return 'ACTIVE';
+    } else if (file.geminiStatus === 'PROCESSING') {
+      return 'PROCESSING';
+    } else if (file.geminiStatus === 'FAILED') {
+      return 'FAILED';
+    }
+
+    // Default to not uploaded
+    return 'not_uploaded';
+  }
+
+  /**
+   * Check if file is connected to Gemini
+   */
+  isFileConnectedToGemini(file) {
+    const status = this.getFileConnectionStatus(file);
+    return status === 'ACTIVE';
+  }
+
+  getStatusIcon(status) {
+    const icons = {
+      'ACTIVE': '✅',
+      'PROCESSING': '⏳',
+      'FAILED': '❌',
+      'not_uploaded': '⚪'
+    };
+    return icons[status] || icons.not_uploaded;
+  }
+
+  formatFileSize(bytes) {
+    // Handle undefined, null, or non-numeric values
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 B';
+
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+
+    // Ensure i is within bounds
+    const sizeIndex = Math.min(i, sizes.length - 1);
+    const size = Math.round(bytes / Math.pow(1024, sizeIndex) * 100) / 100;
+
+    return size + ' ' + sizes[sizeIndex];
+  }
+
+  async searchKnowledgeBaseFiles() {
+    const query = document.getElementById('kbFileSearch').value.trim();
+
+    try {
+      const files = await this.searchFiles(query);
+      this.displayKnowledgeBaseFiles(files);
+    } catch (error) {
+      console.error('Search failed:', error);
+      this.showToast('Search failed', 'error');
+    }
+  }
+
+  async searchFiles(query) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'SEARCH_DRIVE_FILES',
+        query: query
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response && response.success) {
+          resolve(response.data || []);
+        } else {
+          reject(new Error(response?.error || 'Search failed'));
+        }
+      });
+    });
+  }
+
+  async filterKnowledgeBaseFiles() {
+    const typeFilter = document.getElementById('fileTypeFilter').value;
+
+    try {
+      const allFiles = await this.getGoogleDriveFiles();
+      let filteredFiles = allFiles;
+
+      if (typeFilter) {
+        filteredFiles = allFiles.filter(file => {
+          const category = this.getFileTypeCategory(file.mimeType);
+          return category === typeFilter || file.mimeType.startsWith(typeFilter);
+        });
+      }
+
+      this.displayKnowledgeBaseFiles(filteredFiles);
+    } catch (error) {
+      console.error('Filter failed:', error);
+    }
+  }
+
+  async sortKnowledgeBaseFiles() {
+    const sortOrder = document.getElementById('fileSortOrder').value;
+
+    try {
+      const files = await this.getGoogleDriveFiles();
+
+      files.sort((a, b) => {
+        switch (sortOrder) {
+          case 'name':
+            return a.name.localeCompare(b.name);
+          case 'size':
+            return (b.size || 0) - (a.size || 0);
+          case 'created':
+            return new Date(b.createdTime) - new Date(a.createdTime);
+          case 'modified':
+          default:
+            return new Date(b.modifiedTime) - new Date(a.modifiedTime);
+        }
+      });
+
+      this.displayKnowledgeBaseFiles(files);
+    } catch (error) {
+      console.error('Sort failed:', error);
+    }
+  }
+
+  // File detail modal methods
+  selectedFileId = null;
+
+  async showFileDetails(fileId) {
+    this.selectedFileId = fileId;
+
+    try {
+      const fileDetails = await this.getFileDetails(fileId);
+      this.populateFileDetailModal(fileDetails);
+      document.getElementById('kbFileModalOverlay').style.display = 'flex';
+    } catch (error) {
+      console.error('Failed to get file details:', error);
+      this.showToast('Failed to load file details', 'error');
+    }
+  }
+
+  hideFileDetailModal() {
+    document.getElementById('kbFileModalOverlay').style.display = 'none';
+    this.selectedFileId = null;
+  }
+
+  async getFileDetails(fileId, retryCount = 0) {
+    const maxRetries = 3;
+
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'GET_FILE_DETAILS',
+        fileId: fileId
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          const error = new Error(`Chrome runtime error: ${chrome.runtime.lastError.message}`);
+          if (retryCount < maxRetries) {
+            console.warn(`Retrying getFileDetails (${retryCount + 1}/${maxRetries}):`, error.message);
+            setTimeout(() => {
+              this.getFileDetails(fileId, retryCount + 1).then(resolve).catch(reject);
+            }, 1000 * (retryCount + 1)); // Exponential backoff
+          } else {
+            reject(error);
+          }
+        } else if (response && response.success) {
+          resolve(response.data);
+        } else {
+          const error = new Error(response?.error || `Failed to get file details for ${fileId}`);
+          if (retryCount < maxRetries && (!response || response.error?.includes('timeout'))) {
+            console.warn(`Retrying getFileDetails (${retryCount + 1}/${maxRetries}):`, error.message);
+            setTimeout(() => {
+              this.getFileDetails(fileId, retryCount + 1).then(resolve).catch(reject);
+            }, 1000 * (retryCount + 1));
+          } else {
+            reject(error);
+          }
+        }
+      });
+    });
+  }
+
+  populateFileDetailModal(fileDetails) {
+    document.getElementById('kbFileModalTitle').textContent = fileDetails.name;
+    document.getElementById('kbFileModalMeta').textContent = `${this.formatFileSize(fileDetails.size)} • ${new Date(fileDetails.modifiedTime).toLocaleDateString()}`;
+
+    document.getElementById('fileInfoName').textContent = fileDetails.name;
+    document.getElementById('fileInfoType').textContent = fileDetails.mimeType;
+    document.getElementById('fileInfoSize').textContent = this.formatFileSize(fileDetails.size);
+    document.getElementById('fileInfoCreated').textContent = new Date(fileDetails.createdTime).toLocaleString();
+    document.getElementById('fileInfoModified').textContent = new Date(fileDetails.modifiedTime).toLocaleString();
+    document.getElementById('fileInfoGeminiStatus').textContent = fileDetails.geminiStatus || 'Not uploaded';
+
+    document.getElementById('fileDescriptionEdit').value = fileDetails.description || '';
+    document.getElementById('fileTagsEdit').value = fileDetails.tags ? fileDetails.tags.join(', ') : '';
+
+    // Show preview if applicable
+    this.showFilePreview(fileDetails);
+  }
+
+  showFilePreview(fileDetails) {
+    const previewContainer = document.getElementById('filePreview');
+    const previewSection = document.getElementById('filePreviewSection');
+
+    if (fileDetails.mimeType.startsWith('image/')) {
+      previewSection.style.display = 'block';
+      previewContainer.innerHTML = `<img src="${fileDetails.webViewLink}" alt="${fileDetails.name}" style="max-width: 100%; max-height: 200px;">`;
+    } else if (fileDetails.mimeType.startsWith('text/')) {
+      previewSection.style.display = 'block';
+      previewContainer.innerHTML = '<p>Text file preview not available</p>';
+    } else {
+      previewSection.style.display = 'none';
+    }
+  }
+
+  async deleteSelectedFile() {
+    if (!this.selectedFileId) return;
+
+    if (!confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await this.deleteFile(this.selectedFileId);
+      this.showToast('File deleted successfully', 'success');
+      this.hideFileDetailModal();
+      await this.loadKnowledgeBaseFiles();
+    } catch (error) {
+      console.error('Delete failed:', error);
+      this.showToast('Failed to delete file', 'error');
+    }
+  }
+
+  async handleDeleteFile(fileId) {
+    if (!confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      this.showLoading(true);
+      await this.deleteFile(fileId);
+      this.showToast('File deleted successfully', 'success');
+      await this.loadKnowledgeBaseFiles(); // Refresh the file list
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      this.showToast(`Failed to delete file: ${error.message}`, 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  async deleteFile(fileId) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'DELETE_DRIVE_FILE',
+        fileId: fileId
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response && response.success) {
+          resolve(response.data);
+        } else {
+          reject(new Error(response?.error || 'Delete failed'));
+        }
+      });
+    });
+  }
+
+  async downloadSelectedFile() {
+    if (!this.selectedFileId) return;
+
+    try {
+      const fileDetails = await this.getFileDetails(this.selectedFileId);
+
+      // Create download link
+      const link = document.createElement('a');
+      link.href = fileDetails.webViewLink;
+      link.download = fileDetails.name;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      this.showToast('Download started', 'success');
+    } catch (error) {
+      console.error('Download failed:', error);
+      this.showToast('Failed to download file', 'error');
+    }
+  }
+
+  async copyFileLink() {
+    if (!this.selectedFileId) return;
+
+    try {
+      const fileDetails = await this.getFileDetails(this.selectedFileId);
+      await navigator.clipboard.writeText(fileDetails.webViewLink);
+      this.showToast('Link copied to clipboard', 'success');
+    } catch (error) {
+      console.error('Copy failed:', error);
+      this.showToast('Failed to copy link', 'error');
+    }
+  }
+
+  async saveFileMetadata() {
+    if (!this.selectedFileId) return;
+
+    const description = document.getElementById('fileDescriptionEdit').value;
+    const tagsText = document.getElementById('fileTagsEdit').value;
+    const tags = tagsText.split(',').map(tag => tag.trim()).filter(tag => tag);
+
+    try {
+      await this.updateFileMetadata(this.selectedFileId, { description, tags });
+      this.showToast('Metadata saved successfully', 'success');
+    } catch (error) {
+      console.error('Save metadata failed:', error);
+      this.showToast('Failed to save metadata', 'error');
+    }
+  }
+
+  async updateFileMetadata(fileId, metadata) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'UPDATE_FILE_METADATA',
+        fileId: fileId,
+        metadata: metadata
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response && response.success) {
+          resolve(response.data);
+        } else {
+          reject(new Error(response?.error || 'Update failed'));
+        }
+      });
+    });
+  }
+
+  async uploadFileToGemini() {
+    if (!this.selectedFileId) return;
+
+    try {
+      const fileDetails = await this.getFileDetails(this.selectedFileId);
+
+      // Download file content and upload to Gemini
+      const response = await fetch(fileDetails.webViewLink);
+      const blob = await response.blob();
+      const file = new File([blob], fileDetails.name, { type: fileDetails.mimeType });
+
+      await this.uploadFileToGeminiAPI(file);
+      this.showToast('File uploaded to Gemini successfully', 'success');
+      await this.loadKnowledgeBaseFiles();
+
+    } catch (error) {
+      console.error('Gemini upload failed:', error);
+      this.showToast('Failed to upload to Gemini', 'error');
+    }
+  }
+
+  // File selection modal methods
+  selectedFiles = new Set();
+
+  showFileSelectionModal() {
+    this.selectedFiles.clear();
+    this.loadFileSelectionList();
+    document.getElementById('fileSelectionModalOverlay').style.display = 'flex';
+  }
+
+  hideFileSelectionModal() {
+    document.getElementById('fileSelectionModalOverlay').style.display = 'none';
+    this.selectedFiles.clear();
+  }
+
+  async loadFileSelectionList() {
+    try {
+      const files = await this.getGoogleDriveFiles();
+      const container = document.getElementById('fileSelectionList');
+
+      container.innerHTML = files.map(file => `
+        <div class="file-selection-item" data-file-id="${file.id}">
+          <input type="checkbox" class="file-selection-checkbox" value="${file.id}">
+          <div class="file-selection-info">
+            <div class="file-selection-name">${file.name}</div>
+            <div class="file-selection-meta">${this.formatFileSize(file.size)} • ${file.mimeType}</div>
+          </div>
+        </div>
+      `).join('');
+
+      // Add event listeners for checkboxes
+      container.querySelectorAll('.file-selection-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+          const fileId = e.target.value;
+          const item = e.target.closest('.file-selection-item');
+
+          if (e.target.checked) {
+            this.selectedFiles.add(fileId);
+            item.classList.add('selected');
+          } else {
+            this.selectedFiles.delete(fileId);
+            item.classList.remove('selected');
+          }
+
+          this.updateSelectedFilesCount();
+        });
+      });
+
+    } catch (error) {
+      console.error('Failed to load file selection list:', error);
+    }
+  }
+
+  updateSelectedFilesCount() {
+    const count = this.selectedFiles.size;
+    document.getElementById('selectedFilesCount').textContent = `${count} file${count !== 1 ? 's' : ''} selected`;
+  }
+
+  clearFileSelection() {
+    this.selectedFiles.clear();
+    document.querySelectorAll('.file-selection-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+    });
+    document.querySelectorAll('.file-selection-item').forEach(item => {
+      item.classList.remove('selected');
+    });
+    this.updateSelectedFilesCount();
+  }
+
+  confirmFileSelection() {
+    if (this.selectedFiles.size === 0) {
+      this.showToast('Please select at least one file', 'warning');
+      return;
+    }
+
+    // Store selected files for use in prompts
+    const selectedFileIds = Array.from(this.selectedFiles);
+    this.storeSelectedFilesForPrompts(selectedFileIds);
+
+    this.showToast(`${selectedFileIds.length} file(s) attached for prompts`, 'success');
+    this.hideFileSelectionModal();
+  }
+
+  storeSelectedFilesForPrompts(fileIds) {
+    // Store in chrome storage for use by content scripts
+    chrome.storage.local.set({
+      'selectedKnowledgeBaseFiles': fileIds,
+      'selectedFilesTimestamp': Date.now()
+    });
+  }
+
+  // Helper method to convert file to base64
+  async fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // Remove the data URL prefix (data:mime/type;base64,)
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async showKnowledgeBaseFileSelector() {
+    try {
+      console.log('aiFiverr: Opening knowledge base file selector...');
+
+      // Get knowledge base files
+      const files = await this.getKnowledgeBaseFiles();
+      console.log('aiFiverr: Retrieved files:', files);
+
+      // Always show the modal, even if no files
+      this.displayKbFileSelector(files || []);
+
+    } catch (error) {
+      console.error('Failed to load knowledge base files:', error);
+      this.showToast('Failed to load knowledge base files: ' + error.message, 'error');
+
+      // Show modal with empty files list
+      this.displayKbFileSelector([]);
+    }
+  }
+
+  async getKnowledgeBaseFiles(retryCount = 0) {
+    const maxRetries = 2;
+
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'GET_DRIVE_FILES'
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          const error = new Error(`Chrome runtime error: ${chrome.runtime.lastError.message}`);
+          if (retryCount < maxRetries) {
+            console.warn(`Retrying getKnowledgeBaseFiles (${retryCount + 1}/${maxRetries}):`, error.message);
+            setTimeout(() => {
+              this.getKnowledgeBaseFiles(retryCount + 1).then(resolve).catch(reject);
+            }, 1000 * (retryCount + 1));
+          } else {
+            reject(error);
+          }
+        } else if (response && response.success) {
+          resolve(response.data || []);
+        } else {
+          const error = new Error(response?.error || 'Failed to get knowledge base files');
+          if (retryCount < maxRetries && (!response || response.error?.includes('timeout') || response.error?.includes('network'))) {
+            console.warn(`Retrying getKnowledgeBaseFiles (${retryCount + 1}/${maxRetries}):`, error.message);
+            setTimeout(() => {
+              this.getKnowledgeBaseFiles(retryCount + 1).then(resolve).catch(reject);
+            }, 1000 * (retryCount + 1));
+          } else {
+            reject(error);
+          }
+        }
+      });
+    });
+  }
+
+  displayKbFileSelector(files) {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'kb-file-selector-overlay';
+    overlay.innerHTML = `
+      <div class="kb-file-selector-modal">
+        <div class="kb-file-selector-header">
+          <h3>Select Knowledge Base Files</h3>
+          <div class="kb-file-selector-header-actions">
+            <button class="btn-secondary kb-refresh-btn" title="Refresh files">🔄</button>
+            <button class="close-btn kb-close-btn">×</button>
+          </div>
+        </div>
+        <div class="kb-file-selector-content">
+          <div class="kb-file-selector-search">
+            <input type="text" placeholder="Search files..." class="kb-file-search-input">
+          </div>
+          <div class="kb-file-selector-list">
+            ${files.length > 0 ? files.map(file => `
+              <div class="kb-file-selector-item" data-file-id="${file.id}">
+                <label class="kb-file-checkbox-label">
+                  <input type="checkbox" class="kb-file-checkbox" value="${file.id}">
+                  <div class="kb-file-item-content">
+                    <div class="kb-file-icon">${this.getFileIcon(file.mimeType)}</div>
+                    <div class="kb-file-info">
+                      <div class="kb-file-name">${file.name}</div>
+                      <div class="kb-file-meta">${this.formatFileSize(file.size)} • ${file.mimeType}</div>
+                    </div>
+                    <div class="kb-file-status">
+                      <span class="status-indicator ${this.getFileConnectionStatus(file)}" title="Gemini Status: ${this.getFileConnectionStatus(file)}"></span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            `).join('') : `
+              <div class="kb-files-empty">
+                <div class="kb-files-empty-icon">📁</div>
+                <h4>No files available</h4>
+                <p>Upload files to your knowledge base first.<br>Go to Settings → Knowledge Base → Files tab to upload files.</p>
+              </div>
+            `}
+          </div>
+        </div>
+        <div class="kb-file-selector-footer">
+          <div class="selected-count">0 files selected</div>
+          <div class="selector-actions">
+            <button class="btn-secondary kb-cancel-btn">Cancel</button>
+            <button class="btn-primary kb-attach-btn">Attach Selected</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Add event listeners
+    const checkboxes = overlay.querySelectorAll('.kb-file-checkbox');
+    const selectedCount = overlay.querySelector('.selected-count');
+
+    checkboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', () => {
+        const selected = overlay.querySelectorAll('.kb-file-checkbox:checked').length;
+        selectedCount.textContent = `${selected} file${selected !== 1 ? 's' : ''} selected`;
+      });
+    });
+
+    // Search functionality
+    const searchInput = overlay.querySelector('.kb-file-search-input');
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      const items = overlay.querySelectorAll('.kb-file-selector-item');
+
+      items.forEach(item => {
+        const fileName = item.querySelector('.kb-file-name').textContent.toLowerCase();
+        item.style.display = fileName.includes(query) ? 'block' : 'none';
+      });
+    });
+
+    // Button event listeners
+    const closeBtn = overlay.querySelector('.kb-close-btn');
+    const cancelBtn = overlay.querySelector('.kb-cancel-btn');
+    const attachBtn = overlay.querySelector('.kb-attach-btn');
+    const refreshBtn = overlay.querySelector('.kb-refresh-btn');
+
+    const closeModal = () => {
+      overlay.remove();
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    attachBtn.addEventListener('click', () => {
+      console.log('aiFiverr: Attach Selected button clicked');
+      this.attachSelectedFiles();
+    });
+
+    // Refresh button functionality
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async () => {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '⏳';
+
+        try {
+          const refreshedFiles = await this.getKnowledgeBaseFiles();
+          // Update the file list in the modal
+          const fileList = overlay.querySelector('.kb-file-selector-list');
+          fileList.innerHTML = refreshedFiles.length > 0 ? refreshedFiles.map(file => `
+            <div class="kb-file-selector-item" data-file-id="${file.id}">
+              <label class="kb-file-checkbox-label">
+                <input type="checkbox" class="kb-file-checkbox" value="${file.id}">
+                <div class="kb-file-item-content">
+                  <div class="kb-file-icon">${this.getFileIcon(file.mimeType)}</div>
+                  <div class="kb-file-info">
+                    <div class="kb-file-name">${file.name}</div>
+                    <div class="kb-file-meta">${this.formatFileSize(file.size)} • ${file.mimeType}</div>
+                  </div>
+                  <div class="kb-file-status">
+                    <span class="status-indicator ${this.getFileConnectionStatus(file)}" title="Gemini Status: ${this.getFileConnectionStatus(file)}"></span>
+                  </div>
+                </div>
+              </label>
+            </div>
+          `).join('') : `
+            <div class="kb-files-empty">
+              <div class="kb-files-empty-icon">📁</div>
+              <h4>No files available</h4>
+              <p>Upload files to your knowledge base first.<br>Go to Settings → Knowledge Base → Files tab to upload files.</p>
+            </div>
+          `;
+
+          // Re-attach event listeners for new checkboxes
+          const selectedCount = overlay.querySelector('.selected-count');
+          overlay.querySelectorAll('.kb-file-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+              const selected = overlay.querySelectorAll('.kb-file-checkbox:checked').length;
+              selectedCount.textContent = `${selected} file${selected !== 1 ? 's' : ''} selected`;
+            });
+          });
+
+          this.showToast('Files refreshed successfully', 'success');
+        } catch (error) {
+          console.error('Failed to refresh files:', error);
+          this.showToast('Failed to refresh files', 'error');
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = '🔄';
+        }
+      });
+    }
+
+    // Close modal when clicking outside
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        closeModal();
+      }
+    });
+  }
+
+  attachSelectedFiles() {
+    console.log('aiFiverr: attachSelectedFiles called');
+    const overlay = document.querySelector('.kb-file-selector-overlay');
+    if (!overlay) {
+      console.error('aiFiverr: File selector overlay not found');
+      return;
+    }
+
+    const selectedCheckboxes = overlay.querySelectorAll('.kb-file-checkbox:checked');
+    console.log('aiFiverr: Selected checkboxes:', selectedCheckboxes.length);
+    const selectedFiles = [];
+
+    selectedCheckboxes.forEach(checkbox => {
+      const fileItem = checkbox.closest('.kb-file-selector-item');
+      const fileName = fileItem.querySelector('.kb-file-name').textContent;
+      const fileMeta = fileItem.querySelector('.kb-file-meta').textContent;
+      const fileIcon = fileItem.querySelector('.kb-file-icon').textContent;
+
+      selectedFiles.push({
+        id: checkbox.value,
+        name: fileName,
+        meta: fileMeta,
+        icon: fileIcon
+      });
+    });
+
+    console.log('aiFiverr: Selected files:', selectedFiles);
+    this.displaySelectedFiles(selectedFiles);
+    overlay.remove();
+    console.log('aiFiverr: File selector modal closed');
+  }
+
+  displaySelectedFiles(files) {
+    const container = document.getElementById('selectedKbFiles');
+
+    if (files.length === 0) {
+      container.style.display = 'none';
+      container.classList.remove('has-files');
+      return;
+    }
+
+    container.innerHTML = files.map(file => `
+      <div class="selected-file-item" data-file-id="${file.id}">
+        <div class="selected-file-info">
+          <span class="selected-file-icon">${file.icon}</span>
+          <span class="selected-file-name">${file.name}</span>
+          <span class="selected-file-size">${file.meta}</span>
+        </div>
+        <button class="remove-selected-file" data-file-id="${file.id}">×</button>
+      </div>
+    `).join('');
+
+    container.style.display = 'block';
+    container.classList.add('has-files');
+
+    // Add event listeners for remove buttons
+    container.querySelectorAll('.remove-selected-file').forEach(button => {
+      button.addEventListener('click', (e) => {
+        const fileId = e.target.getAttribute('data-file-id');
+        this.removeSelectedFile(fileId);
+      });
+    });
+  }
+
+  removeSelectedFile(fileId) {
+    const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
+    if (fileItem) {
+      fileItem.remove();
+    }
+
+    // Check if any files remain
+    const container = document.getElementById('selectedKbFiles');
+    const remainingFiles = container.querySelectorAll('.selected-file-item');
+
+    if (remainingFiles.length === 0) {
+      container.style.display = 'none';
+      container.classList.remove('has-files');
+    }
+  }
+
+  clearSelectedKbFiles() {
+    const container = document.getElementById('selectedKbFiles');
+    if (container) {
+      container.innerHTML = '';
+      container.style.display = 'none';
+      container.classList.remove('has-files');
+    }
+  }
+
+  getSelectedKbFiles() {
+    const container = document.getElementById('selectedKbFiles');
+    if (!container) return [];
+
+    const selectedItems = container.querySelectorAll('.selected-file-item');
+    return Array.from(selectedItems).map(item => {
+      // Get the file ID and try to find the full file data
+      const fileId = item.dataset.fileId;
+      const fileName = item.querySelector('.selected-file-name').textContent;
+      const fileMeta = item.querySelector('.selected-file-size').textContent;
+      const fileIcon = item.querySelector('.selected-file-icon').textContent;
+
+      // Return basic file info - the actual file data with geminiUri will be resolved later
+      return {
+        id: fileId,
+        name: fileName,
+        meta: fileMeta,
+        icon: fileIcon
+      };
+    });
+  }
+
+  getFileIcon(mimeType) {
+    if (mimeType.startsWith('image/')) return '🖼️';
+    if (mimeType.startsWith('video/')) return '🎥';
+    if (mimeType.startsWith('audio/')) return '🎵';
+    if (mimeType.includes('pdf')) return '📄';
+    if (mimeType.includes('document') || mimeType.includes('word')) return '📝';
+    if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return '📊';
+    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽️';
+    if (mimeType.includes('text/')) return '📄';
+    return '📁';
+  }
 }
 
-// Listen for messages from content script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (window.popupManager) {
-    window.popupManager.handleRuntimeMessage(request, sender, sendResponse);
-  }
-});
+// Listen for messages from content script (only if chrome.runtime is available)
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (window.popupManager) {
+      window.popupManager.handleRuntimeMessage(request, sender, sendResponse);
+    }
+  });
+}
+
+// Fallback tab switching for when PopupManager fails to initialize
+function initializeFallbackTabSwitching() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const tabName = e.target.dataset.tab;
+
+      // Update tab buttons
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+
+      // Update tab panels
+      document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+      const targetPanel = document.getElementById(tabName);
+      if (targetPanel) {
+        targetPanel.classList.add('active');
+      }
+    });
+  });
+}
 
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  window.popupManager = new PopupManager();
+  // Check if we're in a proper extension context
+  if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+    try {
+      window.popupManager = new PopupManager();
+      console.log('aiFiverr: PopupManager initialized successfully');
+    } catch (error) {
+      console.error('aiFiverr: PopupManager failed to initialize:', error);
+      // Show error message to user
+      const errorDiv = document.createElement('div');
+      errorDiv.style.cssText = 'padding: 20px; text-align: center; color: #dc3545; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px;';
+      errorDiv.innerHTML = `
+        <h4>Extension Error</h4>
+        <p>Failed to initialize aiFiverr extension. Please try:</p>
+        <ul style="text-align: left; display: inline-block;">
+          <li>Refreshing this popup</li>
+          <li>Reloading the extension</li>
+          <li>Restarting your browser</li>
+        </ul>
+        <p><small>Error: ${error.message}</small></p>
+      `;
+      document.body.insertBefore(errorDiv, document.body.firstChild);
+
+      // Try fallback initialization
+      initializeFallbackTabSwitching();
+    }
+  } else {
+    console.warn('aiFiverr: Extension context not available, using fallback tab switching');
+    initializeFallbackTabSwitching();
+  }
 });
