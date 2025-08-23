@@ -212,7 +212,10 @@ class TextSelector {
    * Get selection rectangle - handles both regular text and input fields
    */
   getSelectionRect(selection) {
-    if (!selection.rangeCount) return null;
+    if (!selection.rangeCount) {
+      console.log('aiFiverr: No selection range found');
+      return null;
+    }
 
     const range = selection.getRangeAt(0);
 
@@ -220,9 +223,19 @@ class TextSelector {
     // This works for most cases including contentEditable elements
     let rect = range.getBoundingClientRect();
 
+    console.log('aiFiverr: Range getBoundingClientRect:', rect);
+
     // If the rect has valid dimensions, use it
     if (rect.width > 0 && rect.height > 0) {
-      return rect;
+      // Ensure we have all required properties
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      };
     }
 
     // Fallback for input/textarea elements where range.getBoundingClientRect() might not work
@@ -614,7 +627,14 @@ class TextSelector {
    * Show floating icon near selection
    */
   showFloatingIcon() {
-    if (!this.floatingIcon || !this.selectionRect) return;
+    if (!this.floatingIcon || !this.selectionRect) {
+      console.log('aiFiverr: Cannot show floating icon - missing icon or selectionRect:', {
+        hasIcon: !!this.floatingIcon,
+        hasRect: !!this.selectionRect,
+        rect: this.selectionRect
+      });
+      return;
+    }
 
     // Clear any existing hide timeout
     if (this.hideTimeout) {
@@ -632,19 +652,31 @@ class TextSelector {
 
     let left, top;
 
+    // Ensure we have valid rect dimensions
+    const rect = {
+      left: this.selectionRect.left || 0,
+      right: this.selectionRect.right || this.selectionRect.left || 0,
+      top: this.selectionRect.top || 0,
+      bottom: this.selectionRect.bottom || this.selectionRect.top || 0,
+      width: this.selectionRect.width || 0,
+      height: this.selectionRect.height || 0
+    };
+
+    console.log('aiFiverr: Positioning icon with rect:', rect, 'isInputField:', isInputField);
+
     if (isInputField) {
       // For input fields, position icon closer to the text, vertically centered
-      left = this.selectionRect.right + margin;
-      top = this.selectionRect.top + (this.selectionRect.height / 2) - (iconSize / 2);
+      left = rect.right + margin;
+      top = rect.top + (rect.height / 2) - (iconSize / 2);
 
       // If the icon would be too far to the right, position it to the left of the selection
       if (left + iconSize > window.innerWidth - margin) {
-        left = this.selectionRect.left - iconSize - margin;
+        left = rect.left - iconSize - margin;
       }
     } else {
       // For regular text, position at top-right of selection
-      left = this.selectionRect.right + margin;
-      top = this.selectionRect.top - margin;
+      left = rect.right + margin;
+      top = rect.top - margin;
     }
 
     // Ensure icon stays within viewport
@@ -652,21 +684,30 @@ class TextSelector {
     const viewportHeight = window.innerHeight;
 
     if (left + iconSize > viewportWidth) {
-      left = this.selectionRect.left - iconSize - margin;
+      left = rect.left - iconSize - margin;
     }
 
     if (top < 0) {
-      top = this.selectionRect.bottom + margin;
+      top = rect.bottom + margin;
     }
 
     if (top + iconSize > viewportHeight) {
       top = viewportHeight - iconSize - margin;
     }
 
+    // Ensure minimum positioning (prevent negative values)
+    left = Math.max(0, left);
+    top = Math.max(0, top);
+
+    console.log('aiFiverr: Final icon position:', { left, top });
+
     // Position and show icon
     this.floatingIcon.style.left = `${left}px`;
     this.floatingIcon.style.top = `${top}px`;
     this.floatingIcon.style.display = 'flex';
+
+    // Force a repaint to ensure positioning takes effect
+    this.floatingIcon.offsetHeight;
   }
 
   /**

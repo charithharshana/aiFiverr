@@ -1507,7 +1507,15 @@ class FiverrInjector {
         prompt = typeof result === 'object' ? result.prompt : result;
         knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
 
-        console.log('aiFiverr Injector: Project Proposal - Knowledge base files:', knowledgeBaseFiles);
+        console.log('aiFiverr Injector: Project Proposal - Knowledge base files from prompt:', knowledgeBaseFiles.length);
+
+        // CRITICAL FIX: If prompt has no files attached, force load all available knowledge base files
+        if (!knowledgeBaseFiles || knowledgeBaseFiles.length === 0) {
+          console.warn('aiFiverr Injector: Project proposal prompt has no files attached, force loading all KB files');
+          knowledgeBaseFiles = await this.getKnowledgeBaseFilesForced();
+        }
+
+        console.log('aiFiverr Injector: Project Proposal - Final knowledge base files:', knowledgeBaseFiles);
         console.log('aiFiverr Injector: Project Proposal - Files details:', knowledgeBaseFiles.map(f => ({
           name: f.name,
           id: f.id,
@@ -1515,14 +1523,28 @@ class FiverrInjector {
           hasGeminiUri: !!f.geminiUri
         })));
       } catch (error) {
-        console.warn('Project proposal prompt not found, using fallback:', error);
-        // Fallback to gemini client's proposal generation
+        console.warn('Project proposal prompt not found, using fallback with files:', error);
+
+        // Force load knowledge base files
         const knowledgeBase = await storageManager.getKnowledgeBase();
-        return await geminiClient.generateProposal(briefData, knowledgeBase);
+        const kbFiles = await this.getKnowledgeBaseFilesForced();
+
+        console.log('aiFiverr Injector: Forced KB files:', kbFiles);
+        console.log('aiFiverr Injector: Forced KB files details:', kbFiles.map(f => ({
+          name: f.name,
+          id: f.id,
+          geminiUri: f.geminiUri,
+          hasGeminiUri: !!f.geminiUri
+        })));
+
+        return await geminiClient.generateProposal(briefData, knowledgeBase, { knowledgeBaseFiles: kbFiles });
       }
 
       // Generate proposal using the processed prompt
       console.log('aiFiverr Injector: Project Proposal - Calling generateContent with options:', { knowledgeBaseFiles });
+      console.log('aiFiverr Injector: Project Proposal - Files count:', knowledgeBaseFiles.length);
+      console.log('aiFiverr Injector: Project Proposal - Files with Gemini URI:', knowledgeBaseFiles.filter(f => f.geminiUri).length);
+
       const response = await geminiClient.generateContent(prompt, { knowledgeBaseFiles });
       return removeMarkdownFormatting(response.text);
     } catch (error) {
@@ -1559,6 +1581,38 @@ class FiverrInjector {
     } catch (error) {
       console.error('AI response failed:', error);
       throw new Error('Failed to get AI response');
+    }
+  }
+
+  /**
+   * Force load knowledge base files (emergency fix)
+   */
+  async getKnowledgeBaseFilesForced() {
+    try {
+      console.log('aiFiverr Injector: Force loading knowledge base files...');
+
+      if (!window.knowledgeBaseManager) {
+        console.warn('Knowledge base manager not available');
+        return [];
+      }
+
+      const result = await window.knowledgeBaseManager.getKnowledgeBaseFilesFromBackground();
+      if (result.success && result.data) {
+        const files = result.data.filter(file => file.geminiUri);
+        console.log('aiFiverr Injector: Forced files loaded:', files.length);
+        console.log('aiFiverr Injector: Forced files details:', files.map(f => ({
+          name: f.name,
+          geminiUri: f.geminiUri,
+          mimeType: f.mimeType
+        })));
+        return files;
+      }
+
+      console.warn('aiFiverr Injector: No files returned from background');
+      return [];
+    } catch (error) {
+      console.error('Failed to force load knowledge base files:', error);
+      return [];
     }
   }
 

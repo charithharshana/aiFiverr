@@ -298,7 +298,8 @@ class StorageManager {
   getDefaultSettings() {
     return {
       apiKeys: [],
-      defaultModel: 'gemini-1.5-flash',
+      defaultModel: 'gemini-2.5-flash',
+      selectedModel: 'gemini-2.5-flash', // User's selected model
       autoSave: true,
       sessionTimeout: 30 * 60 * 1000, // 30 minutes
       maxSessions: 50,

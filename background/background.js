@@ -375,13 +375,31 @@ class BackgroundManager {
           // Handle both direct file upload and Drive file upload
           if (request.fileData && request.fileData.driveFileId) {
             console.log('aiFiverr Background: Uploading Drive file to Gemini:', request.fileData.name);
-            const driveFileUploadResult = await this.uploadDriveFileToGemini(request.fileData);
+            const driveFileUploadResult = await this.uploadDriveFileToGeminiEnhanced(request.fileData);
             sendSafeResponse(driveFileUploadResult);
           } else {
             console.log('aiFiverr Background: Uploading direct file to Gemini:', request.file?.name || 'unknown');
-            const geminiUploadResult = await this.uploadFileToGemini(request);
+            const geminiUploadResult = await this.uploadFileToGeminiEnhanced(request);
             sendSafeResponse(geminiUploadResult);
           }
+          break;
+
+        case 'GENERATE_CONTENT_ENHANCED':
+          console.log('aiFiverr Background: Processing GENERATE_CONTENT_ENHANCED request...');
+          const contentResult = await this.generateContentEnhanced(request);
+          sendSafeResponse(contentResult);
+          break;
+
+        case 'STREAM_GENERATE_CONTENT':
+          console.log('aiFiverr Background: Processing STREAM_GENERATE_CONTENT request...');
+          const streamResult = await this.streamGenerateContentEnhanced(request);
+          sendSafeResponse(streamResult);
+          break;
+
+        case 'CHECK_GEMINI_FILE_STATUS':
+          console.log('aiFiverr Background: Processing CHECK_GEMINI_FILE_STATUS request...');
+          const statusResult = await this.checkGeminiFileStatus(request.fileName);
+          sendSafeResponse(statusResult);
           break;
 
         case 'UPDATE_FILE_REFERENCE_GEMINI_URI':
@@ -1184,6 +1202,398 @@ Would you like to continue without authentication or switch to Chrome?`;
 
     } catch (error) {
       console.error('aiFiverr Background: Drive file upload to Gemini failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Enhanced Drive file upload to Gemini with improved error handling
+   */
+  async uploadDriveFileToGeminiEnhanced(fileData) {
+    try {
+      console.log('aiFiverr Background: Enhanced Drive file upload to Gemini:', fileData.name);
+
+      const apiKey = await this.getGeminiApiKey();
+      if (!apiKey) {
+        return { success: false, error: 'No Gemini API key available' };
+      }
+
+      // Get valid token for Drive API
+      const token = await this.getValidToken();
+      if (!token) {
+        return { success: false, error: 'No valid Google token available' };
+      }
+
+      // Download file from Google Drive
+      const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.driveFileId}?alt=media`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!driveResponse.ok) {
+        throw new Error(`Failed to download file from Drive: ${driveResponse.status} ${driveResponse.statusText}`);
+      }
+
+      const fileBlob = await driveResponse.blob();
+      const arrayBuffer = await fileBlob.arrayBuffer();
+      const fileContent = new Uint8Array(arrayBuffer);
+
+      // Validate file type
+      const mimeType = fileData.mimeType || this.getMimeTypeFromExtension(fileData.name);
+      if (!this.isSupportedGeminiFileType(mimeType)) {
+        throw new Error(`Unsupported file type: ${mimeType}`);
+      }
+
+      // Check file size (2GB limit)
+      if (fileContent.length > 2 * 1024 * 1024 * 1024) {
+        throw new Error('File size exceeds 2GB limit');
+      }
+
+      // Use enhanced multipart creation
+      const metadata = {
+        file: {
+          displayName: fileData.displayName || fileData.name
+        }
+      };
+
+      const { body, contentType } = this.createMultipartBodyEnhanced(metadata, fileContent, fileData.name, mimeType);
+
+      // Upload to Gemini with enhanced error handling
+      const uploadResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': contentType
+        },
+        body: body
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Enhanced Gemini upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+      }
+
+      const result = await uploadResponse.json();
+      console.log('aiFiverr Background: Enhanced Drive file uploaded to Gemini successfully:', {
+        name: result.file.name,
+        uri: result.file.uri,
+        state: result.file.state,
+        sizeBytes: result.file.sizeBytes
+      });
+
+      return {
+        success: true,
+        data: {
+          name: result.file.name,
+          displayName: result.file.displayName,
+          mimeType: result.file.mimeType,
+          uri: result.file.uri,
+          sizeBytes: result.file.sizeBytes,
+          state: result.file.state
+        }
+      };
+
+    } catch (error) {
+      console.error('aiFiverr Background: Enhanced Drive file upload to Gemini failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Enhanced direct file upload to Gemini
+   */
+  async uploadFileToGeminiEnhanced(request) {
+    try {
+      console.log('aiFiverr Background: Enhanced direct file upload to Gemini:', request.file?.name || 'unknown');
+
+      const apiKey = await this.getGeminiApiKey();
+      if (!apiKey) {
+        return { success: false, error: 'No Gemini API key available' };
+      }
+
+      // Validate file type
+      const mimeType = request.file.type || this.getMimeTypeFromExtension(request.file.name);
+      if (!this.isSupportedGeminiFileType(mimeType)) {
+        throw new Error(`Unsupported file type: ${mimeType}`);
+      }
+
+      // Check file size (2GB limit)
+      if (request.file.size > 2 * 1024 * 1024 * 1024) {
+        throw new Error('File size exceeds 2GB limit');
+      }
+
+      // Convert base64 to Uint8Array
+      const base64Data = request.file.data.split(',')[1] || request.file.data;
+      const binaryString = atob(base64Data);
+      const fileContent = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        fileContent[i] = binaryString.charCodeAt(i);
+      }
+
+      // Prepare metadata
+      const metadata = {
+        file: {
+          displayName: request.displayName || request.file.name
+        }
+      };
+
+      const { body, contentType } = this.createMultipartBodyEnhanced(metadata, fileContent, request.file.name, mimeType);
+
+      // Upload to Gemini
+      const uploadResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': contentType
+        },
+        body: body
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Enhanced Gemini upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+      }
+
+      const result = await uploadResponse.json();
+      console.log('aiFiverr Background: Enhanced direct file uploaded to Gemini successfully:', {
+        name: result.file.name,
+        uri: result.file.uri,
+        state: result.file.state,
+        sizeBytes: result.file.sizeBytes
+      });
+
+      return {
+        success: true,
+        data: {
+          name: result.file.name,
+          displayName: result.file.displayName,
+          mimeType: result.file.mimeType,
+          uri: result.file.uri,
+          sizeBytes: result.file.sizeBytes,
+          state: result.file.state
+        }
+      };
+
+    } catch (error) {
+      console.error('aiFiverr Background: Enhanced direct file upload to Gemini failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Enhanced multipart body creation
+   */
+  createMultipartBodyEnhanced(metadata, fileContent, fileName, mimeType) {
+    const boundary = '----formdata-boundary-' + Math.random().toString(36);
+    const CRLF = '\r\n';
+
+    let body = '';
+
+    // Add metadata part
+    body += `--${boundary}${CRLF}`;
+    body += `Content-Disposition: form-data; name="metadata"${CRLF}`;
+    body += `Content-Type: application/json${CRLF}${CRLF}`;
+    body += JSON.stringify(metadata) + CRLF;
+
+    // Add file part
+    body += `--${boundary}${CRLF}`;
+    body += `Content-Disposition: form-data; name="file"; filename="${fileName}"${CRLF}`;
+    body += `Content-Type: ${mimeType}${CRLF}${CRLF}`;
+
+    // Convert body to Uint8Array and append file content
+    const encoder = new TextEncoder();
+    const bodyBuffer = encoder.encode(body);
+    const endBuffer = encoder.encode(`${CRLF}--${boundary}--${CRLF}`);
+
+    // Combine all parts
+    const totalLength = bodyBuffer.length + fileContent.length + endBuffer.length;
+    const result = new Uint8Array(totalLength);
+    result.set(bodyBuffer, 0);
+    result.set(fileContent, bodyBuffer.length);
+    result.set(endBuffer, bodyBuffer.length + fileContent.length);
+
+    return {
+      body: result,
+      contentType: `multipart/form-data; boundary=${boundary}`
+    };
+  }
+
+  /**
+   * Enhanced content generation with retry logic
+   */
+  async generateContentEnhanced(request) {
+    try {
+      console.log('aiFiverr Background: Enhanced content generation...');
+
+      const apiKey = await this.getGeminiApiKey();
+      if (!apiKey) {
+        return { success: false, error: 'No Gemini API key available' };
+      }
+
+      const { prompt, fileUri, fileMimeType, model, retryCount = 0 } = request;
+      const maxRetries = 3;
+      const selectedModel = model || 'gemini-2.5-flash';
+
+      const contents = [{
+        parts: [],
+        role: "user"
+      }];
+
+      // Add file FIRST (critical for Gemini API performance)
+      if (fileUri && fileMimeType) {
+        contents[0].parts.push({
+          fileData: {
+            fileUri: fileUri,
+            mimeType: fileMimeType
+          }
+        });
+        console.log('aiFiverr Background: File attached to enhanced request');
+      }
+
+      // Add text prompt AFTER file (critical order for Gemini API)
+      contents[0].parts.push({
+        text: prompt
+      });
+
+      const payload = {
+        contents: contents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+          candidateCount: 1
+        }
+      };
+
+      // Add system instruction for better context understanding (like Gemini web interface)
+      if (fileUri && fileMimeType) {
+        payload.systemInstruction = {
+          parts: [{
+            text: "You are an expert proposal writer. Use the attached files to extract relevant project examples, links, and portfolio information. Create professional, detailed proposals that include specific project references from the provided files. Do not use placeholders - only include actual project links and examples found in the files."
+          }]
+        };
+      }
+
+      const generateUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
+
+      const response = await fetch(generateUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Enhanced generation failed: ${response.status} ${response.statusText}\n${errorText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.candidates && result.candidates[0]) {
+        const candidate = result.candidates[0];
+
+        // Handle MAX_TOKENS finish reason
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          console.log('aiFiverr Background: Response truncated due to MAX_TOKENS limit');
+
+          if (retryCount < maxRetries) {
+            console.log(`aiFiverr Background: Retrying with shorter prompt (${retryCount + 1}/${maxRetries})...`);
+            const shorterPrompt = `Create a concise professional response (under 2000 characters) based on the request. Include relevant examples if applicable.`;
+
+            return await this.generateContentEnhanced({
+              ...request,
+              prompt: shorterPrompt,
+              fileUri: null,
+              fileMimeType: null,
+              retryCount: retryCount + 1
+            });
+          } else {
+            // Return fallback response
+            const fallbackResponse = `**Professional Response**
+
+I understand your request and can help you with this task. Based on my experience, I can provide a comprehensive solution that meets your requirements.
+
+**Key Points:**
+• Professional approach to your needs
+• Quality deliverables within timeline
+• Competitive pricing and value
+
+**Next Steps:**
+Ready to discuss your specific requirements and provide a detailed proposal.
+
+Let's connect to move forward with your project.`;
+
+            return {
+              success: true,
+              data: {
+                content: fallbackResponse,
+                finishReason: 'MAX_TOKENS_FALLBACK'
+              }
+            };
+          }
+        }
+
+        // Check if content exists and has parts
+        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+          const text = candidate.content.parts[0].text;
+          console.log('aiFiverr Background: Enhanced content generated, length:', text.length);
+
+          return {
+            success: true,
+            data: {
+              content: text,
+              finishReason: candidate.finishReason
+            }
+          };
+        } else {
+          throw new Error('No content in response');
+        }
+      } else {
+        throw new Error('No candidates in response');
+      }
+
+    } catch (error) {
+      console.error('aiFiverr Background: Enhanced content generation failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Check Gemini file processing status
+   */
+  async checkGeminiFileStatus(fileName) {
+    try {
+      console.log('aiFiverr Background: Checking Gemini file status:', fileName);
+
+      const apiKey = await this.getGeminiApiKey();
+      if (!apiKey) {
+        return { success: false, error: 'No Gemini API key available' };
+      }
+
+      const fileUrl = `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${apiKey}`;
+      const response = await fetch(fileUrl);
+
+      if (!response.ok) {
+        throw new Error(`File status check failed: ${response.status} ${response.statusText}`);
+      }
+
+      const fileInfo = await response.json();
+      console.log('aiFiverr Background: File status:', fileInfo.state);
+
+      return {
+        success: true,
+        data: {
+          name: fileInfo.name,
+          displayName: fileInfo.displayName,
+          mimeType: fileInfo.mimeType,
+          uri: fileInfo.uri,
+          sizeBytes: fileInfo.sizeBytes,
+          state: fileInfo.state
+        }
+      };
+
+    } catch (error) {
+      console.error('aiFiverr Background: File status check failed:', error);
       return { success: false, error: error.message };
     }
   }

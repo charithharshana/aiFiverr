@@ -259,6 +259,14 @@ class AiFiverrMain {
       } else {
         console.log('aiFiverr: Gemini Client initialization function not available');
       }
+
+      // Also initialize Enhanced Gemini Client
+      if (typeof window.initializeEnhancedGeminiClient === 'function') {
+        console.log('aiFiverr: Initializing Enhanced Gemini Client...');
+        await window.initializeEnhancedGeminiClient();
+      } else {
+        console.log('aiFiverr: Enhanced Gemini Client initialization function not available');
+      }
     } catch (error) {
       console.error('aiFiverr: Failed to initialize Gemini Client:', error);
     }

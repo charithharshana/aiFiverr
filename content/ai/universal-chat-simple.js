@@ -462,6 +462,18 @@ class AIAssistanceChat {
     // Add loading message
     const loadingId = this.addMessage('assistant', 'Thinking...');
 
+    // Try enhanced streaming first
+    try {
+      if (!window.enhancedGeminiClient) {
+        initializeEnhancedGeminiClient();
+      }
+
+      await this.sendMessageWithEnhancedStreaming(message, loadingId);
+      return;
+    } catch (error) {
+      console.log('aiFiverr: Enhanced streaming failed, falling back to regular:', error);
+    }
+
     try {
       this.isStreaming = true;
 
@@ -527,13 +539,40 @@ class AIAssistanceChat {
       }
     }
 
-    // Add current message
+    // Prepare parts for current message
+    const currentMessageParts = [{ text: message }];
+
+    // Add knowledge base files if available
+    let knowledgeBaseFiles = [];
+    if (window.knowledgeBaseManager) {
+      try {
+        const allFiles = await window.knowledgeBaseManager.getKnowledgeBaseFiles();
+        knowledgeBaseFiles = allFiles.filter(file => file.geminiUri);
+        console.log('aiFiverr Fallback Non-Streaming: Found', knowledgeBaseFiles.length, 'knowledge base files with geminiUri');
+
+        // Add file parts to current message
+        knowledgeBaseFiles.forEach(file => {
+          console.log('aiFiverr Fallback Non-Streaming: Adding file to request:', file.name, file.geminiUri);
+          currentMessageParts.push({
+            fileData: {
+              mimeType: file.mimeType || 'application/octet-stream',
+              fileUri: file.geminiUri
+            }
+          });
+        });
+      } catch (error) {
+        console.warn('aiFiverr Fallback Non-Streaming: Failed to get knowledge base files:', error);
+      }
+    }
+
+    // Add current message with files
     contents.push({
       role: 'user',
-      parts: [{ text: message }]
+      parts: currentMessageParts
     });
 
-    const modelName = this.modelSettings?.model || 'gemini-2.5-flash-preview-05-20';
+    // Get model from settings or use fallback
+    const modelName = await this.getCurrentModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.apiKey}`;
 
     const body = {
@@ -555,6 +594,8 @@ class AIAssistanceChat {
         }
       ]
     };
+
+    console.log('aiFiverr Fallback Non-Streaming: API request with', knowledgeBaseFiles.length, 'knowledge base files');
 
     const response = await fetch(url, {
       method: 'POST',
@@ -617,13 +658,40 @@ class AIAssistanceChat {
       }
     }
 
-    // Add current message
+    // Prepare parts for current message
+    const currentMessageParts = [{ text: message }];
+
+    // Add knowledge base files if available
+    let knowledgeBaseFiles = [];
+    if (window.knowledgeBaseManager) {
+      try {
+        const allFiles = await window.knowledgeBaseManager.getKnowledgeBaseFiles();
+        knowledgeBaseFiles = allFiles.filter(file => file.geminiUri);
+        console.log('aiFiverr Fallback: Found', knowledgeBaseFiles.length, 'knowledge base files with geminiUri');
+
+        // Add file parts to current message
+        knowledgeBaseFiles.forEach(file => {
+          console.log('aiFiverr Fallback: Adding file to request:', file.name, file.geminiUri);
+          currentMessageParts.push({
+            fileData: {
+              mimeType: file.mimeType || 'application/octet-stream',
+              fileUri: file.geminiUri
+            }
+          });
+        });
+      } catch (error) {
+        console.warn('aiFiverr Fallback: Failed to get knowledge base files:', error);
+      }
+    }
+
+    // Add current message with files
     contents.push({
       role: 'user',
-      parts: [{ text: message }]
+      parts: currentMessageParts
     });
 
-    const modelName = this.modelSettings?.model || 'gemini-2.5-flash-preview-05-20';
+    // Get model from settings or use fallback
+    const modelName = await this.getCurrentModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${this.apiKey}`;
 
     const body = {
@@ -645,6 +713,8 @@ class AIAssistanceChat {
         }
       ]
     };
+
+    console.log('aiFiverr Fallback: API request with', knowledgeBaseFiles.length, 'knowledge base files');
 
     const response = await fetch(url, {
       method: 'POST',
@@ -1716,8 +1786,9 @@ class AIAssistanceChat {
         <div style="margin-bottom: 16px;">
           <label style="display: block; margin-bottom: 4px; font-weight: 600; color: #495057;">Model:</label>
           <select id="model-select" style="width: 100%; padding: 8px; border: 1px solid #e1e5e9; border-radius: 6px;">
-            <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash (Preview)</option>
-            <option value="gemini-2.5-pro-preview-05-20">Gemini 2.5 Pro (Preview)</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+            <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           </select>
         </div>
 
@@ -1776,7 +1847,7 @@ class AIAssistanceChat {
       const settings = result.aiAssistanceModelSettings || {
         temperature: 0.7,
         maxTokens: 65536,
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: await this.getDefaultModel(),
         systemPrompt: ''
       };
 
@@ -1789,6 +1860,45 @@ class AIAssistanceChat {
       this.modelSettings = settings;
     } catch (error) {
       console.error('Failed to load model settings:', error);
+    }
+  }
+
+  /**
+   * Get current model from extension settings
+   */
+  async getCurrentModel() {
+    try {
+      // First try to get from local model settings
+      if (this.modelSettings?.model) {
+        return this.modelSettings.model;
+      }
+
+      // Then try to get from extension settings
+      if (window.storageManager) {
+        const settings = await window.storageManager.getSettings();
+        return settings.selectedModel || settings.defaultModel || await this.getDefaultModel();
+      }
+
+      // Fallback to default
+      return await this.getDefaultModel();
+    } catch (error) {
+      console.error('Failed to get current model:', error);
+      return await this.getDefaultModel();
+    }
+  }
+
+  /**
+   * Get default model from extension settings or fallback
+   */
+  async getDefaultModel() {
+    try {
+      if (window.storageManager) {
+        const settings = await window.storageManager.getSettings();
+        return settings.selectedModel || settings.defaultModel || 'gemini-2.5-flash';
+      }
+      return 'gemini-2.5-flash';
+    } catch (error) {
+      return 'gemini-2.5-flash';
     }
   }
 
@@ -1828,7 +1938,7 @@ class AIAssistanceChat {
       this.modelSettings = result.aiAssistanceModelSettings || {
         temperature: 0.7,
         maxTokens: 4096,
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: await this.getDefaultModel(),
         systemPrompt: ''
       };
     } catch (error) {
@@ -1836,9 +1946,101 @@ class AIAssistanceChat {
       this.modelSettings = {
         temperature: 0.7,
         maxTokens: 4096,
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: await this.getDefaultModel(),
         systemPrompt: ''
       };
+    }
+  }
+
+  async sendMessageWithEnhancedStreaming(message, loadingId) {
+    try {
+      console.log('aiFiverr: Using enhanced streaming for message:', message);
+
+      // Get conversation history
+      const contents = [];
+
+      // Add conversation history
+      for (let i = 0; i < this.messages.length - 1; i++) { // -1 to exclude the loading message
+        const msg = this.messages[i];
+        if (msg.role === 'user') {
+          contents.push({
+            role: 'user',
+            parts: [{ text: msg.content }]
+          });
+        } else if (msg.role === 'assistant') {
+          contents.push({
+            role: 'model',
+            parts: [{ text: msg.content }]
+          });
+        }
+      }
+
+      // Add current message
+      contents.push({
+        role: 'user',
+        parts: [{ text: message }]
+      });
+
+      // Convert to prompt format for enhanced client
+      const conversationPrompt = contents.map(c =>
+        `${c.role === 'user' ? 'User' : 'Assistant'}: ${c.parts[0].text}`
+      ).join('\n\n');
+
+      // Get knowledge base files if available
+      let knowledgeBaseFiles = [];
+      if (window.knowledgeBaseManager) {
+        try {
+          console.log('aiFiverr: Getting knowledge base files for API request...');
+          const files = Array.from(window.knowledgeBaseManager.files.values());
+          knowledgeBaseFiles = files.filter(file => file.geminiUri);
+          console.log('aiFiverr: Found', knowledgeBaseFiles.length, 'knowledge base files with geminiUri');
+        } catch (error) {
+          console.warn('aiFiverr: Failed to get knowledge base files:', error);
+        }
+      }
+
+      // Prepare options with knowledge base files
+      const options = {};
+      if (knowledgeBaseFiles.length > 0) {
+        options.knowledgeBaseFiles = knowledgeBaseFiles;
+        console.log('aiFiverr: Attaching', knowledgeBaseFiles.length, 'knowledge base files to API request');
+      }
+
+      // Use enhanced streaming with knowledge base files
+      const streamResponse = await window.enhancedGeminiClient.streamGenerateContent(
+        conversationPrompt,
+        null, // fileUri (legacy parameter)
+        null, // fileMimeType (legacy parameter)
+        'default', // sessionId
+        options // options with knowledgeBaseFiles
+      );
+
+      let fullResponse = '';
+      let isFirstChunk = true;
+
+      for await (const chunk of streamResponse) {
+        if (isFirstChunk) {
+          // Replace loading message with streaming content
+          this.updateMessage(loadingId, chunk.text);
+          fullResponse = chunk.text;
+          isFirstChunk = false;
+        } else {
+          // Append to existing message
+          fullResponse += chunk.text;
+          this.updateMessage(loadingId, fullResponse);
+        }
+
+        // Auto-scroll during streaming
+        this.scrollToBottom();
+      }
+
+      console.log('aiFiverr: Enhanced streaming completed, final length:', fullResponse.length);
+
+    } catch (error) {
+      console.error('aiFiverr: Enhanced streaming error:', error);
+      // Update loading message with error
+      this.updateMessage(loadingId, 'Sorry, I encountered an error. Please try again.');
+      throw error;
     }
   }
 }

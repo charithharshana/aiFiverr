@@ -596,11 +596,18 @@ class PopupManager {
       }
 
       // Load API configuration
-      if (settings) {
-        document.getElementById('defaultModel').value = settings.defaultModel || 'gemini-2.5-flash';
-        document.getElementById('keyRotation').checked = settings.keyRotation !== false;
-        document.getElementById('apiTimeout').value = settings.apiTimeout || 30;
-        document.getElementById('maxRetries').value = settings.maxRetries || 3;
+      if (result.settings) {
+        // Load model selection - prioritize selectedModel over defaultModel
+        const defaultModelEl = document.getElementById('defaultModel');
+        if (defaultModelEl) {
+          const modelToUse = result.settings.selectedModel || result.settings.defaultModel || 'gemini-2.5-flash';
+          defaultModelEl.value = modelToUse;
+          console.log('aiFiverr Popup: Loading API config with model:', modelToUse);
+        }
+
+        document.getElementById('keyRotation').checked = result.settings.keyRotation !== false;
+        document.getElementById('apiTimeout').value = result.settings.apiTimeout || 30;
+        document.getElementById('maxRetries').value = result.settings.maxRetries || 3;
       }
     } catch (error) {
       console.error('Failed to load API config:', error);
@@ -617,8 +624,14 @@ class PopupManager {
       // Load prompt management
       await this.loadPrompts();
 
-      // Load preferences (removed API keys and model selection)
+      // Load preferences and model selection
       if (settings) {
+        // Load model selection
+        const defaultModelEl = document.getElementById('defaultModel');
+        if (defaultModelEl && (settings.selectedModel || settings.defaultModel)) {
+          defaultModelEl.value = settings.selectedModel || settings.defaultModel;
+        }
+
         document.getElementById('restrictToFiverr').checked = settings.restrictToFiverr !== false;
         document.getElementById('autoSave').checked = settings.autoSave !== false;
         document.getElementById('notifications').checked = settings.notifications !== false;
@@ -1004,37 +1017,37 @@ class PopupManager {
         name: 'Summary',
         description: 'Summarize the below conversation and extract key details about the project',
         prompt: 'Summarize the below conversation:\n\n{conversation}\n\nExtract key details about this project. Write a well-formatted summary. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'follow_up': {
         name: 'Follow-up',
         description: 'Write a short, friendly follow-up message based on conversation',
         prompt: 'Write a short, friendly follow-up message based on this conversation:\n\n{conversation}\n\nMention a specific detail we discussed and include clear next steps. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'proposal': {
         name: 'Proposal',
         description: 'Create a short and concise project proposal based on conversation',
         prompt: 'My bio: {bio}\n\nCreate a short and concise project proposal (under 3000 characters) based on this conversation:\n\n{conversation}\n\nInclude examples from my previous work. Write a well-formatted proposal. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'translate': {
         name: 'Translate',
         description: 'Translate conversation into specified language',
         prompt: 'Translate this: {conversation}\n\nInto this language: {language}\n\nProvide only the translated text. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'improve_translate': {
         name: 'Improve & Translate',
         description: 'Improve grammar and tone, then translate to English',
         prompt: 'Improve the grammar and tone of this message: {conversation}\n\nThen, translate the improved message to English. Use my bio ({bio}) to add relevant details about me. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'improve': {
         name: 'Improve',
         description: 'Improve message grammar, clarity and professionalism',
         prompt: 'Improve this message: {conversation}\n\nMake it grammatically correct, clear, and professional, but keep the original meaning. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       }
     };
   }
@@ -1791,7 +1804,10 @@ class PopupManager {
       const maxContextLengthEl = document.getElementById('maxContextLength');
 
       // Only update settings if elements exist
-      if (defaultModelEl) settings.defaultModel = defaultModelEl.value;
+      if (defaultModelEl) {
+        settings.defaultModel = defaultModelEl.value;
+        settings.selectedModel = defaultModelEl.value; // Also save as selectedModel for enhanced client
+      }
       if (restrictToFiverrEl) settings.restrictToFiverr = restrictToFiverrEl.checked;
       if (autoSaveEl) settings.autoSave = autoSaveEl.checked;
       if (notificationsEl) settings.notifications = notificationsEl.checked;
@@ -1819,7 +1835,9 @@ class PopupManager {
 
       // Save API configuration
       settings.apiKeys = this.currentApiKeys || [];
-      settings.defaultModel = document.getElementById('defaultModel').value;
+      const selectedModel = document.getElementById('defaultModel').value;
+      settings.defaultModel = selectedModel;
+      settings.selectedModel = selectedModel; // Also save as selectedModel for enhanced client
       settings.keyRotation = document.getElementById('keyRotation').checked;
       settings.apiTimeout = parseInt(document.getElementById('apiTimeout').value);
       settings.maxRetries = parseInt(document.getElementById('maxRetries').value);
@@ -3737,20 +3755,115 @@ class PopupManager {
             size: file.size,
             data: fileData
           },
-          displayName: file.name
+          displayName: file.name,
+          enhanced: true  // Use enhanced upload method
         }, (response) => {
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
           } else if (response && response.success) {
             resolve(response.data);
           } else {
-            reject(new Error(response?.error || 'Gemini upload failed'));
+            reject(new Error(response?.error || 'Enhanced Gemini upload failed'));
           }
         });
       } catch (error) {
         reject(error);
       }
     });
+  }
+
+  /**
+   * Enhanced file upload with progress tracking
+   */
+  async uploadFileToGeminiAPIEnhanced(file, onProgress = null) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        console.log('aiFiverr Popup: Starting enhanced file upload:', file.name);
+
+        if (onProgress) onProgress(10, 'Converting file...');
+
+        // Convert file to base64 for message passing
+        const fileData = await this.fileToBase64(file);
+
+        if (onProgress) onProgress(30, 'Uploading to Gemini...');
+
+        chrome.runtime.sendMessage({
+          type: 'UPLOAD_FILE_TO_GEMINI',
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data: fileData
+          },
+          displayName: file.name,
+          enhanced: true
+        }, async (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          if (response && response.success) {
+            if (onProgress) onProgress(70, 'Processing file...');
+
+            // Wait for file processing if needed
+            if (response.data.state !== 'ACTIVE') {
+              try {
+                await this.waitForFileProcessing(response.data.name, onProgress);
+              } catch (processingError) {
+                console.warn('aiFiverr Popup: File processing timeout, continuing anyway:', processingError);
+              }
+            }
+
+            if (onProgress) onProgress(100, 'Upload complete!');
+            resolve(response.data);
+          } else {
+            reject(new Error(response?.error || 'Enhanced Gemini upload failed'));
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Wait for file processing with progress updates
+   */
+  async waitForFileProcessing(fileName, onProgress = null, maxWaitTime = 60000) {
+    const startTime = Date.now();
+    let attempts = 0;
+
+    while (Date.now() - startTime < maxWaitTime) {
+      attempts++;
+
+      if (onProgress) {
+        const progress = Math.min(70 + (attempts * 5), 95);
+        onProgress(progress, `Processing file (${attempts}/30)...`);
+      }
+
+      try {
+        const response = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            type: 'CHECK_GEMINI_FILE_STATUS',
+            fileName: fileName
+          }, resolve);
+        });
+
+        if (response && response.success && response.data.state === 'ACTIVE') {
+          console.log('aiFiverr Popup: File processing completed');
+          return response.data;
+        }
+
+        console.log(`aiFiverr Popup: File state: ${response?.data?.state || 'unknown'}, waiting...`);
+      } catch (error) {
+        console.log('aiFiverr Popup: Checking file status...');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    throw new Error('File processing timeout');
   }
 
   async loadKnowledgeBaseFiles() {

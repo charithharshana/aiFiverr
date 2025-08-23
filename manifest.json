@@ -64,6 +64,7 @@
         "content/ai/session.js",
         "content/ai/api-manager.js",
         "content/ai/gemini-client.js",
+        "content/ai/enhanced-gemini-client.js",
         "content/ai/gemini-files-client.js",
         "content/ai/prompt-manager.js",
         "content/ai/knowledge-base.js",

@@ -355,37 +355,37 @@ Best regards,
         name: 'Summary',
         description: 'Summarize the conversation and extract key details like budget, timeline, and next steps',
         prompt: 'Please go through the attached documents.\n\nSummarize the conversation: {conversation}\n\nExtract key details like budget, timeline, and next steps. Write a clear summary. No markdown or explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'follow_up': {
         name: 'Follow-up',
         description: 'Write a friendly and professional follow-up message based on conversation',
         prompt: 'Please go through the attached documents.\n\nWrite a friendly and professional follow-up message based on this conversation: {conversation}\n\nMention a specific detail we discussed and include clear next steps. No markdown or explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'proposal': {
         name: 'Proposal',
         description: 'Create a Fiverr project proposal based on the conversation',
         prompt: 'Please go through the attached documents.\n\nCreate a Fiverr project proposal based on the conversation: {conversation}\n\nUse my bio: {bio}\n\nInclude a greeting, project summary, scope, price, why I\'m a good fit, and next steps. No markdown or explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'translate': {
         name: 'Translate',
         description: 'Translate conversation into specified language',
         prompt: 'Please go through the attached documents.\n\nTranslate this conversation: {conversation}\n\nInto this language: {language}\n\nProvide only the translated text. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'improve_translate': {
         name: 'Improve & Translate',
         description: 'Improve grammar and tone, then translate to English',
         prompt: 'Please go through the attached documents.\n\nImprove the grammar and tone of this message: {conversation}\n\nThen, translate the improved message to English. Use my bio: {bio} to add relevant details about me as a Fiverr freelancer. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'improve': {
         name: 'Improve',
         description: 'Improve message grammar, clarity and professionalism',
         prompt: 'Please go through the attached documents.\n\nImprove this message: {conversation}\n\nMake it grammatically correct, clear, and professional, but keep the original meaning. No explanations.',
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       }
     };
   }
@@ -394,15 +394,19 @@ Best regards,
    * Process prompt with variables and context
    */
   async processPrompt(promptKey, context = {}) {
+    console.log('=== aiFiverr KB: Processing prompt ===');
     console.log('aiFiverr KB: Processing prompt:', promptKey);
+    console.log('aiFiverr KB: Context provided:', context);
 
     // First try to get from custom prompts
     let prompt = this.getCustomPrompt(promptKey);
+    console.log('aiFiverr KB: Custom prompt found:', !!prompt);
 
     // If not found in custom, try default prompts
     if (!prompt) {
       const defaultPrompts = this.getDefaultPrompts();
       prompt = defaultPrompts[promptKey];
+      console.log('aiFiverr KB: Default prompt found:', !!prompt);
     }
 
     if (!prompt) {
@@ -414,8 +418,24 @@ Best regards,
 
     console.log('aiFiverr KB: Found prompt:', {
       name: prompt.name,
-      hasKnowledgeBaseFiles: !!(prompt.knowledgeBaseFiles && prompt.knowledgeBaseFiles.length > 0)
+      description: prompt.description,
+      hasKnowledgeBaseFiles: !!(prompt.knowledgeBaseFiles && prompt.knowledgeBaseFiles.length > 0),
+      knowledgeBaseFilesCount: prompt.knowledgeBaseFiles?.length || 0
     });
+
+    // Log the knowledge base files configuration
+    if (prompt.knowledgeBaseFiles && prompt.knowledgeBaseFiles.length > 0) {
+      console.log('=== aiFiverr KB: Prompt Knowledge Base Files Configuration ===');
+      prompt.knowledgeBaseFiles.forEach((file, index) => {
+        console.log(`File ${index + 1}:`, {
+          id: file.id,
+          name: file.name,
+          driveFileId: file.driveFileId,
+          geminiUri: file.geminiUri,
+          hasGeminiUri: !!file.geminiUri
+        });
+      });
+    }
 
     let processedPrompt = prompt.prompt;
 
@@ -430,6 +450,24 @@ Best regards,
 
     // Determine which files to attach - only use explicitly configured files
     let filesToResolve = prompt.knowledgeBaseFiles || [];
+
+    // CRITICAL FIX: Handle AUTO_LOAD_ALL directive
+    if (filesToResolve === 'AUTO_LOAD_ALL' || (Array.isArray(filesToResolve) && filesToResolve.includes('AUTO_LOAD_ALL'))) {
+      console.log('aiFiverr KB: AUTO_LOAD_ALL detected - loading all available knowledge base files');
+      const allFiles = await this.getKnowledgeBaseFilesFromBackground();
+      if (allFiles.success && allFiles.data) {
+        filesToResolve = allFiles.data.filter(file => file.geminiUri);
+        console.log('aiFiverr KB: Auto-loaded files:', filesToResolve.length);
+        console.log('aiFiverr KB: Auto-loaded file details:', filesToResolve.map(f => ({
+          name: f.name,
+          id: f.id,
+          hasGeminiUri: !!f.geminiUri
+        })));
+      } else {
+        console.warn('aiFiverr KB: Failed to auto-load files, falling back to empty array');
+        filesToResolve = [];
+      }
+    }
 
     // Log file selection for debugging
     if (filesToResolve.length === 0) {
@@ -1009,6 +1047,7 @@ Best regards,
    * Resolve knowledge base file IDs to full file data
    */
   async resolveKnowledgeBaseFiles(fileReferences) {
+    console.log('=== aiFiverr KB: Resolving knowledge base files ===');
     console.log('aiFiverr KB: Resolving knowledge base files:', fileReferences.length, 'references');
     console.log('aiFiverr KB: File references details:', fileReferences.map(ref => ({
       id: ref.id,
@@ -1021,6 +1060,9 @@ Best regards,
       console.log('aiFiverr KB: No file references provided');
       return [];
     }
+
+    console.log('aiFiverr KB: Total files in knowledge base:', this.files.size);
+    console.log('aiFiverr KB: Available file keys:', Array.from(this.files.keys()).slice(0, 10), '...');  // Show first 10 keys
 
     const resolvedFiles = [];
     let filesProcessed = 0;

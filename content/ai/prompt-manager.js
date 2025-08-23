@@ -64,7 +64,7 @@ class PromptManager {
 {conversation}
 
 Extract key details about this project. Write a well-formatted summary. No explanations.`,
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'follow_up': {
         name: 'Follow-up',
@@ -74,7 +74,7 @@ Extract key details about this project. Write a well-formatted summary. No expla
 {conversation}
 
 Mention a specific detail we discussed and include clear next steps. No explanations.`,
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'proposal': {
         name: 'Proposal',
@@ -85,8 +85,22 @@ Create a short and concise project proposal (under 3000 characters) based on thi
 
 {conversation}
 
-Include examples from my previous work. Write a well-formatted proposal. No explanations.`,
-        knowledgeBaseFiles: []
+go through the attachment and extract my relevant previous project links and add to the proposal, no placeholders please
+
+Write a well-formatted proposal. No explanations.`,
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
+      },
+      'project_proposal': {
+        name: 'Project Proposal',
+        description: 'Create a Fiverr project proposal based on the conversation',
+        prompt: `Create a short and concise project proposal (under 3000 characters) based on this conversation:
+
+{conversation}
+
+go through the attachment and extract my relevant previous project links and add to the proposal, no placeholders please
+
+Write a well-formatted proposal. No explanations.`,
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'translate': {
         name: 'Translate',
@@ -96,7 +110,7 @@ Include examples from my previous work. Write a well-formatted proposal. No expl
 Into this language: {language}
 
 Provide only the translated text. No explanations.`,
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'improve_translate': {
         name: 'Improve & Translate',
@@ -104,7 +118,7 @@ Provide only the translated text. No explanations.`,
         prompt: `Improve the grammar and tone of this message: {conversation}
 
 Then, translate the improved message to English. Use my bio ({bio}) to add relevant details about me. No explanations.`,
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       },
       'improve': {
         name: 'Improve',
@@ -112,7 +126,7 @@ Then, translate the improved message to English. Use my bio ({bio}) to add relev
         prompt: `Improve this message: {conversation}
 
 Make it grammatically correct, clear, and professional, but keep the original meaning. No explanations.`,
-        knowledgeBaseFiles: []
+        knowledgeBaseFiles: 'AUTO_LOAD_ALL'
       }
     };
 
