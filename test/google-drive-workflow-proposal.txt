@@ -1,0 +1,33 @@
+Dear Client,
+
+I'm Imesha, a Top-Class UI/UX designer and full-stack developer with 10+ years of experience, and I'm excited by your project for a Flutter sales force automation application and back office. My versatile team and I specialize in delivering complete digital products, from pixel-perfect UI/UX design to robust mobile and web development, including API integration.
+
+Your need for a Flutter app for iOS/Android, a back office application for sales force automation, and API development aligns perfectly with our end-to-end capabilities. We don't just design; we engineer complete user experiences and flawless technical execution.
+
+Our proven 4-D process (Discover, Define, Design, Deliver) ensures your vision becomes a functional, scalable, and market-ready product. We manage the entire project lifecycle, offering full project management, technical consultation, and app store deployment.
+
+Here are relevant examples from my portfolio showcasing our expertise in business, utility, and management applications, demonstrating our ability to handle complex workflows and backend integration:
+
+*   **Digital Invea** - Business Application (Published):
+    [Play Store](https://play.google.com/store/apps/details?id=com.viditure.invia.app&hl=en&pli=1) | [App Store](https://apps.apple.com/us/app/id1525710459) | [Portfolio](https://chic-muffin-42d80f.netlify.app#/project/digital-invea-app)
+
+*   **Care Eco** - Medical Application (Published):
+    *A practice workflow tool with electronic medical records, patient outreach, and payment workflows, demonstrating robust backend integration and user management crucial for sales force automation.*
+    [App Store](https://apps.apple.com/us/app/care-eco-connect/id1614961279) | [Portfolio](https://chic-muffin-42d80f.netlify.app#/project/care-eco-app)
+
+*   **Invoice Hippo** - Invoicing Application (UI/UX Design):
+    [Portfolio](https://chic-muffin-42d80f.netlify.app#/project/invoice-hippo-design)
+
+*   **NextIP** - IP Protection Management (Web/Dashboard UI/UX Design):
+    [Portfolio](https://chic-muffin-42d80f.netlify.app#/project/nextip-web-design)
+
+With extensive experience in various industries, we are perfectly positioned to be your dedicated product partner. Our development expertise covers backend, APIs, and database architecture, compatible with PHP, C#, and JavaScript requirements.
+
+I am available full-time, highly responsive, and committed to prompt communication to ensure your project's success and timely delivery. Let's discuss your specific needs to define a detailed project plan.
+
+Looking forward to collaborating with you.
+
+Best regards,
+Imesha
+
+*(Fiverr URL: https://www.fiverr.com/uiuxengineer)*

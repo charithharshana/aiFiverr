@@ -12,9 +12,9 @@ class GeminiTester {
 
     selectModel() {
         const availableModels = [
-            'gemini-2.5-flash',  // Default - more stable and faster
-            'gemini-2.5-pro',
-            'gemini-2.0-flash'
+            'gemini-2.5-flash',      // Default - more stable and faster
+            'gemini-2.5-pro',        // More capable but slower
+            'gemini-2.5-flash-lite'  // Fastest but less capable
         ];
 
         console.log('📋 Available models:');
