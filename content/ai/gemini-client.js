@@ -406,11 +406,24 @@ class GeminiClient {
    * Generate chat reply with conversation context
    */
   async generateChatReply(session, userMessage, options = {}) {
+    console.log('=== aiFiverr Gemini API Request Started ===');
+    console.log('aiFiverr Gemini: Session ID:', session.id);
+    console.log('aiFiverr Gemini: User message length:', userMessage.length);
+    console.log('aiFiverr Gemini: User message preview:', userMessage.substring(0, 200) + '...');
+    console.log('aiFiverr Gemini: Options provided:', {
+      hasKnowledgeBaseFiles: !!(options.knowledgeBaseFiles && options.knowledgeBaseFiles.length > 0),
+      knowledgeBaseFilesCount: options.knowledgeBaseFiles?.length || 0,
+      hasSystemInstruction: !!options.systemInstruction,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens
+    });
+
     // Add user message to session
     session.addMessage('user', userMessage);
-    
+
     // Get conversation context
     const messages = session.getMessagesForAPI();
+    console.log('aiFiverr Gemini: Conversation context messages:', messages.length);
     
     // Add Fiverr context if available
     let systemInstruction = options.systemInstruction || this.getDefaultSystemInstruction();

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>aiFiverr Extension Verification Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .button {
+            background: #007cba;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #005a87;
+        }
+        .button.success {
+            background: #28a745;
+        }
+        .button.danger {
+            background: #dc3545;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background: #fff;
+            border: 1px solid #ddd;
+        }
+        .log-output {
+            background: #000;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>aiFiverr Extension Verification Test</h1>
+        
+        <div class="test-section">
+            <h3>Test Instructions</h3>
+            <p>This test verifies that all the fixes for the aiFiverr extension are working correctly:</p>
+            <ul>
+                <li><strong>Knowledge Base File Attachment:</strong> Tests that files are properly attached to API requests</li>
+                <li><strong>File Type Support:</strong> Verifies all required file types are supported</li>
+                <li><strong>Authentication Persistence:</strong> Checks that Google authentication persists across sessions</li>
+                <li><strong>API Request Construction:</strong> Validates that Gemini API requests are built correctly</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Controls</h3>
+            <button class="button" onclick="runVerificationTest()">Run All Tests</button>
+            <button class="button" onclick="clearResults()">Clear Results</button>
+            <button class="button" onclick="exportResults()">Export Results</button>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Status</h3>
+            <div id="testStatus" class="status info">Ready to run tests</div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Results</h3>
+            <div id="testResults" class="results">
+                <p>No tests run yet. Click "Run All Tests" to begin verification.</p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>Console Output</h3>
+            <div id="consoleOutput" class="log-output">Console output will appear here...</div>
+        </div>
+    </div>
+
+    <script>
+        // Capture console output
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+        
+        let consoleOutput = '';
+        
+        function captureConsole(type, ...args) {
+            const timestamp = new Date().toLocaleTimeString();
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            
+            consoleOutput += `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            updateConsoleOutput();
+            
+            // Call original console method
+            if (type === 'log') originalConsoleLog(...args);
+            else if (type === 'error') originalConsoleError(...args);
+            else if (type === 'warn') originalConsoleWarn(...args);
+        }
+        
+        console.log = (...args) => captureConsole('log', ...args);
+        console.error = (...args) => captureConsole('error', ...args);
+        console.warn = (...args) => captureConsole('warn', ...args);
+        
+        function updateConsoleOutput() {
+            const outputElement = document.getElementById('consoleOutput');
+            outputElement.textContent = consoleOutput;
+            outputElement.scrollTop = outputElement.scrollHeight;
+        }
+        
+        function updateTestStatus(message, type = 'info') {
+            const statusElement = document.getElementById('testStatus');
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+        }
+        
+        function updateTestResults(results) {
+            const resultsElement = document.getElementById('testResults');
+            
+            if (!results || results.length === 0) {
+                resultsElement.innerHTML = '<p>No test results available.</p>';
+                return;
+            }
+            
+            const totalTests = results.length;
+            const passedTests = results.filter(r => r.passed).length;
+            const failedTests = totalTests - passedTests;
+            const successRate = Math.round((passedTests / totalTests) * 100);
+            
+            let html = `
+                <div class="status ${failedTests === 0 ? 'success' : 'error'}">
+                    <strong>Test Summary:</strong> ${passedTests}/${totalTests} tests passed (${successRate}% success rate)
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Test Name</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: center;">Status</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            results.forEach(result => {
+                const statusIcon = result.passed ? '✅' : '❌';
+                const statusText = result.passed ? 'PASS' : 'FAIL';
+                const rowClass = result.passed ? 'success' : 'error';
+                
+                html += `
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;">${result.name}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">${statusIcon} ${statusText}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">${result.details}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            resultsElement.innerHTML = html;
+        }
+        
+        async function runVerificationTest() {
+            updateTestStatus('Running verification tests...', 'info');
+            consoleOutput = '';
+            updateConsoleOutput();
+            
+            try {
+                // Check if we're in extension context
+                if (typeof chrome === 'undefined' || !chrome.runtime) {
+                    throw new Error('This test must be run in the context of the Chrome extension');
+                }
+                
+                console.log('Starting aiFiverr Extension Verification Test');
+                
+                // Load the verification test script
+                const script = document.createElement('script');
+                script.src = 'verification-test.js';
+                script.onload = () => {
+                    console.log('Verification test script loaded');
+                    
+                    // Wait a moment for the test to complete
+                    setTimeout(() => {
+                        if (window.VerificationTest) {
+                            const test = new window.VerificationTest();
+                            test.runAllTests().then(() => {
+                                updateTestResults(test.testResults);
+                                const failedTests = test.testResults.filter(r => !r.passed).length;
+                                updateTestStatus(
+                                    failedTests === 0 ? 'All tests passed!' : `${failedTests} test(s) failed`,
+                                    failedTests === 0 ? 'success' : 'error'
+                                );
+                            }).catch(error => {
+                                console.error('Test execution failed:', error);
+                                updateTestStatus('Test execution failed: ' + error.message, 'error');
+                            });
+                        } else {
+                            throw new Error('VerificationTest class not available');
+                        }
+                    }, 1000);
+                };
+                script.onerror = () => {
+                    throw new Error('Failed to load verification test script');
+                };
+                document.head.appendChild(script);
+                
+            } catch (error) {
+                console.error('Failed to run verification test:', error);
+                updateTestStatus('Test failed: ' + error.message, 'error');
+            }
+        }
+        
+        function clearResults() {
+            consoleOutput = '';
+            updateConsoleOutput();
+            updateTestResults([]);
+            updateTestStatus('Results cleared', 'info');
+        }
+        
+        function exportResults() {
+            const results = {
+                timestamp: new Date().toISOString(),
+                consoleOutput: consoleOutput,
+                testResults: window.lastTestResults || []
+            };
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `aifiverr-test-results-${Date.now()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            updateTestStatus('Results exported', 'success');
+        }
+        
+        // Initialize
+        updateTestStatus('Test page loaded. Ready to run verification tests.', 'info');
+    </script>
+</body>
+</html>

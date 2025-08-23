@@ -16,26 +16,54 @@ class GoogleAuthService {
 
   async init() {
     try {
+      console.log('aiFiverr Auth: Initializing authentication manager...');
+
       // Load stored authentication data
       await this.loadStoredAuth();
-      
+
       // Check if stored token is still valid
       if (this.accessToken && this.tokenExpiry) {
-        if (Date.now() < this.tokenExpiry) {
+        const timeUntilExpiry = this.tokenExpiry - Date.now();
+        console.log('aiFiverr Auth: Token expires in', Math.round(timeUntilExpiry / 1000 / 60), 'minutes');
+
+        if (Date.now() < this.tokenExpiry - 300000) { // 5 minute buffer
           this.isAuthenticated = true;
           console.log('aiFiverr Auth: Using stored valid token');
+
+          // Validate token with background script
+          await this.validateTokenWithBackground();
         } else {
-          console.log('aiFiverr Auth: Stored token expired, clearing');
-          await this.clearAuth();
+          console.log('aiFiverr Auth: Stored token expired or expiring soon, attempting refresh');
+          await this.refreshTokenIfNeeded();
         }
+      } else {
+        console.log('aiFiverr Auth: No stored authentication data found');
       }
 
       this.initialized = true;
       this.notifyAuthListeners();
+
+      // Start periodic token validation
+      this.startTokenValidationTimer();
+
+      console.log('aiFiverr Auth: Authentication manager initialized, authenticated:', this.isAuthenticated);
     } catch (error) {
       console.error('aiFiverr Auth: Initialization error:', error);
       this.initialized = true;
     }
+  }
+
+  /**
+   * Start periodic token validation to maintain session
+   */
+  startTokenValidationTimer() {
+    // Check token every 10 minutes
+    setInterval(async () => {
+      if (this.isAuthenticated && this.accessToken) {
+        console.log('aiFiverr Auth: Periodic token validation check');
+        await this.refreshTokenIfNeeded();
+      }
+    }, 10 * 60 * 1000); // 10 minutes
   }
 
   /**
@@ -110,10 +138,10 @@ class GoogleAuthService {
     try {
       console.log('aiFiverr Auth: Starting authentication flow...');
 
-      // Send message to background script to handle authentication
-      const response = await chrome.runtime.sendMessage({
+      // Send message to background script with retry mechanism
+      const response = await this.sendMessageWithRetry({
         type: 'GOOGLE_AUTH_START'
-      });
+      }, 3); // Retry up to 3 times
 
       if (response && response.success) {
         // Update local state with authentication data
@@ -141,6 +169,56 @@ class GoogleAuthService {
         success: false,
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Send message to background script with retry mechanism
+   */
+  async sendMessageWithRetry(message, maxRetries = 3, delay = 1000) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`aiFiverr Auth: Sending message (attempt ${attempt}/${maxRetries}):`, message.type);
+
+        const response = await new Promise((resolve, reject) => {
+          // Add timeout to prevent hanging
+          const timeout = setTimeout(() => {
+            reject(new Error('Message timeout - no response received'));
+          }, 10000); // 10 second timeout
+
+          chrome.runtime.sendMessage(message, (response) => {
+            clearTimeout(timeout);
+
+            if (chrome.runtime.lastError) {
+              console.error('aiFiverr Auth: Chrome runtime error:', chrome.runtime.lastError.message);
+
+              // Handle "Receiving end does not exist" error specifically
+              if (chrome.runtime.lastError.message.includes('Receiving end does not exist')) {
+                reject(new Error('Could not establish connection. Background script may be inactive.'));
+              } else {
+                reject(new Error(chrome.runtime.lastError.message));
+              }
+            } else {
+              resolve(response);
+            }
+          });
+        });
+
+        console.log(`aiFiverr Auth: Message response received (attempt ${attempt}):`, response);
+        return response;
+
+      } catch (error) {
+        console.error(`aiFiverr Auth: Message attempt ${attempt} failed:`, error.message);
+
+        if (attempt === maxRetries) {
+          throw new Error(`Failed to communicate with background script after ${maxRetries} attempts: ${error.message}`);
+        }
+
+        // Wait before retrying
+        console.log(`aiFiverr Auth: Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 1.5; // Exponential backoff
+      }
     }
   }
 
@@ -226,8 +304,8 @@ class GoogleAuthService {
    */
   async signOut() {
     try {
-      // Send message to background script to handle sign out
-      const response = await chrome.runtime.sendMessage({
+      // Send message to background script to handle sign out with retry
+      const response = await this.sendMessageWithRetry({
         type: 'GOOGLE_AUTH_SIGNOUT'
       });
 
@@ -299,6 +377,39 @@ class GoogleAuthService {
   }
 
   /**
+   * Validate token with background script
+   */
+  async validateTokenWithBackground() {
+    try {
+      console.log('aiFiverr Auth: Validating token with background script...');
+
+      const response = await this.sendMessageWithRetry({
+        type: 'GOOGLE_AUTH_TOKEN'
+      }, 2); // Only retry twice for token validation
+
+      if (response && response.success && response.token) {
+        // Update local token if background has a newer one
+        if (response.token !== this.accessToken) {
+          console.log('aiFiverr Auth: Updating local token from background');
+          this.accessToken = response.token;
+          this.tokenExpiry = Date.now() + (3600 * 1000);
+          await this.saveAuth();
+        }
+        this.isAuthenticated = true;
+      } else {
+        console.warn('aiFiverr Auth: Token validation failed, clearing local auth');
+        await this.clearAuth();
+      }
+    } catch (error) {
+      console.error('aiFiverr Auth: Token validation error:', error);
+      // Don't clear auth on connection errors, just log the issue
+      if (!error.message.includes('Could not establish connection')) {
+        await this.clearAuth();
+      }
+    }
+  }
+
+  /**
    * Refresh access token if needed
    */
   async refreshTokenIfNeeded() {
@@ -309,26 +420,32 @@ class GoogleAuthService {
     try {
       console.log('aiFiverr Auth: Refreshing token...');
 
-      // Get fresh token from background script
-      const response = await chrome.runtime.sendMessage({
+      // Get fresh token from background script with retry
+      const response = await this.sendMessageWithRetry({
         type: 'GOOGLE_AUTH_TOKEN'
-      });
+      }, 2); // Only retry twice for token refresh
 
       if (response && response.success && response.token) {
         this.accessToken = response.token;
         this.tokenExpiry = Date.now() + (3600 * 1000);
+        this.isAuthenticated = true;
         await this.saveAuth();
+        this.notifyAuthListeners();
         console.log('aiFiverr Auth: Token refreshed successfully');
         return this.accessToken;
       } else {
         console.warn('aiFiverr Auth: Token refresh failed - no valid token from background');
-        return this.accessToken;
+        await this.clearAuth();
+        return null;
       }
 
     } catch (error) {
       console.error('aiFiverr Auth: Token refresh failed:', error);
-      // Don't clear auth on refresh failure - just return existing token
-      return this.accessToken;
+      // Don't clear auth on connection errors
+      if (!error.message.includes('Could not establish connection')) {
+        await this.clearAuth();
+      }
+      return null;
     }
   }
 }

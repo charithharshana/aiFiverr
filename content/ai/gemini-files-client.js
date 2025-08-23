@@ -10,59 +10,76 @@ class GeminiFilesClient {
     this.uploadUrl = 'https://generativelanguage.googleapis.com/upload/v1beta';
     this.initialized = false;
     this.supportedMimeTypes = new Set([
-      // Documents & Text
-      'text/plain',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/pdf',
-      'application/rtf',
-      'application/vnd.google-apps.document',
-      
-      // Spreadsheets & Data
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/csv',
-      'text/tab-separated-values',
-      'application/vnd.google-apps.spreadsheet',
-      
-      // Code files
-      'text/x-c',
-      'text/x-c++src',
-      'text/x-java-source',
-      'text/x-python',
-      'application/x-php',
-      'text/html',
-      'text/javascript',
-      'application/json',
-      'text/xml',
-      'text/css',
-      
-      // Images
-      'image/jpeg',
-      'image/png',
-      'image/bmp',
-      'image/gif',
-      'image/svg+xml',
-      'image/tiff',
-      'image/webp',
-      
-      // Video
-      'video/mp4',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/webm',
-      'video/3gpp',
-      'video/x-flv',
-      'video/x-ms-wmv',
-      'video/ogg',
-      
-      // Audio
-      'audio/mpeg',
-      'audio/wav',
-      'audio/ogg',
-      'audio/opus',
-      'audio/flac',
-      'audio/aac'
+      // Text and Document Files
+      'text/plain', // TXT
+      'application/msword', // DOC
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
+      'application/pdf', // PDF
+      'application/rtf', // RTF
+      'application/msword-template', // DOT
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.template', // DOTX
+      'application/x-hwp', // HWP
+      'application/x-hwpx', // HWPX
+      'application/vnd.google-apps.document', // Google Docs
+
+      // Code Files
+      'text/x-c', // C
+      'text/x-c++src', // CPP
+      'text/x-python', // PY
+      'text/x-java-source', // JAVA
+      'application/x-php', // PHP
+      'text/x-php', // PHP alternative
+      'application/sql', // SQL
+      'text/x-sql', // SQL alternative
+      'text/html', // HTML
+      'text/javascript', // JS
+      'application/json', // JSON
+      'text/xml', // XML
+      'text/css', // CSS
+      'text/x-shellscript', // Shell scripts
+      'text/x-python-script', // Python scripts
+
+      // Data and Spreadsheet Files
+      'text/csv', // CSV
+      'text/tab-separated-values', // TSV
+      'application/vnd.ms-excel', // XLS
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // XLSX
+      'application/vnd.google-apps.spreadsheet', // Google Sheets
+
+      // Media Files - Images
+      'image/png', // PNG
+      'image/jpeg', // JPEG
+      'image/bmp', // BMP
+      'image/webp', // WEBP
+      'image/gif', // GIF (additional)
+      'image/svg+xml', // SVG (additional)
+      'image/tiff', // TIFF (additional)
+
+      // Media Files - Audio
+      'audio/aac', // AAC
+      'audio/flac', // FLAC
+      'audio/mpeg', // MP3
+      'audio/mp4', // M4A
+      'audio/x-mpeg', // MPEG audio
+      'audio/x-mpga', // MPGA
+      'audio/mp4', // MP4 audio
+      'audio/opus', // OPUS
+      'audio/pcm', // PCM
+      'audio/wav', // WAV
+      'audio/webm', // WEBM audio
+      'audio/ogg', // OGG (additional)
+
+      // Media Files - Video
+      'video/mp4', // MP4
+      'video/mpeg', // MPEG
+      'video/quicktime', // MOV
+      'video/x-msvideo', // AVI
+      'video/x-flv', // X-FLV
+      'video/x-mpg', // MPG
+      'video/webm', // WEBM
+      'video/x-ms-wmv', // WMV
+      'video/3gpp', // 3GPP
+      'video/ogg' // OGG video (additional)
     ]);
     
     this.init();
@@ -116,58 +133,74 @@ class GeminiFilesClient {
   getMimeTypeFromExtension(filename) {
     const ext = filename.toLowerCase().split('.').pop();
     const mimeTypeMap = {
-      // Documents & Text
+      // Text and Document Files
       'txt': 'text/plain',
       'doc': 'application/msword',
       'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'pdf': 'application/pdf',
       'rtf': 'application/rtf',
-      
-      // Spreadsheets & Data
-      'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'csv': 'text/csv',
-      'tsv': 'text/tab-separated-values',
-      
-      // Code files
+      'dot': 'application/msword-template',
+      'dotx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+      'hwp': 'application/x-hwp',
+      'hwpx': 'application/x-hwpx',
+
+      // Code Files
       'c': 'text/x-c',
       'cpp': 'text/x-c++src',
-      'java': 'text/x-java-source',
       'py': 'text/x-python',
+      'java': 'text/x-java-source',
       'php': 'application/x-php',
+      'sql': 'application/sql',
       'html': 'text/html',
+      'htm': 'text/html',
       'js': 'text/javascript',
       'json': 'application/json',
       'xml': 'text/xml',
       'css': 'text/css',
-      
-      // Images
+      'sh': 'text/x-shellscript',
+      'bash': 'text/x-shellscript',
+
+      // Data and Spreadsheet Files
+      'csv': 'text/csv',
+      'tsv': 'text/tab-separated-values',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+
+      // Media Files - Images
+      'png': 'image/png',
       'jpg': 'image/jpeg',
       'jpeg': 'image/jpeg',
-      'png': 'image/png',
       'bmp': 'image/bmp',
+      'webp': 'image/webp',
       'gif': 'image/gif',
       'svg': 'image/svg+xml',
       'tiff': 'image/tiff',
-      'webp': 'image/webp',
-      
-      // Video
-      'mp4': 'video/mp4',
-      'mov': 'video/quicktime',
-      'avi': 'video/x-msvideo',
-      'webm': 'video/webm',
-      '3gp': 'video/3gpp',
-      'flv': 'video/x-flv',
-      'wmv': 'video/x-ms-wmv',
-      'ogv': 'video/ogg',
-      
-      // Audio
+      'tif': 'image/tiff',
+
+      // Media Files - Audio
+      'aac': 'audio/aac',
+      'flac': 'audio/flac',
       'mp3': 'audio/mpeg',
+      'm4a': 'audio/mp4',
+      'mpeg': 'audio/x-mpeg',
+      'mpga': 'audio/x-mpga',
+      'opus': 'audio/opus',
+      'pcm': 'audio/pcm',
       'wav': 'audio/wav',
       'ogg': 'audio/ogg',
-      'opus': 'audio/opus',
-      'flac': 'audio/flac',
-      'aac': 'audio/aac'
+
+      // Media Files - Video
+      'mp4': 'video/mp4',
+      'mpeg': 'video/mpeg',
+      'mpg': 'video/x-mpg',
+      'mov': 'video/quicktime',
+      'avi': 'video/x-msvideo',
+      'flv': 'video/x-flv',
+      'webm': 'video/webm',
+      'wmv': 'video/x-ms-wmv',
+      '3gp': 'video/3gpp',
+      '3gpp': 'video/3gpp',
+      'ogv': 'video/ogg'
     };
     
     return mimeTypeMap[ext] || 'application/octet-stream';

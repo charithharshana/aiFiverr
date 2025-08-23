@@ -1047,8 +1047,10 @@ class TextSelector {
    */
   async processTextWithPrompt(promptKey, selectedText) {
     try {
+      console.log('=== aiFiverr Text Selection Processing Started ===');
       console.log('aiFiverr: Processing text with prompt:', promptKey);
       console.log('aiFiverr: Selected text length:', selectedText.length);
+      console.log('aiFiverr: Selected text preview:', selectedText.substring(0, 200) + '...');
 
       // Show loading animation on the icon
       this.startIconLoadingAnimation();

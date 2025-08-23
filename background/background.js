@@ -15,11 +15,27 @@ class BackgroundManager {
     this.userInfo = null;
     this.accessToken = null;
     this.tokenExpiry = null;
+    this.lastTokenValidation = 0; // Track last token validation to prevent excessive calls
+    this.tokenValidationCooldown = 30000; // 30 seconds cooldown between validations
+
+    // Initialization flag
+    this.isInitialized = false;
+    this.initPromise = null;
 
     this.init();
   }
 
   async init() {
+    // Prevent multiple initializations
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = this._doInit();
+    return this.initPromise;
+  }
+
+  async _doInit() {
     console.log('aiFiverr Background: Initializing BackgroundManager...');
 
     try {
@@ -31,27 +47,37 @@ class BackgroundManager {
       await this.loadAuthState();
       console.log('aiFiverr Background: Authentication state loaded, authenticated:', this.isAuthenticated);
 
+      this.isInitialized = true;
       console.log('aiFiverr Background: BackgroundManager initialized successfully');
     } catch (error) {
       console.error('aiFiverr Background: Failed to initialize BackgroundManager:', error);
       // Continue with initialization even if some parts fail
+      this.isInitialized = true; // Mark as initialized even with errors
     }
 
-    // Set up message listeners
+    // Set up message listeners with enhanced error handling
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log('aiFiverr Background: Received message:', request.type, 'from:', sender.tab?.url || 'popup');
 
       // Handle PING immediately for testing
       if (request.type === 'PING') {
         console.log('aiFiverr Background: Received PING, responding with PONG');
-        sendResponse({ success: true, message: 'PONG', timestamp: Date.now() });
+        try {
+          sendResponse({ success: true, message: 'PONG', timestamp: Date.now() });
+        } catch (error) {
+          console.error('aiFiverr Background: Failed to send PING response:', error);
+        }
         return true;
       }
 
-      // Handle async messages properly
+      // Handle async messages with enhanced error handling
       this.handleMessage(request, sender, sendResponse).catch(error => {
         console.error('aiFiverr Background: Error handling message:', request.type, error);
-        sendResponse({ success: false, error: error.message });
+        try {
+          sendResponse({ success: false, error: error.message });
+        } catch (responseError) {
+          console.error('aiFiverr Background: Failed to send error response:', responseError);
+        }
       });
       return true; // Keep message channel open for async responses
     });
@@ -67,6 +93,23 @@ class BackgroundManager {
         this.initializeFiverrTab(tabId);
       }
     });
+
+    // Keep service worker alive with periodic heartbeat
+    this.startHeartbeat();
+  }
+
+  /**
+   * Keep service worker alive with periodic heartbeat
+   */
+  startHeartbeat() {
+    // Send a heartbeat every 20 seconds to keep service worker alive
+    setInterval(() => {
+      console.log('aiFiverr Background: Heartbeat - service worker alive');
+      // Perform a simple storage operation to keep the service worker active
+      chrome.storage.local.get(['heartbeat'], (result) => {
+        chrome.storage.local.set({ heartbeat: Date.now() });
+      });
+    }, 20000); // 20 seconds
   }
 
   async loadApiKeys() {
@@ -169,53 +212,86 @@ class BackgroundManager {
   }
 
   async handleMessage(request, sender, sendResponse) {
+    console.log('aiFiverr Background: Received message:', request.type, 'from:', sender.tab?.url || 'popup');
+
+    // Enhanced response handler with better error handling
+    const sendSafeResponse = (response) => {
+      try {
+        if (sendResponse && typeof sendResponse === 'function') {
+          // Add timestamp and source info to all responses
+          const enhancedResponse = {
+            ...response,
+            timestamp: Date.now(),
+            source: 'background'
+          };
+          sendResponse(enhancedResponse);
+          console.log('aiFiverr Background: Response sent for:', request.type, enhancedResponse);
+        } else {
+          console.warn('aiFiverr Background: sendResponse is not available for:', request.type);
+        }
+      } catch (error) {
+        console.error('aiFiverr Background: Failed to send response for:', request.type, error);
+      }
+    };
+
     try {
-      console.log('aiFiverr Background: Handling message:', request.type);
+      // Ensure background script is properly initialized
+      if (!this.isInitialized) {
+        console.log('aiFiverr Background: Not initialized, initializing now...');
+        await this.init();
+      }
+
+      // Validate request structure
+      if (!request || !request.type) {
+        console.error('aiFiverr Background: Invalid request structure:', request);
+        sendSafeResponse({ success: false, error: 'Invalid request structure' });
+        return;
+      }
 
       switch (request.type) {
         case 'GET_API_KEY':
           const keyData = this.getNextHealthyApiKey();
-          sendResponse({ success: true, data: keyData });
+          sendSafeResponse({ success: true, data: keyData });
           break;
 
         case 'MARK_KEY_UNHEALTHY':
           this.markKeyUnhealthy(request.keyIndex, request.error);
-          sendResponse({ success: true });
+          sendSafeResponse({ success: true });
           break;
 
         case 'MARK_KEY_SUCCESS':
           this.markKeySuccess(request.keyIndex);
-          sendResponse({ success: true });
+          sendSafeResponse({ success: true });
           break;
 
         case 'UPDATE_API_KEYS':
           await this.updateApiKeys(request.keys);
-          sendResponse({ success: true });
+          sendSafeResponse({ success: true });
           break;
 
         case 'GET_SESSION':
           const session = await this.getSession(request.sessionId);
-          sendResponse({ success: true, data: session });
+          sendSafeResponse({ success: true, data: session });
           break;
 
         case 'SAVE_SESSION':
           await this.saveSession(request.sessionId, request.sessionData);
-          sendResponse({ success: true });
+          sendSafeResponse({ success: true });
           break;
 
         case 'EXPORT_DATA':
           const exportData = await this.exportAllData();
-          sendResponse({ success: true, data: exportData });
+          sendSafeResponse({ success: true, data: exportData });
           break;
 
         case 'IMPORT_DATA':
           await this.importAllData(request.data);
-          sendResponse({ success: true });
+          sendSafeResponse({ success: true });
           break;
 
         case 'COLLECT_USER_DATA':
           await this.collectUserData(request.userData);
-          sendResponse({ success: true });
+          sendSafeResponse({ success: true });
           break;
 
         case 'GOOGLE_AUTH_START':
@@ -223,10 +299,10 @@ class BackgroundManager {
           try {
             const authResult = await this.startGoogleAuth();
             console.log('aiFiverr Background: Auth result:', authResult);
-            sendResponse(authResult);
+            sendSafeResponse(authResult);
           } catch (error) {
             console.error('aiFiverr Background: Auth start error:', error);
-            sendResponse({ success: false, error: error.message });
+            sendSafeResponse({ success: false, error: error.message });
           }
           break;
 
@@ -235,10 +311,10 @@ class BackgroundManager {
           try {
             const signOutResult = await this.signOutGoogle();
             console.log('aiFiverr Background: Sign out result:', signOutResult);
-            sendResponse(signOutResult);
+            sendSafeResponse(signOutResult);
           } catch (error) {
             console.error('aiFiverr Background: Sign out error:', error);
-            sendResponse({ success: false, error: error.message });
+            sendSafeResponse({ success: false, error: error.message });
           }
           break;
 
@@ -247,18 +323,27 @@ class BackgroundManager {
           console.log('aiFiverr Background: Current auth state - authenticated:', this.isAuthenticated, 'user:', this.userInfo);
 
           try {
+            // Validate current authentication state
+            if (this.isAuthenticated && this.accessToken && this.tokenExpiry) {
+              // Check if token is still valid
+              if (Date.now() >= this.tokenExpiry) {
+                console.log('aiFiverr Background: Token expired, attempting refresh...');
+                await this.refreshToken();
+              }
+            }
+
             // Ensure we have a proper response structure
             const authResponse = {
               success: true,
-              isAuthenticated: Boolean(this.isAuthenticated),
+              isAuthenticated: Boolean(this.isAuthenticated && this.accessToken),
               user: this.userInfo || null
             };
 
             console.log('aiFiverr Background: Sending auth response:', authResponse);
-            sendResponse(authResponse);
+            sendSafeResponse(authResponse);
           } catch (error) {
             console.error('aiFiverr Background: Auth status error:', error);
-            sendResponse({ success: false, error: error.message, isAuthenticated: false, user: null });
+            sendSafeResponse({ success: false, error: error.message, isAuthenticated: false, user: null });
           }
           break;
 
@@ -267,81 +352,88 @@ class BackgroundManager {
           try {
             const token = await this.getValidToken();
             console.log('aiFiverr Background: Token result:', token ? 'Token available' : 'No token');
-            sendResponse({ success: true, token });
+            sendSafeResponse({ success: !!token, token: token || null });
           } catch (error) {
             console.error('aiFiverr Background: Token error:', error);
-            sendResponse({ success: false, error: error.message, token: null });
+            sendSafeResponse({ success: false, error: error.message, token: null });
           }
           break;
 
         // Knowledge Base Files handlers
         case 'GET_KNOWLEDGE_BASE_FILES':
           const kbFiles = await this.getKnowledgeBaseFiles();
-          sendResponse(kbFiles);
+          sendSafeResponse(kbFiles);
           break;
 
         case 'UPLOAD_FILE_TO_DRIVE':
           const driveUploadResult = await this.uploadFileToDrive(request);
-          sendResponse(driveUploadResult);
+          sendSafeResponse(driveUploadResult);
           break;
 
         case 'UPLOAD_FILE_TO_GEMINI':
+          console.log('aiFiverr Background: Processing UPLOAD_FILE_TO_GEMINI request...');
           // Handle both direct file upload and Drive file upload
           if (request.fileData && request.fileData.driveFileId) {
+            console.log('aiFiverr Background: Uploading Drive file to Gemini:', request.fileData.name);
             const driveFileUploadResult = await this.uploadDriveFileToGemini(request.fileData);
-            sendResponse(driveFileUploadResult);
+            sendSafeResponse(driveFileUploadResult);
           } else {
+            console.log('aiFiverr Background: Uploading direct file to Gemini:', request.file?.name || 'unknown');
             const geminiUploadResult = await this.uploadFileToGemini(request);
-            sendResponse(geminiUploadResult);
+            sendSafeResponse(geminiUploadResult);
           }
           break;
 
         case 'UPDATE_FILE_REFERENCE_GEMINI_URI':
           const updateResult = await this.updateFileReferenceWithGeminiUri(request);
-          sendResponse(updateResult);
+          sendSafeResponse(updateResult);
           break;
 
         case 'GET_DRIVE_FILES':
           console.log('aiFiverr Background: Getting Drive files...');
           const driveFiles = await this.getDriveFiles();
           console.log('aiFiverr Background: Drive files result:', driveFiles);
-          sendResponse(driveFiles);
+          sendSafeResponse(driveFiles);
           break;
 
         case 'GET_GEMINI_FILES':
           console.log('aiFiverr Background: Getting Gemini files...');
           const geminiFiles = await this.getGeminiFiles();
           console.log('aiFiverr Background: Gemini files result:', geminiFiles);
-          sendResponse(geminiFiles);
+          sendSafeResponse(geminiFiles);
           break;
 
         case 'GET_FILE_DETAILS':
           const fileDetails = await this.getFileDetails(request.fileId);
-          sendResponse(fileDetails);
+          sendSafeResponse(fileDetails);
           break;
 
         case 'DELETE_DRIVE_FILE':
           const deleteResult = await this.deleteDriveFile(request.fileId);
-          sendResponse(deleteResult);
+          sendSafeResponse(deleteResult);
           break;
 
         case 'SEARCH_DRIVE_FILES':
           const searchResults = await this.searchDriveFiles(request.query);
-          sendResponse(searchResults);
+          sendSafeResponse(searchResults);
           break;
 
         case 'UPDATE_FILE_METADATA':
           const metadataUpdateResult = await this.updateFileMetadata(request.fileId, request.metadata);
-          sendResponse(metadataUpdateResult);
+          sendSafeResponse(metadataUpdateResult);
           break;
 
         default:
-          sendResponse({ success: false, error: 'Unknown message type' });
+          console.warn('aiFiverr Background: Unknown message type:', request.type);
+          sendSafeResponse({ success: false, error: 'Unknown message type: ' + request.type });
       }
     } catch (error) {
-      console.error('Background script error:', error);
-      sendResponse({ success: false, error: error.message });
+      console.error('aiFiverr Background: Message handler error:', error);
+      sendSafeResponse({ success: false, error: error.message });
     }
+
+    // Always return true to indicate we will send a response asynchronously
+    return true;
   }
 
   async updateApiKeys(newKeys) {
@@ -684,19 +776,23 @@ class BackgroundManager {
 
   async getValidToken() {
     if (!this.accessToken || !this.tokenExpiry) {
+      console.log('aiFiverr Background: No token or expiry available');
       return null;
     }
 
     // Check if token is still valid (with 5 minute buffer)
     if (Date.now() < this.tokenExpiry - 300000) {
+      console.log('aiFiverr Background: Using cached valid token');
       return this.accessToken;
     }
+
+    console.log('aiFiverr Background: Token expired or expiring soon, attempting refresh...');
 
     // Try to refresh token
     try {
       const token = await new Promise((resolve, reject) => {
         chrome.identity.getAuthToken({
-          interactive: false,
+          interactive: false, // Non-interactive refresh to avoid disrupting user
           scopes: [
             'https://www.googleapis.com/auth/userinfo.email',
             'https://www.googleapis.com/auth/userinfo.profile',
@@ -705,8 +801,13 @@ class BackgroundManager {
           ]
         }, (token) => {
           if (chrome.runtime.lastError) {
+            console.error('aiFiverr Background: Token refresh error:', chrome.runtime.lastError.message);
             reject(new Error(chrome.runtime.lastError.message));
+          } else if (!token) {
+            console.warn('aiFiverr Background: No token received during refresh');
+            reject(new Error('No token received during refresh'));
           } else {
+            console.log('aiFiverr Background: Token refreshed successfully');
             resolve(token);
           }
         });
@@ -1056,11 +1157,29 @@ Would you like to continue without authentication or switch to Chrome?`;
       }
 
       const result = await uploadResponse.json();
-      console.log('aiFiverr Background: Drive file uploaded to Gemini successfully:', result.file.name);
+      console.log('aiFiverr Background: Drive file uploaded to Gemini successfully:', {
+        name: result.file.name,
+        uri: result.file.uri,
+        state: result.file.state,
+        sizeBytes: result.file.sizeBytes
+      });
 
+      // Validate that we got a proper URI
+      if (!result.file.uri) {
+        throw new Error('No URI received from Gemini upload');
+      }
+
+      // Return the response in the format expected by knowledge base
       return {
         success: true,
-        data: result.file
+        data: {
+          name: result.file.name,
+          displayName: result.file.displayName,
+          mimeType: result.file.mimeType,
+          uri: result.file.uri,
+          sizeBytes: result.file.sizeBytes,
+          state: result.file.state
+        }
       };
 
     } catch (error) {
@@ -1411,31 +1530,69 @@ Would you like to continue without authentication or switch to Chrome?`;
   getMimeTypeFromExtension(fileName) {
     const ext = fileName.split('.').pop()?.toLowerCase();
     const mimeTypeMap = {
+      // Text and Document Files
       'txt': 'text/plain',
-      'md': 'text/markdown',
-      'pdf': 'application/pdf',
       'doc': 'application/msword',
       'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'pdf': 'application/pdf',
+      'rtf': 'application/rtf',
+      'dot': 'application/msword-template',
+      'dotx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+      'hwp': 'application/x-hwp',
+      'hwpx': 'application/x-hwpx',
+
+      // Code Files
+      'c': 'text/x-c',
+      'cpp': 'text/x-c++src',
+      'py': 'text/x-python',
+      'java': 'text/x-java-source',
+      'php': 'application/x-php',
+      'sql': 'application/sql',
+      'html': 'text/html',
+      'htm': 'text/html',
+      'js': 'text/javascript',
+      'json': 'application/json',
+      'xml': 'text/xml',
+      'css': 'text/css',
+      'md': 'text/markdown',
+
+      // Data and Spreadsheet Files
+      'csv': 'text/csv',
+      'tsv': 'text/tab-separated-values',
       'xls': 'application/vnd.ms-excel',
       'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'ppt': 'application/vnd.ms-powerpoint',
-      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+
+      // Media Files - Images
+      'png': 'image/png',
       'jpg': 'image/jpeg',
       'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
+      'bmp': 'image/bmp',
       'webp': 'image/webp',
+      'gif': 'image/gif',
+
+      // Media Files - Audio
+      'aac': 'audio/aac',
+      'flac': 'audio/flac',
       'mp3': 'audio/mpeg',
+      'm4a': 'audio/mp4',
+      'mpeg': 'audio/x-mpeg',
+      'mpga': 'audio/x-mpga',
+      'opus': 'audio/opus',
+      'pcm': 'audio/pcm',
       'wav': 'audio/wav',
+      'ogg': 'audio/ogg',
+
+      // Media Files - Video
       'mp4': 'video/mp4',
+      'mpeg': 'video/mpeg',
+      'mpg': 'video/x-mpg',
       'mov': 'video/quicktime',
       'avi': 'video/x-msvideo',
-      'js': 'application/javascript',
-      'py': 'text/x-python',
-      'html': 'text/html',
-      'css': 'text/css',
-      'json': 'application/json',
-      'xml': 'application/xml'
+      'flv': 'video/x-flv',
+      'webm': 'video/webm',
+      'wmv': 'video/x-ms-wmv',
+      '3gp': 'video/3gpp',
+      '3gpp': 'video/3gpp'
     };
 
     return mimeTypeMap[ext] || 'application/octet-stream';
@@ -1443,21 +1600,72 @@ Would you like to continue without authentication or switch to Chrome?`;
 
   isSupportedGeminiFileType(mimeType) {
     const supportedTypes = [
-      // Text
-      'text/plain', 'text/html', 'text/css', 'text/javascript', 'text/x-typescript',
-      'text/csv', 'text/markdown', 'text/x-python', 'text/x-java-source',
-      // Documents
-      'application/pdf', 'application/rtf',
-      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      // Images
-      'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
-      // Audio
-      'audio/wav', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
-      // Video
-      'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg',
-      'video/webm', 'video/wmv', 'video/3gpp'
+      // Text and Document Files
+      'text/plain', // TXT
+      'application/msword', // DOC
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
+      'application/pdf', // PDF
+      'application/rtf', // RTF
+      'application/msword-template', // DOT
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.template', // DOTX
+      'application/x-hwp', // HWP
+      'application/x-hwpx', // HWPX
+      'application/vnd.google-apps.document', // Google Docs
+
+      // Code Files
+      'text/x-c', // C
+      'text/x-c++src', // CPP
+      'text/x-python', // PY
+      'text/x-java-source', // JAVA
+      'application/x-php', // PHP
+      'text/x-php', // PHP alternative
+      'application/sql', // SQL
+      'text/x-sql', // SQL alternative
+      'text/html', // HTML
+      'text/javascript', // JS
+      'application/json', // JSON
+      'text/xml', // XML
+      'text/css', // CSS
+      'text/markdown', // MD
+
+      // Data and Spreadsheet Files
+      'text/csv', // CSV
+      'text/tab-separated-values', // TSV
+      'application/vnd.ms-excel', // XLS
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // XLSX
+      'application/vnd.google-apps.spreadsheet', // Google Sheets
+
+      // Media Files - Images
+      'image/png', // PNG
+      'image/jpeg', // JPEG
+      'image/bmp', // BMP
+      'image/webp', // WEBP
+      'image/gif', // GIF
+
+      // Media Files - Audio
+      'audio/aac', // AAC
+      'audio/flac', // FLAC
+      'audio/mpeg', // MP3
+      'audio/mp4', // M4A
+      'audio/x-mpeg', // MPEG audio
+      'audio/x-mpga', // MPGA
+      'audio/opus', // OPUS
+      'audio/pcm', // PCM
+      'audio/wav', // WAV
+      'audio/webm', // WEBM audio
+      'audio/ogg', // OGG
+
+      // Media Files - Video
+      'video/mp4', // MP4
+      'video/mpeg', // MPEG
+      'video/quicktime', // MOV
+      'video/x-msvideo', // AVI
+      'video/x-flv', // X-FLV
+      'video/x-mpg', // MPG
+      'video/webm', // WEBM
+      'video/x-ms-wmv', // WMV
+      'video/3gpp', // 3GPP
+      'video/ogg' // OGG video
     ];
 
     return supportedTypes.includes(mimeType);
