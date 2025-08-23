@@ -311,6 +311,10 @@ class PopupManager {
       } else if (e.target.classList.contains('prompt-toggle-btn')) {
         const key = e.target.getAttribute('data-key');
         this.toggleDefaultPromptVisibility(key);
+      } else if (e.target.classList.contains('prompt-content-toggle') || e.target.closest('.prompt-content-toggle')) {
+        const toggleBtn = e.target.classList.contains('prompt-content-toggle') ? e.target : e.target.closest('.prompt-content-toggle');
+        const key = toggleBtn.getAttribute('data-key');
+        this.togglePromptContentVisibility(key);
       }
     });
 
@@ -1127,15 +1131,23 @@ class PopupManager {
                         title="${this.isDefaultPromptVisible(key) ? 'Hide from menu' : 'Show in menu'}">
                   ${this.isDefaultPromptVisible(key) ? '👁️' : '🙈'}
                 </button>
-                <button class="prompt-action-btn edit prompt-edit-btn"
+                <button class="prompt-action-btn edit prompt-edit-btn default-edit"
                         data-key="${key}"
                         data-type="default"
-                        title="Copy to custom prompts for editing">✎</button>
+                        title="Copy to custom prompts for editing">📝</button>
               `}
             </div>
           </div>
           <div class="prompt-item-description">${this.escapeHtml(prompt.description || '')}</div>
-          <div class="prompt-item-content">${this.escapeHtml(prompt.prompt)}</div>
+          <div class="prompt-item-content-wrapper">
+            <div class="prompt-item-content-header">
+              <span class="prompt-content-label">Prompt Content:</span>
+              <button class="prompt-content-toggle" data-key="${key}" title="Toggle prompt content visibility">
+                <span class="toggle-icon">▼</span>
+              </button>
+            </div>
+            <div class="prompt-item-content expanded" data-key="${key}">${this.escapeHtml(prompt.prompt)}</div>
+          </div>
         </div>
       `;
     }).join('');
@@ -1172,6 +1184,31 @@ class PopupManager {
     } catch (error) {
       console.error('Failed to toggle default prompt visibility:', error);
       this.showToast('Failed to update prompt visibility', 'error');
+    }
+  }
+
+  /**
+   * Toggle prompt content visibility
+   */
+  togglePromptContentVisibility(key) {
+    const contentElement = document.querySelector(`.prompt-item-content[data-key="${key}"]`);
+    const toggleBtn = document.querySelector(`.prompt-content-toggle[data-key="${key}"]`);
+    const toggleIcon = toggleBtn?.querySelector('.toggle-icon');
+
+    if (contentElement && toggleBtn && toggleIcon) {
+      const isExpanded = contentElement.classList.contains('expanded');
+
+      if (isExpanded) {
+        contentElement.classList.remove('expanded');
+        contentElement.classList.add('collapsed');
+        toggleIcon.textContent = '▶';
+        toggleBtn.title = 'Show prompt content';
+      } else {
+        contentElement.classList.remove('collapsed');
+        contentElement.classList.add('expanded');
+        toggleIcon.textContent = '▼';
+        toggleBtn.title = 'Hide prompt content';
+      }
     }
   }
 
