@@ -308,9 +308,9 @@ class PopupManager {
       } else if (e.target.classList.contains('prompt-delete-btn')) {
         const key = e.target.getAttribute('data-key');
         this.deletePrompt(key);
-      } else if (e.target.classList.contains('prompt-toggle-btn')) {
+      } else if (e.target.classList.contains('prompt-floating-toggle-btn')) {
         const key = e.target.getAttribute('data-key');
-        this.toggleDefaultPromptVisibility(key);
+        this.togglePromptFloatingIconVisibility(key);
       } else if (e.target.classList.contains('prompt-content-toggle') || e.target.closest('.prompt-content-toggle')) {
         const toggleBtn = e.target.classList.contains('prompt-content-toggle') ? e.target : e.target.closest('.prompt-content-toggle');
         const key = toggleBtn.getAttribute('data-key');
@@ -994,9 +994,9 @@ class PopupManager {
       const favorites = await this.forceReloadFromStorage('favoritePrompts') || [];
       this.favoritePrompts = new Set(favorites);
 
-      // Load default prompt visibility settings
-      const defaultPromptVisibility = await this.forceReloadFromStorage('defaultPromptVisibility') || {};
-      this.defaultPromptVisibility = defaultPromptVisibility;
+      // Load floating icon visibility settings
+      const floatingIconVisibility = await this.forceReloadFromStorage('floatingIconVisibility') || {};
+      this.floatingIconVisibility = floatingIconVisibility;
 
       // Load default prompts from knowledge base
       const defaultPrompts = this.getDefaultPrompts();
@@ -1010,12 +1010,7 @@ class PopupManager {
   }
 
   getDefaultPrompts() {
-    // Use centralized prompt manager if available
-    if (window.promptManager && window.promptManager.initialized) {
-      return window.promptManager.getDefaultPrompts();
-    }
-
-    // Fallback to prompts from SYSTEM_PRO.md
+    // Since popup runs in different context, always use direct prompt definitions
     return {
       'summary': {
         name: 'Summary',
@@ -1118,24 +1113,27 @@ class PopupManager {
                       title="${isFavorite ? 'Remove from favorites' : 'Add to favorites'}">
                 ${isFavorite ? '★' : '☆'}
               </button>
-              ${!isDefault ? `
-                <button class="prompt-action-btn edit prompt-edit-btn"
+              ${isDefault ? `
+                <button class="prompt-action-btn toggle ${this.isPromptVisibleInFloatingIcon(key) ? 'visible' : 'hidden'} prompt-floating-toggle-btn"
                         data-key="${key}"
-                        title="Edit prompt">✎</button>
+                        title="${this.isPromptVisibleInFloatingIcon(key) ? 'Hide from floating menu' : 'Show in floating menu'}">
+                  ${this.isPromptVisibleInFloatingIcon(key) ? '👁️' : '🙈'}
+                </button>
+              ` : `
+                <button class="prompt-action-btn toggle ${this.isPromptVisibleInFloatingIcon(key) ? 'visible' : 'hidden'} prompt-floating-toggle-btn"
+                        data-key="${key}"
+                        title="${this.isPromptVisibleInFloatingIcon(key) ? 'Hide from floating menu' : 'Show in floating menu'}">
+                  ${this.isPromptVisibleInFloatingIcon(key) ? '👁️' : '🙈'}
+                </button>
+              `}
+              <button class="prompt-action-btn edit prompt-edit-btn"
+                      data-key="${key}"
+                      title="${isDefault ? 'Copy to custom prompts for editing' : 'Edit prompt'}">✎</button>
+              ${!isDefault ? `
                 <button class="prompt-action-btn delete prompt-delete-btn"
                         data-key="${key}"
                         title="Delete prompt">×</button>
-              ` : `
-                <button class="prompt-action-btn toggle ${this.isDefaultPromptVisible(key) ? 'visible' : 'hidden'} prompt-toggle-btn"
-                        data-key="${key}"
-                        title="${this.isDefaultPromptVisible(key) ? 'Hide from menu' : 'Show in menu'}">
-                  ${this.isDefaultPromptVisible(key) ? '👁️' : '🙈'}
-                </button>
-                <button class="prompt-action-btn edit prompt-edit-btn default-edit"
-                        data-key="${key}"
-                        data-type="default"
-                        title="Copy to custom prompts for editing">📝</button>
-              `}
+              ` : ''}
             </div>
           </div>
           <div class="prompt-item-description">${this.escapeHtml(prompt.description || '')}</div>
@@ -1154,36 +1152,36 @@ class PopupManager {
   }
 
   /**
-   * Check if default prompt is visible in menus
+   * Check if prompt is visible in floating icon menu
    */
-  isDefaultPromptVisible(key) {
-    // Default to visible if not explicitly set
-    return this.defaultPromptVisibility?.[key] !== false;
+  isPromptVisibleInFloatingIcon(key) {
+    // Default to visible if not explicitly set to false
+    return this.floatingIconVisibility?.[key] !== false;
   }
 
   /**
-   * Toggle default prompt visibility
+   * Toggle prompt visibility in floating icon menu
    */
-  async toggleDefaultPromptVisibility(key) {
+  async togglePromptFloatingIconVisibility(key) {
     try {
-      if (!this.defaultPromptVisibility) {
-        this.defaultPromptVisibility = {};
+      if (!this.floatingIconVisibility) {
+        this.floatingIconVisibility = {};
       }
 
       // Toggle visibility (default is true, so we store false to hide)
-      this.defaultPromptVisibility[key] = !this.isDefaultPromptVisible(key);
+      this.floatingIconVisibility[key] = !this.isPromptVisibleInFloatingIcon(key);
 
       // Save to storage
-      await this.setStorageData({ defaultPromptVisibility: this.defaultPromptVisibility });
+      await this.setStorageData({ floatingIconVisibility: this.floatingIconVisibility });
 
       // Refresh display
       await this.loadPrompts();
 
-      const isVisible = this.isDefaultPromptVisible(key);
-      this.showToast(`Default prompt "${key}" ${isVisible ? 'shown' : 'hidden'} in menus`, 'success');
+      const isVisible = this.isPromptVisibleInFloatingIcon(key);
+      this.showToast(`Prompt "${key}" ${isVisible ? 'shown' : 'hidden'} in floating menu`, 'success');
     } catch (error) {
-      console.error('Failed to toggle default prompt visibility:', error);
-      this.showToast('Failed to update prompt visibility', 'error');
+      console.error('Failed to toggle floating icon visibility:', error);
+      this.showToast('Failed to update floating menu visibility', 'error');
     }
   }
 
@@ -1242,34 +1240,55 @@ class PopupManager {
 
   showPromptForm(isEdit = false) {
     const form = document.getElementById('promptAddForm');
+    if (!form) {
+      throw new Error('Prompt form not found (promptAddForm)');
+    }
     form.classList.add('active');
+
+    const keyField = document.getElementById('newPromptKey');
+    const nameField = document.getElementById('newPromptName');
+    const descField = document.getElementById('newPromptDescription');
+    const contentField = document.getElementById('newPromptContent');
+
+    if (!keyField || !nameField || !descField || !contentField) {
+      throw new Error('Form fields not found in showPromptForm');
+    }
 
     if (!isEdit) {
       // Clear form only for new prompts
-      document.getElementById('newPromptKey').value = '';
-      document.getElementById('newPromptName').value = '';
-      document.getElementById('newPromptDescription').value = '';
-      document.getElementById('newPromptContent').value = '';
+      keyField.value = '';
+      nameField.value = '';
+      descField.value = '';
+      contentField.value = '';
 
       // Make sure key field is enabled for new prompts
-      document.getElementById('newPromptKey').readOnly = false;
-      document.getElementById('newPromptKey').focus();
+      keyField.readOnly = false;
+      keyField.focus();
     } else {
       // For editing, focus on the name field since key is readonly
-      document.getElementById('newPromptName').focus();
+      nameField.focus();
     }
   }
 
   hidePromptForm() {
     const form = document.getElementById('promptAddForm');
+    if (!form) return;
+
     form.classList.remove('active');
 
     // Clear form when hiding
-    document.getElementById('newPromptKey').value = '';
-    document.getElementById('newPromptName').value = '';
-    document.getElementById('newPromptDescription').value = '';
-    document.getElementById('newPromptContent').value = '';
-    document.getElementById('newPromptKey').readOnly = false;
+    const keyField = document.getElementById('newPromptKey');
+    const nameField = document.getElementById('newPromptName');
+    const descField = document.getElementById('newPromptDescription');
+    const contentField = document.getElementById('newPromptContent');
+
+    if (keyField) {
+      keyField.value = '';
+      keyField.readOnly = false;
+    }
+    if (nameField) nameField.value = '';
+    if (descField) descField.value = '';
+    if (contentField) contentField.value = '';
 
     // Clear original prompt data
     this.originalPromptData = null;
@@ -1336,18 +1355,26 @@ class PopupManager {
       // For converted default prompts or regular edits, proceed with saving
       this.showLoading(true);
 
-      // Use centralized prompt manager if available
-      if (window.promptManager && window.promptManager.initialized) {
-        const promptData = {
-          name,
-          description,
-          prompt: content,
-          knowledgeBaseFiles: selectedFiles
-        };
+      // Since popup runs in different context, always use direct storage access
+      const customPrompts = await this.getStorageData('customPrompts') || {};
+      const promptData = {
+        name,
+        description,
+        prompt: content,
+        knowledgeBaseFiles: selectedFiles,
+        created: customPrompts[key]?.created || Date.now(),
+        modified: Date.now()
+      };
 
-        const saveSuccess = await window.promptManager.savePrompt(key, promptData);
+      customPrompts[key] = promptData;
 
-        if (saveSuccess) {
+      const saveSuccess = await this.setStorageData({ customPrompts });
+
+      if (saveSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const verifyData = await this.forceReloadFromStorage('customPrompts');
+
+        if (verifyData && verifyData[key] && verifyData[key].name === name) {
           // If this was a converted default prompt, switch to custom tab to show the new prompt
           if (isConvertedDefault && this.currentPromptTab !== 'custom') {
             this.switchPromptTab('custom');
@@ -1358,44 +1385,10 @@ class PopupManager {
           this.showToast(`Prompt "${name}" saved successfully`, 'success');
           this.originalPromptData = null;
         } else {
-          throw new Error('Failed to save prompt using prompt manager');
+          throw new Error('Data verification failed after save');
         }
       } else {
-        // Fallback to original storage method
-        const customPrompts = await this.getStorageData('customPrompts') || {};
-        const promptData = {
-          name,
-          description,
-          prompt: content,
-          knowledgeBaseFiles: selectedFiles,
-          created: customPrompts[key]?.created || Date.now(),
-          modified: Date.now()
-        };
-
-        customPrompts[key] = promptData;
-
-        const saveSuccess = await this.setStorageData({ customPrompts });
-
-        if (saveSuccess) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          const verifyData = await this.forceReloadFromStorage('customPrompts');
-
-          if (verifyData && verifyData[key] && verifyData[key].name === name) {
-            // If this was a converted default prompt, switch to custom tab to show the new prompt
-            if (isConvertedDefault && this.currentPromptTab !== 'custom') {
-              this.switchPromptTab('custom');
-            } else {
-              await this.loadPrompts();
-            }
-            this.hidePromptForm();
-            this.showToast(`Prompt "${name}" saved successfully`, 'success');
-            this.originalPromptData = null;
-          } else {
-            throw new Error('Data verification failed after save');
-          }
-        } else {
-          throw new Error('Failed to save custom prompts data');
-        }
+        throw new Error('Failed to save custom prompts data');
       }
     } catch (error) {
       console.error('Failed to save prompt:', error);
@@ -1407,58 +1400,14 @@ class PopupManager {
 
   async editPrompt(key) {
     try {
-      // Use centralized prompt manager if available
-      if (window.promptManager && window.promptManager.initialized) {
-        const prompt = window.promptManager.getPrompt(key);
-        const isDefaultPrompt = window.promptManager.defaultPrompts.has(key) && !window.promptManager.customPrompts.has(key);
+      console.log('aiFiverr: Starting editPrompt for key:', key);
 
-        if (!prompt) {
-          this.showToast('Prompt not found', 'error');
-          return;
-        }
-
-        let editKey = key;
-
-        // If editing a default prompt, convert it to custom
-        if (isDefaultPrompt) {
-          editKey = await window.promptManager.convertDefaultToCustom(key);
-          this.showToast('Default prompt converted to custom for editing', 'info');
-        }
-
-        // Store original values for change detection
-        this.originalPromptData = {
-          key: editKey,
-          name: prompt.name,
-          description: prompt.description || '',
-          content: prompt.prompt,
-          knowledgeBaseFiles: prompt.knowledgeBaseFiles || [],
-          isDefaultPrompt: isDefaultPrompt, // Keep original state for proper change detection
-          wasConverted: isDefaultPrompt // Track if this was converted from default
-        };
-
-        // Populate form fields
-        document.getElementById('newPromptKey').value = editKey;
-        // For converted default prompts, show the name with (Custom) suffix
-        const displayName = isDefaultPrompt ? `${prompt.name} (Custom)` : prompt.name;
-        document.getElementById('newPromptName').value = displayName;
-        document.getElementById('newPromptDescription').value = prompt.description || '';
-        document.getElementById('newPromptContent').value = prompt.prompt;
-
-        // Load knowledge base files if they exist
-        if (prompt.knowledgeBaseFiles && prompt.knowledgeBaseFiles.length > 0) {
-          this.displaySelectedFiles(prompt.knowledgeBaseFiles);
-        }
-
-        // Make key field readonly when editing existing custom prompt
-        document.getElementById('newPromptKey').readOnly = true;
-
-        this.showPromptForm(true);
-        return;
-      }
-
-      // Fallback to original logic if prompt manager not available
+      // Since popup runs in different context, always use direct storage access
       const defaultPrompts = this.getDefaultPrompts();
+      console.log('aiFiverr: Default prompts loaded:', Object.keys(defaultPrompts));
+
       const customPrompts = await this.getStorageData('customPrompts') || {};
+      console.log('aiFiverr: Custom prompts loaded:', Object.keys(customPrompts));
 
       let prompt = customPrompts[key];
       let isDefaultPrompt = false;
@@ -1466,13 +1415,18 @@ class PopupManager {
       if (!prompt && defaultPrompts[key]) {
         prompt = defaultPrompts[key];
         isDefaultPrompt = true;
+        console.log('aiFiverr: Found default prompt:', key);
       }
 
       if (!prompt) {
+        console.error('aiFiverr: Prompt not found for key:', key);
         this.showToast('Prompt not found', 'error');
         return;
       }
 
+      console.log('aiFiverr: Prompt to edit:', { key, isDefaultPrompt, name: prompt.name });
+
+      // Store original values for change detection
       this.originalPromptData = {
         key: key,
         name: prompt.name,
@@ -1485,32 +1439,67 @@ class PopupManager {
 
       let editKey = key;
       if (isDefaultPrompt) {
-        editKey = `custom_${key}`;
+        // Generate unique key for custom version
+        editKey = `${key}_custom`;
         let counter = 1;
         while (customPrompts[editKey]) {
-          editKey = `custom_${key}_${counter}`;
+          editKey = `${key}_custom_${counter}`;
           counter++;
         }
       }
 
-      document.getElementById('newPromptKey').value = editKey;
-      document.getElementById('newPromptName').value = prompt.name + (isDefaultPrompt ? ' (Custom)' : '');
-      document.getElementById('newPromptDescription').value = prompt.description || '';
-      document.getElementById('newPromptContent').value = prompt.prompt;
+      // Populate form fields
+      console.log('aiFiverr: Populating form with editKey:', editKey);
 
-      if (prompt.knowledgeBaseFiles && prompt.knowledgeBaseFiles.length > 0) {
-        this.displaySelectedFiles(prompt.knowledgeBaseFiles);
+      const keyField = document.getElementById('newPromptKey');
+      const nameField = document.getElementById('newPromptName');
+      const descField = document.getElementById('newPromptDescription');
+      const contentField = document.getElementById('newPromptContent');
+
+      if (!keyField || !nameField || !descField || !contentField) {
+        throw new Error('Form elements not found. Missing: ' +
+          [!keyField && 'newPromptKey', !nameField && 'newPromptName',
+           !descField && 'newPromptDescription', !contentField && 'newPromptContent']
+          .filter(Boolean).join(', '));
       }
 
-      document.getElementById('newPromptKey').readOnly = !isDefaultPrompt;
+      keyField.value = editKey;
+      nameField.value = prompt.name + (isDefaultPrompt ? ' (Custom)' : '');
+      descField.value = prompt.description || '';
+      contentField.value = prompt.prompt;
+
+      console.log('aiFiverr: Form populated successfully');
+
+      // Load knowledge base files if they exist
+      if (prompt.knowledgeBaseFiles && Array.isArray(prompt.knowledgeBaseFiles) && prompt.knowledgeBaseFiles.length > 0) {
+        this.displaySelectedFiles(prompt.knowledgeBaseFiles);
+      } else {
+        // Clear any existing selected files display
+        const container = document.getElementById('selectedKbFiles');
+        if (container) {
+          container.style.display = 'none';
+          container.classList.remove('has-files');
+          container.innerHTML = '';
+        }
+      }
+
+      // Make key field readonly when editing (both default and custom)
+      keyField.readOnly = true;
+      console.log('aiFiverr: Set key field to readonly');
+
+      console.log('aiFiverr: Showing prompt form');
       this.showPromptForm(true);
 
       if (isDefaultPrompt) {
+        console.log('aiFiverr: Showing success toast for default prompt');
         this.showToast('Default prompt copied for editing. You can modify it as needed.', 'info');
       }
+
+      console.log('aiFiverr: editPrompt completed successfully');
     } catch (error) {
-      console.error('Failed to edit prompt:', error);
-      this.showToast('Failed to edit prompt', 'error');
+      console.error('aiFiverr: Failed to edit prompt:', error);
+      console.error('aiFiverr: Error stack:', error.stack);
+      this.showToast(`Failed to edit prompt: ${error.message}`, 'error');
     }
   }
 

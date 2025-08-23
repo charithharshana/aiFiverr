@@ -83,41 +83,50 @@ class PromptSelector {
         customPrompts = {};
       }
 
-      // Load default prompt visibility settings
-      let defaultPromptVisibility = {};
+      // Load floating icon visibility settings
+      let floatingIconVisibility = {};
       try {
-        const visibilityResult = await this.getFromStorage('defaultPromptVisibility', {});
+        const visibilityResult = await this.getFromStorage('floatingIconVisibility', {});
         if (visibilityResult && typeof visibilityResult === 'object') {
-          defaultPromptVisibility = visibilityResult.defaultPromptVisibility || visibilityResult;
+          floatingIconVisibility = visibilityResult.floatingIconVisibility || visibilityResult;
         }
       } catch (error) {
-        console.warn('aiFiverr Prompt Selector: Failed to load visibility settings:', error);
-        defaultPromptVisibility = {};
+        console.warn('aiFiverr Prompt Selector: Failed to load floating icon visibility settings:', error);
+        floatingIconVisibility = {};
       }
 
       // Get default prompts from knowledge base
       const defaultPrompts = this.getDefaultPrompts();
 
-      // Filter default prompts based on visibility settings
+      // Filter default prompts based on floating icon visibility settings
       const visibleDefaultPrompts = {};
       Object.entries(defaultPrompts).forEach(([key, prompt]) => {
         // Default to visible if not explicitly set to false
-        if (defaultPromptVisibility[key] !== false) {
+        if (floatingIconVisibility[key] !== false) {
           visibleDefaultPrompts[key] = prompt;
         }
       });
 
-      // Combine visible default prompts with custom prompts
-      this.allPrompts = { ...visibleDefaultPrompts, ...(customPrompts || {}) };
+      // Filter custom prompts based on floating icon visibility settings
+      const visibleCustomPrompts = {};
+      Object.entries(customPrompts || {}).forEach(([key, prompt]) => {
+        // Default to visible if not explicitly set to false
+        if (floatingIconVisibility[key] !== false) {
+          visibleCustomPrompts[key] = prompt;
+        }
+      });
+
+      // Combine visible prompts (custom overrides default)
+      this.allPrompts = { ...visibleDefaultPrompts, ...visibleCustomPrompts };
 
       // Enhanced debugging for prompt loading
       console.log('aiFiverr Prompt Selector: Loaded prompts:', {
         defaultTotal: Object.keys(defaultPrompts).length,
         defaultVisible: Object.keys(visibleDefaultPrompts).length,
-        customTotal: Object.keys(customPrompts).length,
+        customTotal: Object.keys(customPrompts || {}).length,
+        customVisible: Object.keys(visibleCustomPrompts).length,
         finalTotal: Object.keys(this.allPrompts).length,
-        customPromptKeys: Object.keys(customPrompts),
-        customPromptSample: Object.keys(customPrompts).length > 0 ? customPrompts[Object.keys(customPrompts)[0]] : null
+        visiblePromptKeys: Object.keys(this.allPrompts)
       });
 
       console.log('aiFiverr: Loaded prompts:', {

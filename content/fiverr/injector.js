@@ -444,30 +444,38 @@ class FiverrInjector {
         console.log('aiFiverr Injector: Raw custom prompts from storage:', customPromptsResult);
         console.log('aiFiverr Injector: Processed custom prompts:', customPrompts);
 
-        // Load default prompt visibility settings
-        const visibilityResult = await chrome.storage.local.get('defaultPromptVisibility');
-        defaultPromptVisibility = visibilityResult.defaultPromptVisibility || {};
+        // Load floating icon visibility settings
+        const visibilityResult = await chrome.storage.local.get('floatingIconVisibility');
+        const floatingIconVisibility = visibilityResult.floatingIconVisibility || {};
 
-        // Filter default prompts based on visibility settings
+        // Filter default prompts based on floating icon visibility settings
         const visibleDefaultPrompts = {};
         Object.entries(defaultPrompts).forEach(([key, prompt]) => {
           // Default to visible if not explicitly set to false
-          if (defaultPromptVisibility[key] !== false) {
+          if (floatingIconVisibility[key] !== false) {
             visibleDefaultPrompts[key] = prompt;
           }
         });
 
-        // Merge visible default prompts with custom prompts (custom prompts override defaults)
-        allPrompts = { ...visibleDefaultPrompts, ...customPrompts };
+        // Filter custom prompts based on floating icon visibility settings
+        const visibleCustomPrompts = {};
+        Object.entries(customPrompts).forEach(([key, prompt]) => {
+          // Default to visible if not explicitly set to false
+          if (floatingIconVisibility[key] !== false) {
+            visibleCustomPrompts[key] = prompt;
+          }
+        });
+
+        // Merge visible prompts (custom prompts override defaults)
+        allPrompts = { ...visibleDefaultPrompts, ...visibleCustomPrompts };
 
         console.log('aiFiverr: Loaded prompts for dropdown:', {
           defaultTotal: Object.keys(defaultPrompts).length,
           defaultVisible: Object.keys(visibleDefaultPrompts).length,
-          custom: Object.keys(customPrompts).length,
-          total: Object.keys(allPrompts).length,
-          customPromptKeys: Object.keys(customPrompts),
-          customPromptSample: Object.keys(customPrompts).length > 0 ? customPrompts[Object.keys(customPrompts)[0]] : null,
-          allPromptKeys: Object.keys(allPrompts)
+          customTotal: Object.keys(customPrompts).length,
+          customVisible: Object.keys(visibleCustomPrompts).length,
+          totalVisible: Object.keys(allPrompts).length,
+          visiblePromptKeys: Object.keys(allPrompts)
         });
       } catch (error) {
         console.warn('aiFiverr: Failed to load custom prompts, using defaults only:', error);
