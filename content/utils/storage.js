@@ -27,6 +27,15 @@ class StorageManager {
     if (!isValid && !this.contextInvalidated) {
       this.contextInvalidated = true;
       console.warn('aiFiverr: Extension context invalidated - storage operations will be limited');
+
+      // Notify other components about context invalidation
+      try {
+        window.dispatchEvent(new CustomEvent('extensionContextInvalidated', {
+          detail: { timestamp: Date.now() }
+        }));
+      } catch (error) {
+        console.warn('aiFiverr: Could not dispatch context invalidation event:', error);
+      }
     }
 
     return isValid;

@@ -427,7 +427,51 @@ class FiverrInjector {
       dropdown.innerHTML = '';
 
       // Get ALL prompts (default + custom) - always show all available prompts
-      const allPrompts = this.getDefaultPrompts();
+      let allPrompts = {};
+
+      // Load default prompts
+      const defaultPrompts = this.getDefaultPrompts();
+      allPrompts = { ...defaultPrompts };
+
+      // Load custom prompts from storage with enhanced error handling
+      let customPrompts = {};
+      let defaultPromptVisibility = {};
+
+      try {
+        const customPromptsResult = await chrome.storage.local.get('customPrompts');
+        customPrompts = customPromptsResult.customPrompts || {};
+
+        console.log('aiFiverr Injector: Raw custom prompts from storage:', customPromptsResult);
+        console.log('aiFiverr Injector: Processed custom prompts:', customPrompts);
+
+        // Load default prompt visibility settings
+        const visibilityResult = await chrome.storage.local.get('defaultPromptVisibility');
+        defaultPromptVisibility = visibilityResult.defaultPromptVisibility || {};
+
+        // Filter default prompts based on visibility settings
+        const visibleDefaultPrompts = {};
+        Object.entries(defaultPrompts).forEach(([key, prompt]) => {
+          // Default to visible if not explicitly set to false
+          if (defaultPromptVisibility[key] !== false) {
+            visibleDefaultPrompts[key] = prompt;
+          }
+        });
+
+        // Merge visible default prompts with custom prompts (custom prompts override defaults)
+        allPrompts = { ...visibleDefaultPrompts, ...customPrompts };
+
+        console.log('aiFiverr: Loaded prompts for dropdown:', {
+          defaultTotal: Object.keys(defaultPrompts).length,
+          defaultVisible: Object.keys(visibleDefaultPrompts).length,
+          custom: Object.keys(customPrompts).length,
+          total: Object.keys(allPrompts).length,
+          customPromptKeys: Object.keys(customPrompts),
+          customPromptSample: Object.keys(customPrompts).length > 0 ? customPrompts[Object.keys(customPrompts)[0]] : null,
+          allPromptKeys: Object.keys(allPrompts)
+        });
+      } catch (error) {
+        console.warn('aiFiverr: Failed to load custom prompts, using defaults only:', error);
+      }
 
       if (!allPrompts || Object.keys(allPrompts).length === 0) {
         dropdown.innerHTML = '<div style="padding: 12px; color: #6b7280;">No prompts available</div>';
@@ -445,9 +489,21 @@ class FiverrInjector {
    * Render prompt items in dropdown
    */
   renderPromptItems(dropdown, prompts, inputElement) {
+    if (!dropdown) {
+      console.error('aiFiverr: Dropdown element is null');
+      return;
+    }
+
     Object.entries(prompts).forEach(([key, prompt]) => {
-      const item = document.createElement('div');
-      item.className = 'aifiverr-prompt-item';
+      // Skip invalid prompts
+      if (!prompt || typeof prompt !== 'object') {
+        console.warn('aiFiverr: Skipping invalid prompt:', key, prompt);
+        return;
+      }
+
+      try {
+        const item = document.createElement('div');
+        item.className = 'aifiverr-prompt-item';
       item.style.cssText = `
         padding: 12px 16px;
         cursor: pointer;
@@ -455,16 +511,41 @@ class FiverrInjector {
         transition: background-color 0.2s ease;
       `;
 
-      // Get first few characters of prompt title or key
-      const title = prompt.name || prompt.title || key || 'Untitled';
-      const displayTitle = (title && title.length > 30) ? title.substring(0, 30) + '...' : title;
+      // Enhanced title extraction with better validation
+      let title = 'Untitled';
+      if (prompt.name && typeof prompt.name === 'string' && prompt.name.trim()) {
+        title = prompt.name.trim();
+      } else if (prompt.title && typeof prompt.title === 'string' && prompt.title.trim()) {
+        title = prompt.title.trim();
+      } else if (key && typeof key === 'string' && key.trim()) {
+        title = key.trim().replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      }
+
+      const displayTitle = (title.length > 30) ? title.substring(0, 30) + '...' : title;
+
+      // Enhanced description extraction with better validation
+      let description = 'AI-powered response';
+      if (prompt.description && typeof prompt.description === 'string' && prompt.description.trim()) {
+        description = prompt.description.trim();
+      } else if (prompt.prompt && typeof prompt.prompt === 'string' && prompt.prompt.trim()) {
+        // Use first part of prompt as description if no description available
+        const promptText = prompt.prompt.trim();
+        description = promptText.length > 50 ? promptText.substring(0, 50) + '...' : promptText;
+      }
+
+      console.log('aiFiverr: Rendering prompt item:', {
+        key,
+        title,
+        description: description.substring(0, 50) + '...',
+        hasPromptContent: !!(prompt.prompt || prompt.content || prompt.text)
+      });
 
       item.innerHTML = `
         <div style="font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 2px;">
-          ${displayTitle}
+          ${this.escapeHtml(displayTitle)}
         </div>
         <div style="font-size: 12px; color: #6b7280; line-height: 1.3;">
-          ${prompt.description || 'AI-powered response'}
+          ${this.escapeHtml(description)}
         </div>
       `;
 
@@ -489,7 +570,10 @@ class FiverrInjector {
         await this.executePrompt(inputElement, key);
       });
 
-      dropdown.appendChild(item);
+        dropdown.appendChild(item);
+      } catch (error) {
+        console.error('aiFiverr: Error creating prompt item:', key, error);
+      }
     });
 
     // Remove border from last item
@@ -1649,6 +1733,15 @@ class FiverrInjector {
         popup.remove();
       }
     }, 15000);
+  }
+
+  /**
+   * Escape HTML to prevent XSS
+   */
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   /**

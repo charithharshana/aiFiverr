@@ -308,6 +308,9 @@ class PopupManager {
       } else if (e.target.classList.contains('prompt-delete-btn')) {
         const key = e.target.getAttribute('data-key');
         this.deletePrompt(key);
+      } else if (e.target.classList.contains('prompt-toggle-btn')) {
+        const key = e.target.getAttribute('data-key');
+        this.toggleDefaultPromptVisibility(key);
       }
     });
 
@@ -974,6 +977,10 @@ class PopupManager {
       const favorites = await this.forceReloadFromStorage('favoritePrompts') || [];
       this.favoritePrompts = new Set(favorites);
 
+      // Load default prompt visibility settings
+      const defaultPromptVisibility = await this.forceReloadFromStorage('defaultPromptVisibility') || {};
+      this.defaultPromptVisibility = defaultPromptVisibility;
+
       // Load default prompts from knowledge base
       const defaultPrompts = this.getDefaultPrompts();
 
@@ -1102,6 +1109,11 @@ class PopupManager {
                         data-key="${key}"
                         title="Delete prompt">×</button>
               ` : `
+                <button class="prompt-action-btn toggle ${this.isDefaultPromptVisible(key) ? 'visible' : 'hidden'} prompt-toggle-btn"
+                        data-key="${key}"
+                        title="${this.isDefaultPromptVisible(key) ? 'Hide from menu' : 'Show in menu'}">
+                  ${this.isDefaultPromptVisible(key) ? '👁️' : '🙈'}
+                </button>
                 <button class="prompt-action-btn edit prompt-edit-btn"
                         data-key="${key}"
                         data-type="default"
@@ -1114,6 +1126,40 @@ class PopupManager {
         </div>
       `;
     }).join('');
+  }
+
+  /**
+   * Check if default prompt is visible in menus
+   */
+  isDefaultPromptVisible(key) {
+    // Default to visible if not explicitly set
+    return this.defaultPromptVisibility?.[key] !== false;
+  }
+
+  /**
+   * Toggle default prompt visibility
+   */
+  async toggleDefaultPromptVisibility(key) {
+    try {
+      if (!this.defaultPromptVisibility) {
+        this.defaultPromptVisibility = {};
+      }
+
+      // Toggle visibility (default is true, so we store false to hide)
+      this.defaultPromptVisibility[key] = !this.isDefaultPromptVisible(key);
+
+      // Save to storage
+      await this.setStorageData({ defaultPromptVisibility: this.defaultPromptVisibility });
+
+      // Refresh display
+      await this.loadPrompts();
+
+      const isVisible = this.isDefaultPromptVisible(key);
+      this.showToast(`Default prompt "${key}" ${isVisible ? 'shown' : 'hidden'} in menus`, 'success');
+    } catch (error) {
+      console.error('Failed to toggle default prompt visibility:', error);
+      this.showToast('Failed to update prompt visibility', 'error');
+    }
   }
 
   displayFavoritePrompts() {
@@ -3815,7 +3861,8 @@ class PopupManager {
       const fileType = this.getFileTypeCategory(file.mimeType);
       const fileIcon = this.getFileIcon(fileType);
       const fileSize = this.formatFileSize(file.size);
-      const statusIcon = this.getStatusIcon(file.geminiStatus);
+      const connectionStatus = this.getFileConnectionStatus(file);
+      const statusIcon = this.getStatusIcon(connectionStatus);
 
       return `
         <div class="kb-file-item" data-file-id="${file.id}">
@@ -3829,7 +3876,7 @@ class PopupManager {
             </div>
           </div>
           <div class="file-status">
-            <div class="status-indicator ${file.geminiStatus || 'not_uploaded'}" title="Gemini Status: ${file.geminiStatus || 'Not uploaded'}">${statusIcon}</div>
+            <div class="status-indicator ${connectionStatus}" title="Gemini Status: ${connectionStatus}">${statusIcon}</div>
           </div>
           <div class="file-actions">
             <button class="file-action-btn" data-action="details" data-file-id="${file.id}" title="View Details">👁️</button>
@@ -3855,11 +3902,16 @@ class PopupManager {
   updateKnowledgeBaseStats(files) {
     const totalFiles = files.length;
     const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
-    const geminiFiles = files.filter(f => f.geminiStatus === 'ACTIVE').length;
+    const connectedFiles = files.filter(f => this.isFileConnectedToGemini(f)).length;
 
     document.getElementById('totalKbFiles').textContent = totalFiles;
     document.getElementById('kbStorageUsed').textContent = this.formatFileSize(totalSize);
-    document.getElementById('driveStatus').textContent = totalFiles > 0 ? 'Connected' : 'No Files';
+
+    // Update drive status to show connection info
+    const driveStatusText = totalFiles > 0
+      ? `${connectedFiles}/${totalFiles} files connected`
+      : 'No Files';
+    document.getElementById('driveStatus').textContent = driveStatusText;
   }
 
   getFileTypeCategory(mimeType) {
@@ -3895,6 +3947,36 @@ class PopupManager {
       unknown: '📎'
     };
     return icons[fileType] || icons.unknown;
+  }
+
+  /**
+   * Get unified file connection status
+   */
+  getFileConnectionStatus(file) {
+    // Check if file has geminiUri (most reliable indicator)
+    if (file.geminiUri) {
+      return file.geminiStatus || 'ACTIVE';
+    }
+
+    // Check geminiStatus
+    if (file.geminiStatus === 'ACTIVE') {
+      return 'ACTIVE';
+    } else if (file.geminiStatus === 'PROCESSING') {
+      return 'PROCESSING';
+    } else if (file.geminiStatus === 'FAILED') {
+      return 'FAILED';
+    }
+
+    // Default to not uploaded
+    return 'not_uploaded';
+  }
+
+  /**
+   * Check if file is connected to Gemini
+   */
+  isFileConnectedToGemini(file) {
+    const status = this.getFileConnectionStatus(file);
+    return status === 'ACTIVE';
   }
 
   getStatusIcon(status) {
@@ -4415,7 +4497,7 @@ class PopupManager {
                       <div class="kb-file-meta">${this.formatFileSize(file.size)} • ${file.mimeType}</div>
                     </div>
                     <div class="kb-file-status">
-                      <span class="status-indicator ${file.geminiStatus || 'not_uploaded'}" title="${file.geminiStatus || 'Not uploaded to Gemini'}"></span>
+                      <span class="status-indicator ${this.getFileConnectionStatus(file)}" title="Gemini Status: ${this.getFileConnectionStatus(file)}"></span>
                     </div>
                   </div>
                 </label>
@@ -4502,7 +4584,7 @@ class PopupManager {
                     <div class="kb-file-meta">${this.formatFileSize(file.size)} • ${file.mimeType}</div>
                   </div>
                   <div class="kb-file-status">
-                    <span class="status-indicator ${file.geminiStatus || 'not_uploaded'}" title="${file.geminiStatus || 'Not uploaded to Gemini'}"></span>
+                    <span class="status-indicator ${this.getFileConnectionStatus(file)}" title="Gemini Status: ${this.getFileConnectionStatus(file)}"></span>
                   </div>
                 </div>
               </label>
@@ -4702,12 +4784,29 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
     try {
       window.popupManager = new PopupManager();
+      console.log('aiFiverr: PopupManager initialized successfully');
     } catch (error) {
-      console.warn('PopupManager failed to initialize, using fallback tab switching:', error);
+      console.error('aiFiverr: PopupManager failed to initialize:', error);
+      // Show error message to user
+      const errorDiv = document.createElement('div');
+      errorDiv.style.cssText = 'padding: 20px; text-align: center; color: #dc3545; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px;';
+      errorDiv.innerHTML = `
+        <h4>Extension Error</h4>
+        <p>Failed to initialize aiFiverr extension. Please try:</p>
+        <ul style="text-align: left; display: inline-block;">
+          <li>Refreshing this popup</li>
+          <li>Reloading the extension</li>
+          <li>Restarting your browser</li>
+        </ul>
+        <p><small>Error: ${error.message}</small></p>
+      `;
+      document.body.insertBefore(errorDiv, document.body.firstChild);
+
+      // Try fallback initialization
       initializeFallbackTabSwitching();
     }
   } else {
-    console.warn('Not in extension context, using fallback tab switching');
+    console.warn('aiFiverr: Extension context not available, using fallback tab switching');
     initializeFallbackTabSwitching();
   }
 });

@@ -929,12 +929,23 @@ class TextSelector {
     try {
       console.log('aiFiverr: Populating dropdown with prompts...');
 
+      // Check if prompt selector is available
+      if (!window.promptSelector) {
+        console.warn('aiFiverr: Prompt selector not available');
+        this.contextMenu.innerHTML = '<div style="padding: 12px; color: #666;">Prompt selector not available</div>';
+        return;
+      }
+
       // Get prompts from prompt selector
       await window.promptSelector.loadPrompts();
-      const prompts = window.promptSelector.allPrompts;
+      const prompts = window.promptSelector.allPrompts || {};
       const favoritePrompts = window.promptSelector.favoritePrompts || [];
 
-      console.log('aiFiverr: Available prompts:', Object.keys(prompts).length);
+      console.log('aiFiverr Text Selector: Available prompts:', {
+        total: Object.keys(prompts).length,
+        promptKeys: Object.keys(prompts),
+        samplePrompt: Object.keys(prompts).length > 0 ? prompts[Object.keys(prompts)[0]] : null
+      });
 
       if (!prompts || Object.keys(prompts).length === 0) {
         this.contextMenu.innerHTML = '<div style="padding: 12px; color: #666;">No prompts available</div>';
@@ -991,17 +1002,44 @@ class TextSelector {
       transition: 'background-color 0.2s ease'
     });
 
-    // Create content
+    // Enhanced content creation with better validation
     const name = document.createElement('div');
     name.style.fontWeight = '500';
     name.style.color = '#374151';
-    name.textContent = prompt.name || promptKey;
+
+    // Enhanced title extraction
+    let title = 'Untitled';
+    if (prompt.name && typeof prompt.name === 'string' && prompt.name.trim()) {
+      title = prompt.name.trim();
+    } else if (prompt.title && typeof prompt.title === 'string' && prompt.title.trim()) {
+      title = prompt.title.trim();
+    } else if (promptKey && typeof promptKey === 'string' && promptKey.trim()) {
+      title = promptKey.trim().replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+    name.textContent = title;
 
     const description = document.createElement('div');
     description.style.fontSize = '12px';
     description.style.color = '#6b7280';
     description.style.marginTop = '2px';
-    description.textContent = prompt.description || 'No description';
+
+    // Enhanced description extraction
+    let descText = 'AI-powered response';
+    if (prompt.description && typeof prompt.description === 'string' && prompt.description.trim()) {
+      descText = prompt.description.trim();
+    } else if (prompt.prompt && typeof prompt.prompt === 'string' && prompt.prompt.trim()) {
+      // Use first part of prompt as description if no description available
+      const promptText = prompt.prompt.trim();
+      descText = promptText.length > 50 ? promptText.substring(0, 50) + '...' : promptText;
+    }
+    description.textContent = descText;
+
+    console.log('aiFiverr Text Selector: Creating dropdown item:', {
+      promptKey,
+      title,
+      description: descText.substring(0, 30) + '...',
+      hasPromptContent: !!(prompt.prompt || prompt.content || prompt.text)
+    });
 
     item.appendChild(name);
     item.appendChild(description);
@@ -1065,7 +1103,16 @@ class TextSelector {
         throw new Error(`Prompt '${promptKey}' not found`);
       }
 
-      console.log('aiFiverr: Found prompt:', prompt.name || promptKey);
+      // Enhanced prompt debugging
+      console.log('aiFiverr: Found prompt:', {
+        name: prompt.name || promptKey,
+        hasDescription: !!prompt.description,
+        hasPrompt: !!prompt.prompt,
+        hasContent: !!prompt.content,
+        hasText: !!prompt.text,
+        keys: Object.keys(prompt),
+        promptType: prompt.isDefault ? 'default' : 'custom'
+      });
 
       // Check if required managers are available
       if (!window.sessionManager) {
@@ -1082,9 +1129,28 @@ class TextSelector {
       const session = await window.sessionManager.getOrCreateSession('text_selection');
       console.log('aiFiverr: Got session:', session.id);
 
-      // Process the prompt with the selected text
-      const promptText = prompt.prompt || prompt.description || prompt.text;
-      console.log('aiFiverr: Processing prompt text:', promptText.substring(0, 100) + '...');
+      // Enhanced prompt text extraction with better error handling
+      let promptText = null;
+
+      // Try different property names that might contain the prompt content
+      if (prompt.prompt && typeof prompt.prompt === 'string' && prompt.prompt.trim()) {
+        promptText = prompt.prompt.trim();
+        console.log('aiFiverr: Using prompt.prompt property');
+      } else if (prompt.content && typeof prompt.content === 'string' && prompt.content.trim()) {
+        promptText = prompt.content.trim();
+        console.log('aiFiverr: Using prompt.content property');
+      } else if (prompt.text && typeof prompt.text === 'string' && prompt.text.trim()) {
+        promptText = prompt.text.trim();
+        console.log('aiFiverr: Using prompt.text property');
+      } else if (prompt.description && typeof prompt.description === 'string' && prompt.description.trim()) {
+        promptText = prompt.description.trim();
+        console.log('aiFiverr: Using prompt.description property as fallback');
+      } else {
+        console.error('aiFiverr: No valid prompt content found in prompt object:', prompt);
+        throw new Error(`Prompt '${promptKey}' has no valid content. Available properties: ${Object.keys(prompt).join(', ')}`);
+      }
+
+      console.log('aiFiverr: Extracted prompt text:', promptText.substring(0, 100) + '...');
 
       const result = await window.knowledgeBaseManager.processPrompt(promptKey, {
         conversation: selectedText,
@@ -1094,7 +1160,8 @@ class TextSelector {
       const processedPrompt = typeof result === 'object' ? result.prompt : result;
       const knowledgeBaseFiles = typeof result === 'object' ? result.knowledgeBaseFiles : [];
 
-      console.log('aiFiverr: Processed prompt:', processedPrompt.substring(0, 100) + '...');
+      const safeProcessedPrompt = processedPrompt || 'No processed prompt available';
+      console.log('aiFiverr: Processed prompt:', safeProcessedPrompt.substring(0, 100) + '...');
       console.log('aiFiverr: Knowledge base files for prompt:', knowledgeBaseFiles);
       console.log('aiFiverr: Knowledge base files details:', knowledgeBaseFiles.map(f => ({
         name: f.name,

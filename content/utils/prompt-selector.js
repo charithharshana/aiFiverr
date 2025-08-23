@@ -69,14 +69,56 @@ class PromptSelector {
         this.favoritePrompts = ['summary', 'follow_up', 'proposal'];
       }
 
-      // Load custom prompts using fallback storage
-      const customPrompts = await this.getFromStorage('customPrompts', {});
+      // Load custom prompts using enhanced storage access
+      let customPrompts = {};
+      try {
+        const customPromptsResult = await this.getFromStorage('customPrompts', {});
+        // Handle both direct object and nested object patterns
+        if (customPromptsResult && typeof customPromptsResult === 'object') {
+          customPrompts = customPromptsResult.customPrompts || customPromptsResult;
+        }
+        console.log('aiFiverr Prompt Selector: Loaded custom prompts:', Object.keys(customPrompts));
+      } catch (error) {
+        console.warn('aiFiverr Prompt Selector: Failed to load custom prompts:', error);
+        customPrompts = {};
+      }
+
+      // Load default prompt visibility settings
+      let defaultPromptVisibility = {};
+      try {
+        const visibilityResult = await this.getFromStorage('defaultPromptVisibility', {});
+        if (visibilityResult && typeof visibilityResult === 'object') {
+          defaultPromptVisibility = visibilityResult.defaultPromptVisibility || visibilityResult;
+        }
+      } catch (error) {
+        console.warn('aiFiverr Prompt Selector: Failed to load visibility settings:', error);
+        defaultPromptVisibility = {};
+      }
 
       // Get default prompts from knowledge base
       const defaultPrompts = this.getDefaultPrompts();
 
-      // Combine all prompts
-      this.allPrompts = { ...defaultPrompts, ...(customPrompts || {}) };
+      // Filter default prompts based on visibility settings
+      const visibleDefaultPrompts = {};
+      Object.entries(defaultPrompts).forEach(([key, prompt]) => {
+        // Default to visible if not explicitly set to false
+        if (defaultPromptVisibility[key] !== false) {
+          visibleDefaultPrompts[key] = prompt;
+        }
+      });
+
+      // Combine visible default prompts with custom prompts
+      this.allPrompts = { ...visibleDefaultPrompts, ...(customPrompts || {}) };
+
+      // Enhanced debugging for prompt loading
+      console.log('aiFiverr Prompt Selector: Loaded prompts:', {
+        defaultTotal: Object.keys(defaultPrompts).length,
+        defaultVisible: Object.keys(visibleDefaultPrompts).length,
+        customTotal: Object.keys(customPrompts).length,
+        finalTotal: Object.keys(this.allPrompts).length,
+        customPromptKeys: Object.keys(customPrompts),
+        customPromptSample: Object.keys(customPrompts).length > 0 ? customPrompts[Object.keys(customPrompts)[0]] : null
+      });
 
       console.log('aiFiverr: Loaded prompts:', {
         favorites: this.favoritePrompts.length,

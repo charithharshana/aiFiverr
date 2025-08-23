@@ -406,6 +406,9 @@ Best regards,
     }
 
     if (!prompt) {
+      console.warn('aiFiverr KB: Prompt not found:', promptKey);
+      console.log('aiFiverr KB: Available custom prompts:', Array.from(this.customPrompts.keys()));
+      console.log('aiFiverr KB: Available default prompts:', Object.keys(this.getDefaultPrompts()));
       throw new Error(`Prompt '${promptKey}' not found`);
     }
 
@@ -752,28 +755,20 @@ Best regards,
           state: response.data.state
         });
 
-        const result = {
-          name: response.data.displayName || response.data.name,
-          mimeType: response.data.mimeType,
-          geminiUri: response.data.uri,
-          geminiName: response.data.name,
-          geminiState: response.data.state,
-          size: response.data.sizeBytes
-        };
-
-        console.log('aiFiverr KB: Returning upload result:', result);
-        return result;
+        // Return the response in the format expected by resolveKnowledgeBaseFiles
+        console.log('aiFiverr KB: Returning upload response:', response);
+        return response;
       } else {
         console.error('aiFiverr KB: Failed to upload file to Gemini:', {
           success: response?.success,
           error: response?.error,
           hasData: !!response?.data
         });
-        return null;
+        return { success: false, error: response?.error || 'Upload failed - no response data' };
       }
     } catch (error) {
       console.error('aiFiverr KB: Error in uploadFileToGemini:', error);
-      return null;
+      return { success: false, error: error.message };
     }
   }
 
@@ -1137,42 +1132,57 @@ Best regards,
                   const uploadResult = await this.uploadFileToGemini(fullFileData);
                   console.log('aiFiverr KB: Upload result received:', uploadResult);
 
-                  if (uploadResult && uploadResult.geminiUri) {
-                    console.log('aiFiverr KB: Successfully uploaded file to Gemini:', {
-                      name: uploadResult.name,
-                      geminiUri: uploadResult.geminiUri,
-                      state: uploadResult.geminiState
-                    });
+                  if (uploadResult && uploadResult.success && uploadResult.data) {
+                    // Map the response data correctly - background script returns 'uri' not 'geminiUri'
+                    const geminiUri = uploadResult.data.uri;
+                    const geminiName = uploadResult.data.name;
+                    const geminiState = uploadResult.data.state;
 
-                    // Update local file reference
-                    const fileKey = this.generateFileKey(fullFileData.name);
-                    const updatedFileData = {
-                      ...fullFileData,
-                      geminiUri: uploadResult.geminiUri,
-                      geminiName: uploadResult.geminiName,
-                      geminiState: uploadResult.geminiState,
-                      lastUploaded: new Date().toISOString()
-                    };
+                    if (geminiUri) {
+                      console.log('aiFiverr KB: Successfully uploaded file to Gemini:', {
+                        name: geminiName,
+                        geminiUri: geminiUri,
+                        state: geminiState
+                      });
 
-                    this.files.set(fileKey, updatedFileData);
-                    await this.saveKnowledgeBaseFiles();
+                      // Update local file reference with correct property mapping
+                      const fileKey = this.generateFileKey(fullFileData.name);
+                      const updatedFileData = {
+                        ...fullFileData,
+                        geminiUri: geminiUri,
+                        geminiName: geminiName,
+                        geminiState: geminiState,
+                        lastUploaded: new Date().toISOString()
+                      };
 
-                    console.log('aiFiverr KB: File reference updated and saved:', fileKey);
+                      this.files.set(fileKey, updatedFileData);
+                      await this.saveKnowledgeBaseFiles();
 
-                    resolvedFiles.push({
-                      id: fileRef.id || fileRef.driveFileId,
-                      name: uploadResult.name,
-                      mimeType: uploadResult.mimeType,
-                      geminiUri: uploadResult.geminiUri,
-                      size: uploadResult.size
-                    });
-                    filesWithGeminiUri++;
+                      console.log('aiFiverr KB: File reference updated and saved:', fileKey);
+
+                      resolvedFiles.push({
+                        id: fileRef.id || fileRef.driveFileId,
+                        name: geminiName,
+                        mimeType: uploadResult.data.mimeType,
+                        geminiUri: geminiUri,
+                        size: uploadResult.data.sizeBytes
+                      });
+                      filesWithGeminiUri++;
+                    } else {
+                      console.warn('aiFiverr KB: Upload succeeded but no URI in response:', {
+                        fileName: fileRef.name,
+                        uploadResult: uploadResult.data,
+                        hasUri: !!uploadResult.data.uri
+                      });
+                    }
                   } else {
-                    console.warn('aiFiverr KB: Upload failed - no geminiUri in result:', {
+                    console.warn('aiFiverr KB: Upload failed - invalid response format:', {
                       fileName: fileRef.name,
                       uploadResult: uploadResult,
                       hasResult: !!uploadResult,
-                      hasGeminiUri: !!(uploadResult && uploadResult.geminiUri)
+                      hasSuccess: !!(uploadResult && uploadResult.success),
+                      hasData: !!(uploadResult && uploadResult.data),
+                      error: uploadResult?.error
                     });
                   }
                 } catch (error) {

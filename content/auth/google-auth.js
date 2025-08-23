@@ -192,9 +192,11 @@ class GoogleAuthService {
             if (chrome.runtime.lastError) {
               console.error('aiFiverr Auth: Chrome runtime error:', chrome.runtime.lastError.message);
 
-              // Handle "Receiving end does not exist" error specifically
+              // Handle specific Chrome runtime errors
               if (chrome.runtime.lastError.message.includes('Receiving end does not exist')) {
-                reject(new Error('Could not establish connection. Background script may be inactive.'));
+                reject(new Error('Could not establish connection. Receiving end does not exist.'));
+              } else if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+                reject(new Error('Extension context invalidated - storage operations will be limited'));
               } else {
                 reject(new Error(chrome.runtime.lastError.message));
               }

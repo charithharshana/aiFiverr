@@ -1300,6 +1300,30 @@ body {
   color: white;
 }
 
+.prompt-action-btn.toggle {
+  color: #6c757d;
+}
+
+.prompt-action-btn.toggle.visible {
+  color: #28a745;
+  border-color: #28a745;
+}
+
+.prompt-action-btn.toggle.visible:hover {
+  background: #28a745;
+  color: white;
+}
+
+.prompt-action-btn.toggle.hidden {
+  color: #6c757d;
+  border-color: #6c757d;
+}
+
+.prompt-action-btn.toggle.hidden:hover {
+  background: #6c757d;
+  color: white;
+}
+
 .btn-icon {
   width: 32px;
   height: 32px;
